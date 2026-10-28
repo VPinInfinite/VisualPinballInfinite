@@ -40,11 +40,11 @@ PinUP Popper shows the pictures and videos kept in its own folders, so it doesn'
 
 - The one with the blue check of each kind (playfield picture or video, backglass, score display, wheel) is copied into Popper's folder for that screen, named for Popper's name for the game, whenever you choose another, so Popper shows the same one.
 - Media you make go in where Popper has none.
-- The one Popper had there is kept beside it, numbered (`Name01.png`), never deleted, so choosing it again swaps them back.
+- The one Popper had there is kept beside it, numbered (`Name01.png`), never deleted, so choosing it again swaps them back. A copy the app put in there before goes to the Recycle Bin instead, as the picture it copied is still on the table's page.
 - VPS's pictures go in as PNGs.
 
 **Put them in for every table now** does it for every table at once, saying first how many would go in. Turned off, Popper's folders are left alone, though a picture's own window can still copy that one over on your word.
 
 ## Media for PinballX and PinballY
 
-Where PinballX or PinballY plays your library's tables, Tools › Media shows where their media are, and offers **Put the media a table uses in PinballX's folders too** (or PinballY's, or both): the same as for Popper, in each screen's folder, named for the game as their game lists name it. The one there before is kept beside it, numbered (`Name 1.png`). **Put them in for every table now** does it for every table at once. If either is installed somewhere unusual, its folder can be set in the settings (`[VPI]` `PinballXFolder`, `PinballYFolder`).
+Where PinballX or PinballY plays your library's tables, Tools › Media shows where their media are, and offers **Put the media a table uses in PinballX's folders too** (or PinballY's, or both): the same as for Popper, in each screen's folder, named for the game as their game lists name it. Their own one there before is kept beside it, numbered (`Name 1.png`); a copy the app put in before goes to the Recycle Bin. **Put them in for every table now** does it for every table at once. If either is installed somewhere unusual, its folder can be set in the settings (`[VPI]` `PinballXFolder`, `PinballYFolder`).

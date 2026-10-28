@@ -8,7 +8,7 @@
   import Icon from './Icon.svelte';
   import { app, notice, toast } from './store.svelte.js';
 
-  let { t, kind, onshow, onclose } = $props();
+  let { t, kind, onclose } = $props();
 
   const items = $derived(t.media.filter((m) => m.kind === kind));
   const label = $derived(items[0]?.label ?? 'Media');
@@ -24,6 +24,10 @@
   const FROM = { VPS: 'From VPS', Popper: 'From PinUP Popper', PinballX: 'From PinballX', PinballY: 'From PinballY', ours: 'Made by our player' };
   // a front end's own, by its name in words
   const FRONT = { Popper: 'PinUP Popper', PinballX: 'PinballX', PinballY: 'PinballY' };
+  // where one is from: a copy the app put in a front end's folder said as what it copies, and in
+  // full, where it is
+  const from = (m) => FROM[m.copy || m.from];
+  const fromFull = (m) => (m.copy ? `${FROM[m.copy]}, copied into ${FRONT[m.from]}’s folder` : FROM[m.from]);
 
   // a kind with none left closes; one opened large that's gone shows the one used in its place
   // (put in PinUP Popper's folder, ours gives way to Popper's copy), or them all
@@ -42,7 +46,7 @@
     putting = true;
     try {
       const moved = await invoke('popper_media_put', { id: t.id, kind });
-      if (moved) toast('Put in PinUP Popper’s folder', [`${t.short}’s ${label.toLowerCase()} is the one PinUP Popper shows now; the one it showed before is kept beside it, numbered.`]);
+      if (moved) toast('Put in PinUP Popper’s folder', [`${t.short}’s ${label.toLowerCase()} is the one PinUP Popper shows now. Popper’s own one before it is kept beside it, numbered; a copy put in before goes to the Recycle Bin.`]);
     } catch (e) {
       notice(String(e), { kind: 'problem' });
     }
@@ -102,7 +106,7 @@
   {#if m.front}
     <span class="popper" title="In {FRONT[m.from]}’s folder for it, under the name {FRONT[m.from]} gives the game">{FRONT[m.from]} shows this one</span>
   {:else if m.chosen && app.popper}
-    <button type="button" class="btn small ghost" disabled={putting} onclick={putInPopper} title="Copied into PinUP Popper’s folder for it, named as Popper names the game; the one it shows now is kept beside it, numbered">{putting ? 'Putting it in…' : 'Put it in PinUP Popper’s folder'}</button>
+    <button type="button" class="btn small ghost" disabled={putting} onclick={putInPopper} title="Copied into PinUP Popper’s folder for it, named as Popper names the game; Popper’s own one it shows now is kept beside it, numbered, and a copy put in before goes to the Recycle Bin">{putting ? 'Putting it in…' : 'Put it in PinUP Popper’s folder'}</button>
   {/if}
 {/snippet}
 
@@ -123,7 +127,7 @@
             <!-- svelte-ignore a11y_media_has_caption -->
             <video src={large.url} class:turned={large.turn === 90 || large.turn === 270} class:ccw={large.turn === 270} class:upside={large.turn === 180} autoplay muted loop playsinline controls={!large.turn}></video>
           {:else}
-            <img src={large.url} alt="{large.label}, {FROM[large.from].toLowerCase()}" class:contain={large.contain} class:turned={large.turn === 90 || large.turn === 270} class:ccw={large.turn === 270} class:upside={large.turn === 180} />
+            <img src={large.url} alt="{large.label}, {from(large).toLowerCase()}" class:contain={large.contain} class:turned={large.turn === 90 || large.turn === 270} class:ccw={large.turn === 270} class:upside={large.turn === 180} />
           {/if}
           {#if !alone}
             <button type="button" class="arrow left" aria-label="The one before" onclick={() => step(-1)}><Icon name="chevL" size={22} /></button>
@@ -131,7 +135,7 @@
           {/if}
         </div>
         <figcaption>
-          <span>{FROM[large.from]}{alone ? '' : ` · ${items.findIndex((m) => m.url === large.url) + 1} of ${items.length}`}</span>
+          <span>{fromFull(large)}{alone ? '' : ` · ${items.findIndex((m) => m.url === large.url) + 1} of ${items.length}`}</span>
           {#if large.chosen}
             <span class="inuse"><Icon name="check" size={14} width={2.8} />Shown while browsing</span>
           {:else}
@@ -139,7 +143,6 @@
           {/if}
           {@render popper(large)}
           {#if large.turn}<button type="button" class="btn small ghost" onclick={() => turnOther(large)}>Turn it the other way</button>{/if}
-          <button type="button" class="btn small ghost" onclick={() => onshow(large)}>Show it on the page</button>
           {#if !alone}<button type="button" class="btn small ghost" onclick={() => (large = null)}>Back to them all</button>{/if}
         </figcaption>
       </figure>
@@ -147,7 +150,7 @@
       <div class="grid">
         {#each items as m (m.url)}
           <div class="item" class:chosen={m.chosen}>
-            <button type="button" class="pic" class:turn-frame={m.turn} aria-label="Open the {m.label.toLowerCase()} {FROM[m.from].toLowerCase()}" onclick={() => (large = m)} oncontextmenu={(e) => { e.preventDefault(); asking = m; }}>
+            <button type="button" class="pic" class:turn-frame={m.turn} aria-label="Open the {m.label.toLowerCase()} {fromFull(m).toLowerCase()}" onclick={() => (large = m)} oncontextmenu={(e) => { e.preventDefault(); asking = m; }}>
               {#if m.video}
                 <!-- svelte-ignore a11y_media_has_caption -->
                 <video src="{m.url}#t=0.5" class:turned={m.turn === 90 || m.turn === 270} class:ccw={m.turn === 270} class:upside={m.turn === 180} muted preload="metadata" playsinline tabindex="-1"></video>
@@ -158,7 +161,7 @@
               {#if m.chosen}<span class="badge" title="Shown while browsing"><Icon name="check" size={14} width={3} /></span>{/if}
             </button>
             <div class="under">
-              <span>{FROM[m.from]}</span>
+              <span title={fromFull(m)}>{from(m)}</span>
               {#if m.chosen}
                 <span class="inuse">Shown</span>
               {:else}
@@ -177,7 +180,7 @@
           <span>Hide VPS’s {asking.label.toLowerCase()} from this page? It’s VPS’s, so it can’t be deleted, only hidden.</span>
           <button type="button" class="btn small" onclick={() => remove(asking)}>Hide it</button>
         {:else}
-          <span>Delete this {asking.label.toLowerCase()} ({FROM[asking.from].toLowerCase()})? It goes to the Recycle Bin, where you can get it back.</span>
+          <span>Delete this {asking.label.toLowerCase()} ({fromFull(asking).toLowerCase()})? It goes to the Recycle Bin, where you can get it back.</span>
           <button type="button" class="btn small danger" onclick={() => remove(asking)}>Delete</button>
         {/if}
         <button type="button" class="btn small ghost" onclick={() => (asking = null)}>Cancel</button>

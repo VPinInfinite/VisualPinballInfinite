@@ -299,7 +299,8 @@
   }
   .card:hover, .card:focus-visible { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); }
   .card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .picture { position: relative; aspect-ratio: 9 / 16; background: var(--picture-bg); }
+  /* the frame keeps its shape: a picture taller than it is cut, never growing the card and its row */
+  .picture { position: relative; aspect-ratio: 9 / 16; min-height: 0; overflow: hidden; background: var(--picture-bg); }
   .picture img, .ppicture img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .named {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 14px; text-align: center;

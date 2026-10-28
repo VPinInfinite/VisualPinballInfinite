@@ -4,10 +4,13 @@
 //! screen, named for Popper's own name for the game (`library::popper::put_in_front`: Popper's one
 //! before it kept, numbered). And the same in PinballX's and PinballY's folders, where either plays
 //! the library's tables (`prefs.frontsMedia`): named as each names the game's media, its own one
-//! before kept numbered as it numbers them (`library::frontends::put_in_front`). When a choice
-//! changes, for that kind; on a word from the settings, for every table.
+//! before kept numbered as it numbers them (`library::frontends::put_in_front`); a copy of VPS's
+//! or ours put in before sent to the Recycle Bin instead (`User::put_in`). When a choice changes,
+//! for that kind; on a word from the settings, for every table.
 
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
@@ -154,9 +157,13 @@ impl Done {
 }
 
 /// The jobs done, VPS's pictures fetched first where they aren't kept yet; each put in remembered:
-/// the choice now Popper's copy in front, the source shown no more beside it.
+/// the choice now Popper's copy in front, the source shown no more beside it, the copy known as
+/// ours (`User::put_in`) — one put in before sent to the Recycle Bin when another takes its place.
 pub fn run(app: &AppHandle, jobs: Vec<Job>, done: &mut Done) {
-    let mut fronts: Vec<(Job, String)> = Vec::new();
+    let put_in = app.state::<Shared>().0.lock().unwrap().user.put_in.clone();
+    let mut fronts: Vec<(Job, PathBuf)> = Vec::new();
+    // the copies sent to the Recycle Bin, by table and path
+    let gone: RefCell<Vec<(String, String)>> = RefCell::new(Vec::new());
     for j in jobs {
         let path = match &j.from {
             From::File(p) => Some(p.clone()),
@@ -166,39 +173,86 @@ pub fn run(app: &AppHandle, jobs: Vec<Job>, done: &mut Done) {
             *done.problems.entry("one of VPS’s pictures couldn’t be fetched".to_string()).or_default() += 1;
             continue;
         };
+        let copies = put_in.get(&j.table);
+        let ours = |f: &Path| copies.is_some_and(|c| c.contains_key(&f.to_string_lossy().to_lowercase()));
+        let recycle = |f: &Path| {
+            ::library::install::to_recycle_bin(f)?;
+            gone.borrow_mut().push((j.table.clone(), f.to_string_lossy().to_lowercase()));
+            Ok(())
+        };
         let put = match j.other {
-            None => ::library::popper::put_in_front(&j.folder, &j.name, &path),
-            Some(_) => ::library::frontends::put_in_front(&j.folder, &j.name, &path),
+            None => ::library::popper::put_in_front(&j.folder, &j.name, &path, &ours, &recycle),
+            Some(_) => ::library::frontends::put_in_front(&j.folder, &j.name, &path, &ours, &recycle),
         };
         match put {
             Ok(Some(front)) => {
                 done.moved += 1;
-                let name = front.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
-                fronts.push((j, name));
+                fronts.push((j, front));
             }
             Ok(None) => {}
             Err(e) => *done.problems.entry(e).or_default() += 1,
         }
     }
-    if fronts.is_empty() {
+    let gone = gone.into_inner();
+    if fronts.is_empty() && gone.is_empty() {
         return;
     }
     let shared = app.state::<Shared>();
     let mut st = shared.0.lock().unwrap();
+    let user = &mut st.user;
+    let tables = remember(user, &put_in, gone, fronts);
+    // the copies gone from the folders forgotten
+    for k in &tables {
+        if let Some(copies) = user.put_in.get_mut(k) {
+            copies.retain(|path, _| Path::new(path).exists());
+        }
+    }
+    user.put_in.retain(|_, c| !c.is_empty());
+    if let Err(e) = user.save() {
+        eprintln!("PinUP Popper's media: {e}");
+    }
+}
+
+/// What a run did, remembered (`before`: the copies known as it began; `gone`: those it sent to the
+/// Recycle Bin, by table and path; `fronts`: each job done, with its file in front now). The tables
+/// it touched.
+fn remember(user: &mut crate::library::User, before: &BTreeMap<String, BTreeMap<String, String>>, gone: Vec<(String, String)>, fronts: Vec<(Job, PathBuf)>) -> BTreeSet<String> {
+    // a copy sent away stands in for nothing now: what it copied shows again, unless it's what took
+    // its place (its kind's folders hold files of one name, so it's known by its path)
+    let mut tables = BTreeSet::new();
+    for (k, path) in gone {
+        if let Some(was) = before.get(&k).and_then(|c| c.get(&path))
+            && let Some(copies) = user.in_popper.get_mut(&k)
+        {
+            copies.remove(was);
+        }
+        if let Some(c) = user.put_in.get_mut(&k) {
+            c.remove(&path);
+        }
+        tables.insert(k);
+    }
     // what went in front in Popper's folder is the choice from then on; one put only in PinballX's
     // or PinballY's, where Popper took none of its kind
     let popper_took: Vec<(String, String)> = fronts.iter().filter(|(j, _)| j.other.is_none()).map(|(j, _)| (j.table.clone(), j.kind.clone())).collect();
-    for (j, name) in fronts {
-        if !j.pick.starts_with("file:") {
-            st.user.in_popper.entry(j.table.clone()).or_default().insert(j.pick.clone(), name.clone());
+    for (j, front) in fronts {
+        let name = front.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let path = front.to_string_lossy().to_lowercase();
+        // a front end's own in front is no copy of ours; VPS's or ours put in stands in for its source
+        if j.pick.starts_with("file:") {
+            if let Some(c) = user.put_in.get_mut(&j.table) {
+                c.remove(&path);
+            }
+        } else {
+            user.in_popper.entry(j.table.clone()).or_default().insert(j.pick.clone(), name.clone());
+            user.put_in.entry(j.table.clone()).or_default().insert(path, j.pick.clone());
         }
+        tables.insert(j.table.clone());
         if j.other.is_none() || !popper_took.contains(&(j.table.clone(), j.kind.clone())) {
-            st.user.chosen.entry(j.table).or_default().insert(j.kind, format!("file:{name}"));
+            user.chosen.entry(j.table).or_default().insert(j.kind, format!("file:{name}"));
         }
     }
-    if let Err(e) = st.user.save() {
-        eprintln!("PinUP Popper's media: {e}");
-    }
+    user.in_popper.retain(|_, c| !c.is_empty());
+    tables
 }
 
 /// A table's chosen of `kind` (or every kind) put in, if it's on — or `always`, on the user's word
@@ -226,4 +280,55 @@ pub fn after(app: &AppHandle, id: &str, kind: Option<&str>, always: bool) -> std
         crate::library::start(app);
         done
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TABLE: &str = r"c:\vpinball\visualpinball\tables\cirqus voltaire (bally 1997).vpx";
+    const MEDIA: &str = r"c:\vpinball\pinupsystem\popmedia\visual pinball x";
+    const NAME: &str = "cirqus voltaire (bally 1997).png";
+
+    fn at(kind: &str) -> String {
+        format!(r"{MEDIA}\{kind}\{NAME}")
+    }
+
+    fn job(kind: &str, pick: &str) -> Job {
+        let folder = PathBuf::from(MEDIA).join(kind);
+        Job { from: From::File(PathBuf::from("ours.png")), folder, name: "Cirqus Voltaire (Bally 1997)".into(), table: TABLE.into(), kind: kind.into(), pick: pick.into(), other: None }
+    }
+
+    /// Ours put in four of Popper's folders, every copy under the same name.
+    fn copied_in() -> crate::library::User {
+        let mut user = crate::library::User::default();
+        for (folder, own) in [("playfield", "playfield"), ("backglass", "backglass"), ("dmd", "dmd"), ("wheel", "wheel")] {
+            user.in_popper.entry(TABLE.into()).or_default().insert(format!("ours:{own}"), NAME.into());
+            user.put_in.entry(TABLE.into()).or_default().insert(at(folder), format!("ours:{own}"));
+        }
+        user
+    }
+
+    #[test]
+    fn a_copy_replaced_forgotten_by_its_path_the_other_kinds_kept() {
+        // ours made again and put in front: the playfield's copy before it sent away
+        let mut user = copied_in();
+        let before = user.put_in.clone();
+        let tables = remember(&mut user, &before, vec![(TABLE.into(), at("playfield"))], vec![(job("playfield", "ours:playfield"), PathBuf::from(at("playfield")))]);
+        assert_eq!(tables.into_iter().collect::<Vec<_>>(), vec![TABLE.to_string()]);
+        let copies = &user.in_popper[TABLE];
+        assert_eq!(copies.len(), 4, "the backglass's, score display's and wheel's copies still stand in for ours: {copies:?}");
+        assert_eq!(user.put_in[TABLE][&at("playfield")], "ours:playfield");
+        assert_eq!(user.chosen[TABLE]["playfield"], format!("file:{NAME}"));
+
+        // Popper's own numbered one chosen: the copy in front sent away, ours shown again beside it
+        let mut user = copied_in();
+        let before = user.put_in.clone();
+        remember(&mut user, &before, vec![(TABLE.into(), at("playfield"))], vec![(job("playfield", "file:cirqus voltaire (bally 1997)01.png"), PathBuf::from(at("playfield")))]);
+        let copies = &user.in_popper[TABLE];
+        assert!(!copies.contains_key("ours:playfield"));
+        assert_eq!(copies.len(), 3);
+        assert!(!user.put_in[TABLE].contains_key(&at("playfield")));
+        assert_eq!(user.put_in[TABLE].len(), 3);
+    }
 }

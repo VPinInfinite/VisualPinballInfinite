@@ -117,10 +117,11 @@ pub fn folder_for(front: Front, kind: &str, video: bool) -> Option<&'static str>
 
 /// `chosen` made the one PinballX or PinballY shows for a kind of a game's media: put in front in
 /// its `folder` for the kind, named for its name for the game (`name`), the one it showed there
-/// kept beside it, numbered as they number a kind's others (`Name 1.png`), never deleted
-/// (`popper::put_in_front_as`); a picture it may not show (VPS's WebP) as a PNG.
-pub fn put_in_front(folder: &Path, name: &str, chosen: &Path) -> Result<Option<PathBuf>, String> {
-    crate::popper::put_in_front_as(folder, name, chosen, &|name, n| format!("{name} {n}"))
+/// kept beside it, numbered as they number a kind's others (`Name 1.png`), never deleted — but a
+/// copy of VPS's or ours put in before, which `recycle` sends away (`popper::put_in_front_as`); a
+/// picture it may not show (VPS's WebP) as a PNG.
+pub fn put_in_front(folder: &Path, name: &str, chosen: &Path, ours: &dyn Fn(&Path) -> bool, recycle: &dyn Fn(&Path) -> Result<(), String>) -> Result<Option<PathBuf>, String> {
+    crate::popper::put_in_front_as(folder, name, chosen, &|name, n| format!("{name} {n}"), ours, recycle)
 }
 
 /// The audio folders, by Popper's names for them.
@@ -949,7 +950,7 @@ mod tests {
         std::fs::write(&ours, "ours").unwrap();
         std::fs::write(wheel.join("Black Knight (Williams 1980).png"), "theirs").unwrap();
         std::fs::write(wheel.join("Black Knight (Williams 1980) 1.png"), "their second").unwrap();
-        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours).unwrap().is_some());
+        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours, &|_| false, &|p| Err(format!("{} sent away", p.display()))).unwrap().is_some());
         let read = |n: &str| std::fs::read_to_string(wheel.join(n)).unwrap();
         let got = (read("Black Knight (Williams 1980).png"), read("Black Knight (Williams 1980) 2.png"), read("Black Knight (Williams 1980) 1.png"));
         let _ = std::fs::remove_dir_all(&dir);

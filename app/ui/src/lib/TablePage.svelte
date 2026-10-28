@@ -644,7 +644,7 @@
               <img class="behind" src={hero.url} alt="" aria-hidden="true" />
               <img class="front" class:contain={hero.contain} class:turned={hero.turn === 90 || hero.turn === 270} class:ccw={hero.turn === 270} class:upside={hero.turn === 180} src={hero.url} alt="{hero.label} of {t.name}" onerror={() => (failed = { ...failed, [hero.url]: true })} />
             {/if}
-            <span class="label">{hero.label}{FRONT_END[hero.from] ? ` · from ${FRONT_END[hero.from]}` : hero.from === 'ours' ? ' · drawn by our player' : ''}</span>
+            <span class="label">{hero.label}{(hero.copy || hero.from) === 'ours' ? ' · drawn by our player' : !hero.copy && FRONT_END[hero.from] ? ` · from ${FRONT_END[hero.from]}` : ''}</span>
             {#if ordered.length > 1}
               <button type="button" class="step prev" aria-label="The picture before" onclick={() => step(-1)}><Icon name="chevL" size={24} /></button>
               <button type="button" class="step next" aria-label="The next picture" onclick={() => step(1)}><Icon name="chevR" size={24} /></button>
@@ -994,7 +994,7 @@
   <EditDetails {t} onclose={() => (detailsOpen = false)} />
 {/if}
 {#if t && stackOpen}
-  <MediaStack {t} kind={stackOpen} onclose={() => (stackOpen = null)} onshow={(m) => { stackOpen = null; shown = Math.max(0, media.indexOf(media.find((x) => x.url === m.url))); }} />
+  <MediaStack {t} kind={stackOpen} onclose={() => (stackOpen = null)} />
 {/if}
 {#if t && screensOpen}
   <div class="panel-scrim" role="presentation" onclick={(e) => e.target === e.currentTarget && (screensOpen = false)}>

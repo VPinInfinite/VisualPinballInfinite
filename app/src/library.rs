@@ -128,6 +128,11 @@ pub struct User {
     /// (lower case), then the source's `MediaView::pick`: the Popper file standing in its place
     /// (lower case), which the table's page shows instead of the two.
     pub in_popper: BTreeMap<String, BTreeMap<String, String>>,
+    /// The files put in the front ends' folders from VPS's or ours, by table file's path (lower
+    /// case), then each one's full path (lower case): the `MediaView::pick` it's a copy of. Shown as
+    /// what it copies, and sent to the Recycle Bin when another is put in front in its place, where
+    /// a front end's own is kept numbered.
+    pub put_in: BTreeMap<String, BTreeMap<String, String>>,
     /// A table's details as the user set them over VPS's and its file's ("Edit its details"), by
     /// table file's path (lower case).
     pub details: BTreeMap<String, Details>,
@@ -654,37 +659,45 @@ const FRONT_ENDS: [&str; 3] = ["Popper", "PinballX", "PinballY"];
 /// Ours, as our player made them, and the kind each shows as.
 const OWN_KINDS: [(&str, &str); 5] = [("playfield", "playfield"), ("video", "playfield-video"), ("backglass", "backglass"), ("dmd", "dmd"), ("wheel", "wheel")];
 
-/// Ours already copied into PinUP Popper's folders, the same file byte for byte, remembered as put in
-/// there (`User::in_popper`) so each shows once: copies made before the app kept that record (a
-/// wheel showed twice). A pair is compared only when their sizes agree.
+/// Ours already copied into the front ends' folders, the same file byte for byte, remembered as put
+/// in there (`User::in_popper`, `User::put_in`) so each shows once, as ours, and gives way when
+/// another is put in front: copies made before the app kept those records (a wheel showed twice).
+/// A pair is compared only when their sizes agree.
 fn note_popper_copies(app: &AppHandle) {
-    let candidates: Vec<(String, String, PathBuf, Vec<PathBuf>)> = {
+    // by table and kind of ours: ours, the front ends' files of its kind not known as copies, and
+    // whether one stands in for ours already
+    let candidates: Vec<(String, String, PathBuf, Vec<PathBuf>, bool)> = {
         let shared = app.state::<Shared>();
         let st = shared.0.lock().unwrap();
         st.tables
             .iter()
             .flat_map(|t| {
                 let k = key(&t.path);
-                let known = st.user.in_popper.get(&k).cloned().unwrap_or_default();
+                let (known, put_in) = (st.user.in_popper.get(&k), st.user.put_in.get(&k));
                 OWN_KINDS
                     .iter()
-                    .filter(move |(own, _)| !known.contains_key(&format!("ours:{own}")))
-                    .filter_map(move |(own, kind)| {
+                    .filter_map(|(own, kind)| {
+                        let pick = format!("ours:{own}");
                         let (ours, _) = crate::own_pictures::made(&t.id, own)?;
-                        let popper: Vec<PathBuf> = t.holds.media.iter().filter(|m| media_kind(m) == *kind).map(|m| m.path.clone()).collect();
-                        (!popper.is_empty()).then(|| (k.clone(), format!("ours:{own}"), ours, popper))
+                        let copy = |p: &Path| put_in.is_some_and(|c| c.contains_key(&p.to_string_lossy().to_lowercase()));
+                        let files: Vec<PathBuf> = t.holds.media.iter().filter(|m| media_kind(m) == *kind && !copy(&m.path)).map(|m| m.path.clone()).collect();
+                        let standing = known.is_some_and(|c| c.contains_key(&pick));
+                        (!files.is_empty()).then(|| (k.clone(), pick, ours, files, standing))
                     })
                     .collect::<Vec<_>>()
             })
             .collect()
     };
     let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
-    let mut found: Vec<(String, String, String)> = Vec::new();
-    for (k, pick, ours, popper) in candidates {
+    let mut found: Vec<(String, String, PathBuf, bool)> = Vec::new();
+    for (k, pick, ours, files, standing) in candidates {
         let Some(n) = size(&ours) else { continue };
-        let same = popper.iter().filter(|p| size(p) == Some(n)).find(|p| std::fs::read(p).ok().is_some_and(|b| std::fs::read(&ours).ok().is_some_and(|o| o == b)));
-        if let Some(copy) = same.and_then(|p| p.file_name()) {
-            found.push((k, pick, copy.to_string_lossy().to_lowercase()));
+        let alike: Vec<&PathBuf> = files.iter().filter(|p| size(p) == Some(n)).collect();
+        let Some(bytes) = (!alike.is_empty()).then(|| std::fs::read(&ours).ok()).flatten() else { continue };
+        for p in alike {
+            if std::fs::read(p).ok().is_some_and(|b| b == bytes) {
+                found.push((k.clone(), pick.clone(), p.clone(), standing));
+            }
         }
     }
     if found.is_empty() {
@@ -692,10 +705,15 @@ fn note_popper_copies(app: &AppHandle) {
     }
     let shared = app.state::<Shared>();
     let mut st = shared.0.lock().unwrap();
-    for (k, pick, copy) in found {
-        st.user.in_popper.entry(k).or_default().insert(pick, copy);
+    let user = &mut st.user;
+    for (k, pick, copy, standing) in found {
+        if !standing {
+            let name = copy.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            user.in_popper.entry(k.clone()).or_default().entry(pick.clone()).or_insert(name);
+        }
+        user.put_in.entry(k).or_default().insert(copy.to_string_lossy().to_lowercase(), pick);
     }
-    if let Err(e) = st.user.save() {
+    if let Err(e) = user.save() {
         eprintln!("PinUP Popper's copies of ours weren't kept: {e}");
     }
 }
@@ -865,6 +883,9 @@ pub struct MediaView {
     pub chosen: bool,
     /// One of a front end's own that it shows, named for its name for the game without a number.
     pub front: bool,
+    /// What a file in a front end's folder is a copy of, put there by the app (`User::put_in`):
+    /// `VPS` or `ours`.
+    pub copy: Option<&'static str>,
     /// Turned this many degrees clockwise to show upright: the user's word for it (`User::turns`), else
     /// 90 or 270 for a front end's playfield picture or video kept on its side for a cabinet's screen
     /// (`media_facts::on_its_side`, `upright_turn`), else 0.
@@ -967,6 +988,12 @@ pub fn view<'a>(st: &'a State, t: &'a Table) -> TableView<'a> {
     let in_popper = st.user.in_popper.get(&key(&t.path));
     let held: BTreeSet<String> = t.holds.media.iter().filter_map(|m| m.path.file_name().map(|n| n.to_string_lossy().to_lowercase())).collect();
     let copied = |pick: &str| in_popper.and_then(|c| c.get(pick)).is_some_and(|f| held.contains(f));
+    // a file the app put in a front end's folder, said as what it copies
+    let put_in = st.user.put_in.get(&key(&t.path));
+    let what_it_copies = |file: Option<&Path>| {
+        let pick = put_in.and_then(|c| c.get(&file?.to_string_lossy().to_lowercase()))?;
+        Some(if pick.starts_with("vps:") { "VPS" } else { "ours" })
+    };
     let listed = st.layout.as_ref().map(|l| ::library::installed::listed_name(&l.tables, &t.path)).unwrap_or_default();
     let popper_name = st.popper_names.get(&listed.to_lowercase()).cloned().unwrap_or_else(|| t.stem.clone());
     // the name each front end's media for it go under: Popper's own name for the game, PinballX's
@@ -1005,7 +1032,8 @@ pub fn view<'a>(st: &'a State, t: &'a Table) -> TableView<'a> {
                 (None, true) => file.as_deref().map_or(90, |f| crate::media_facts::upright_turn(f, upright.as_deref())),
             };
             let sound = video && file.as_deref().is_some_and(crate::media_facts::has_sound);
-            media.push(MediaView { kind: kind.to_string(), label: kind_label(kind), url, video, from, contain, pick, chosen: false, front, turn, sound, file });
+            let copy = if FRONT_ENDS.contains(&from) { what_it_copies(file.as_deref()) } else { None };
+            media.push(MediaView { kind: kind.to_string(), label: kind_label(kind), url, video, from, contain, pick, chosen: false, front, copy, turn, sound, file });
         }
     };
     let vps_pick = |url: &str| format!("vps:{}", url.rsplit('/').next().unwrap_or_default());

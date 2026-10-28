@@ -191,9 +191,14 @@ pub fn make(app: &AppHandle, asked: &Asked) -> Result<PathBuf, String> {
         zip.start_file(name, options).map_err(|e| e.to_string())?;
         zip.write_all(private(text).as_bytes()).map_err(|e| e.to_string())
     };
-    // what it is, who it's from, and what the user said
+    // what it is, who it's from, and what the user said: true whether it's sent or attached
+    let how = if can_send() {
+        "Made on this PC, and sent to the team only with Send it to us: or attach it to your post on Discord (#bug-reports) or a GitHub issue."
+    } else {
+        "Made on this PC, and not sent anywhere: attach it to your post on Discord (#bug-reports) or a GitHub issue."
+    };
     let mut about = format!(
-        "Visual Pinball Infinite {} — a problem report, made {}\nNothing in it was sent anywhere: attach it to your post on Discord (#bug-reports) or a GitHub issue.\n\nWhat happened, in your words:\n{}\n",
+        "Visual Pinball Infinite {} — a problem report, made {}\n{how}\n\nWhat happened, in your words:\n{}\n",
         env!("CARGO_PKG_VERSION"),
         crate::library::stamp(),
         if asked.note.trim().is_empty() { "(nothing written)" } else { asked.note.trim() },

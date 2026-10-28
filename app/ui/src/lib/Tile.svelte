@@ -78,7 +78,8 @@
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .tile:hover .open, .open:focus-visible { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); }
-  .picture { position: relative; background: var(--picture-bg); }
+  /* the frame keeps its shape: a picture taller than it is cut, never growing the tile and its row */
+  .picture { position: relative; min-height: 0; overflow: hidden; background: var(--picture-bg); }
   .picture.playfield { aspect-ratio: 9 / 16; }
   .picture.backglass { aspect-ratio: 4 / 3; }
   .picture.wheel { aspect-ratio: 1 / 1; }

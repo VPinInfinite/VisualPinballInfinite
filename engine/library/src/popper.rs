@@ -196,6 +196,12 @@ fn family(p: &Path) -> Option<bool> {
     }
 }
 
+/// Two files the same byte for byte, their sizes compared first.
+fn same_bytes(a: &Path, b: &Path) -> bool {
+    let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
+    size(a).is_some() && size(a) == size(b) && std::fs::read(a).ok().is_some_and(|x| std::fs::read(b).ok().is_some_and(|y| x == y))
+}
+
 /// Pictures Popper can't show that are turned into PNGs on their way into its folders: VPS's pictures
 /// are WebP, which it refuses.
 const CONVERTED: [&str; 3] = ["webp", "bmp", "tga"];
@@ -204,14 +210,24 @@ const CONVERTED: [&str; 3] = ["webp", "bmp", "tga"];
 /// own name for the game, `name` (`Name.png`); the one Popper showed there kept beside it, numbered
 /// as Popper numbers a kind's others (`Name01.png`), never deleted; one of those numbered chosen
 /// swapped with the one in front. Ours — VPS's or our player's — copied in, a picture Popper can't
-/// show (VPS's WebP) as a PNG. The front, when anything moved; None when it was in front already.
-pub fn put_in_front(folder: &Path, name: &str, chosen: &Path) -> Result<Option<PathBuf>, String> {
-    put_in_front_as(folder, name, chosen, &|name, n| format!("{name}{n:02}"))
+/// show (VPS's WebP) as a PNG. A copy of VPS's or ours put in front before (`ours` knows them) is
+/// sent away by `recycle` rather than kept numbered: what it copied is still VPS's or ours. The
+/// front: where `chosen` is in front now, moved or copied there, or found there already the same
+/// byte for byte; None when it was the one in front already.
+pub fn put_in_front(folder: &Path, name: &str, chosen: &Path, ours: &dyn Fn(&Path) -> bool, recycle: &dyn Fn(&Path) -> Result<(), String>) -> Result<Option<PathBuf>, String> {
+    put_in_front_as(folder, name, chosen, &|name, n| format!("{name}{n:02}"), ours, recycle)
 }
 
 /// `put_in_front` for a front end numbering its others its own way (`numbered`: PinUP Popper's
 /// `Name01`, PinballX's and PinballY's `Name 1`).
-pub fn put_in_front_as(folder: &Path, name: &str, chosen: &Path, numbered: &dyn Fn(&str, u32) -> String) -> Result<Option<PathBuf>, String> {
+pub fn put_in_front_as(
+    folder: &Path,
+    name: &str,
+    chosen: &Path,
+    numbered: &dyn Fn(&str, u32) -> String,
+    ours: &dyn Fn(&Path) -> bool,
+    recycle: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<Option<PathBuf>, String> {
     let ext = chosen.extension().map(|x| x.to_string_lossy().to_lowercase()).unwrap_or_default();
     let convert = CONVERTED.contains(&ext.as_str());
     let video = if convert { false } else { family(chosen).ok_or("That isn't a picture or a video Popper shows.")? };
@@ -224,14 +240,29 @@ pub fn put_in_front_as(folder: &Path, name: &str, chosen: &Path, numbered: &dyn 
     if fronts.iter().any(|f| same(f, chosen)) {
         return Ok(None);
     }
+    let inside = chosen.parent().is_some_and(|d| same(d, folder));
+    // a copy of it in front already, byte for byte (ours made again the same): nothing to move
+    let ext_is = |p: &Path| p.extension().is_some_and(|x| x.to_string_lossy().eq_ignore_ascii_case(&ext));
+    if let [one] = fronts.as_slice()
+        && !inside
+        && !convert
+        && ext_is(one)
+        && same_bytes(one, chosen)
+    {
+        return Ok(Some((*one).clone()));
+    }
     // the next free number for one moved aside
     let taken = |n: u32| files.iter().any(|p| stem_is(p, &numbered(name, n)));
     let mut free = (1..100).filter(|&n| !taken(n));
-    let inside = chosen.parent().is_some_and(|d| same(d, folder));
     let chosen_stem = chosen.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let front = folder.join(format!("{name}.{ext}"));
     let mut moved = Vec::new();
     for f in &fronts {
+        // a copy put in before goes, never numbered among the front end's own
+        if ours(f) {
+            recycle(f).map_err(|e| format!("{} couldn't go to the Recycle Bin: {e}", f.display()))?;
+            continue;
+        }
         // one of Popper's numbered chosen takes the front's place, the front takes its number
         let to = if inside && moved.is_empty() {
             f.with_file_name(format!("{chosen_stem}.{}", f.extension().map(|x| x.to_string_lossy().into_owned()).unwrap_or_default()))
@@ -268,6 +299,49 @@ pub fn put_in_front_as(folder: &Path, name: &str, chosen: &Path, numbered: &dyn 
 mod tests {
     use super::*;
 
+    /// No file a copy put in before, and none to send away.
+    const NONE: &dyn Fn(&Path) -> bool = &|_| false;
+    const KEEP: &dyn Fn(&Path) -> Result<(), String> = &|p| Err(format!("{} sent away", p.display()));
+
+    #[test]
+    fn a_copy_put_in_before_goes_and_poppers_own_stays() {
+        let dir = std::env::temp_dir().join(format!("vpi-popper-copies-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let playfield = dir.join("PlayField");
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&playfield).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        // the Recycle Bin, a folder of the test's own
+        let recycle = |p: &Path| std::fs::rename(p, bin.join(p.file_name().unwrap())).map_err(|e| e.to_string());
+        let name = "Cirqus Voltaire (Bally 1997)";
+        let read = |n: &str| std::fs::read_to_string(playfield.join(n)).unwrap();
+        let binned = |n: &str| std::fs::read_to_string(bin.join(n)).unwrap();
+        std::fs::write(playfield.join(format!("{name}.png")), "popper's").unwrap();
+        // ours put in: Popper's own kept numbered
+        let ours = dir.join("ours.png");
+        std::fs::write(&ours, "ours, first").unwrap();
+        let front = put_in_front(&playfield, name, &ours, NONE, &recycle).unwrap().unwrap();
+        assert_eq!(read(&format!("{name}01.png")), "popper's");
+        let copy = front.clone();
+        let was_ours = move |p: &Path| p == copy;
+        // ours made again and put in: the copy before it sent away, not numbered beside Popper's
+        std::fs::write(&ours, "ours, again").unwrap();
+        assert_eq!(put_in_front(&playfield, name, &ours, &was_ours, &recycle).unwrap(), Some(front.clone()));
+        assert_eq!(read(&format!("{name}.png")), "ours, again");
+        assert_eq!(read(&format!("{name}01.png")), "popper's");
+        assert!(!playfield.join(format!("{name}02.png")).exists());
+        assert_eq!(binned(&format!("{name}.png")), "ours, first");
+        std::fs::remove_file(bin.join(format!("{name}.png"))).unwrap();
+        // the same again byte for byte: found in front, nothing moved or sent away
+        assert_eq!(put_in_front(&playfield, name, &ours, NONE, KEEP).unwrap(), Some(front.clone()));
+        // Popper's own chosen again: the copy in front sent away, Popper's back in front
+        assert!(put_in_front(&playfield, name, &playfield.join(format!("{name}01.png")), &was_ours, &recycle).unwrap().is_some());
+        assert_eq!(read(&format!("{name}.png")), "popper's");
+        assert!(!playfield.join(format!("{name}01.png")).exists());
+        assert_eq!(binned(&format!("{name}.png")), "ours, again");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_chosen_put_in_front_poppers_own_kept_numbered() {
         let dir = std::env::temp_dir().join(format!("vpi-popper-front-{}", std::process::id()));
@@ -279,25 +353,25 @@ mod tests {
         std::fs::write(wheel.join("Black Knight (Williams 1980).png"), "popper's").unwrap();
         std::fs::write(wheel.join("Black Knight (Williams 1980)01.png"), "popper's second").unwrap();
         // ours copied in front; Popper's moved to the next free number
-        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours).unwrap().is_some());
+        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours, NONE, KEEP).unwrap().is_some());
         let read = |n: &str| std::fs::read_to_string(wheel.join(n)).unwrap();
         assert_eq!(read("Black Knight (Williams 1980).png"), "ours");
         assert_eq!(read("Black Knight (Williams 1980)02.png"), "popper's");
         assert_eq!(read("Black Knight (Williams 1980)01.png"), "popper's second");
         // Popper's own numbered one chosen: swapped with the one in front
-        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &wheel.join("Black Knight (Williams 1980)02.png")).unwrap().is_some());
+        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &wheel.join("Black Knight (Williams 1980)02.png"), NONE, KEEP).unwrap().is_some());
         assert_eq!(read("Black Knight (Williams 1980).png"), "popper's");
         assert_eq!(read("Black Knight (Williams 1980)02.png"), "ours");
         // the one in front chosen: nothing to do
-        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &wheel.join("Black Knight (Williams 1980).png")).unwrap().is_none());
+        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &wheel.join("Black Knight (Williams 1980).png"), NONE, KEEP).unwrap().is_none());
         // a video beside the pictures isn't touched
         std::fs::write(wheel.join("Black Knight (Williams 1980).mp4"), "video").unwrap();
-        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours).unwrap().is_some());
+        assert!(put_in_front(&wheel, "Black Knight (Williams 1980)", &ours, NONE, KEEP).unwrap().is_some());
         assert_eq!(read("Black Knight (Williams 1980).mp4"), "video");
         // VPS's WebP picture: in front as a PNG Popper shows
         let webp = dir.join("vps.webp");
         image::RgbaImage::from_pixel(4, 3, image::Rgba([200, 30, 30, 255])).save_with_format(&webp, image::ImageFormat::WebP).unwrap();
-        let front = put_in_front(&wheel, "Black Knight (Williams 1980)", &webp).unwrap().unwrap();
+        let front = put_in_front(&wheel, "Black Knight (Williams 1980)", &webp, NONE, KEEP).unwrap().unwrap();
         assert_eq!(front.extension().unwrap(), "png");
         assert_eq!(image::open(&front).unwrap().to_rgba8().dimensions(), (4, 3));
         let _ = std::fs::remove_dir_all(&dir);

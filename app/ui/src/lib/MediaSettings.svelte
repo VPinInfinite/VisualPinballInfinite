@@ -143,7 +143,7 @@
     <label class="switch"><input type="checkbox" checked={popperOn} onchange={(e) => setPopper(e.currentTarget.checked)} /><span><b>Show the same media in PinUP Popper</b></span></label>
     <ul class="what plain">
       <li><b>On:</b> whichever picture or video you pick on a table’s page (the one with the blue check) is copied into Popper’s folder, so Popper shows the same one. Media you make go in too, where Popper has none.</li>
-      <li><b>Nothing is lost:</b> the one Popper had is kept beside it with a number (Name01.png), never deleted. Pick it again and they swap back.</li>
+      <li><b>Nothing of Popper’s is lost:</b> the one Popper had is kept beside it with a number (Name01.png), never deleted. Pick it again and they swap back. A copy put in before goes to the Recycle Bin instead: the picture it copied is still here.</li>
       <li><b>Off:</b> Popper’s folders are left alone. You can still copy one picture over from its own window.</li>
     </ul>
     {#if popperOn}
@@ -168,11 +168,11 @@
         <p class="note">{f.name}’s media for these tables are in {f.folder}: they show on each table’s page beside the rest, its own marked “{f.name} shows this one”.</p>
       {/each}
       <label class="switch"><input type="checkbox" checked={frontsOn} onchange={(e) => setFronts(e.currentTarget.checked)} /><span><b>Put the media a table uses in {others.map((f) => f.name).join(' and ')}’s folders too</b></span></label>
-      <p class="what">When it’s on, the one with the blue check of each kind on a table’s page is put in front in {others.length === 1 ? 'its' : 'their'} folder for that screen, named as {others.length === 1 ? 'it names' : 'each names'} the game’s media, whenever you choose another. The one there before is kept beside it, numbered (Name 1.png), never deleted. VPS’s pictures go in as PNGs.</p>
+      <p class="what">When it’s on, the one with the blue check of each kind on a table’s page is put in front in {others.length === 1 ? 'its' : 'their'} folder for that screen, named as {others.length === 1 ? 'it names' : 'each names'} the game’s media, whenever you choose another. Their own one there before is kept beside it, numbered (Name 1.png), never deleted; a copy put in before goes to the Recycle Bin. VPS’s pictures go in as PNGs.</p>
       {#if frontsOn}
         {#if frontsAsking}
           <div class="ask">
-            <span>{#if plan === null}Counting what would go in…{:else if !plan.length}Nothing to put in: they show what each table uses already.{:else}Put {plan.reduce((n, [, , k]) => n + k, 0)} in now — {plan.map(([label, from, n]) => `${n} ${plural(label.toLowerCase(), n)} ${FROM[from]}`).join(', ')}? What you chose goes in front, the one there before kept beside it, numbered.{/if}</span>
+            <span>{#if plan === null}Counting what would go in…{:else if !plan.length}Nothing to put in: they show what each table uses already.{:else}Put {plan.reduce((n, [, , k]) => n + k, 0)} in now — {plan.map(([label, from, n]) => `${n} ${plural(label.toLowerCase(), n)} ${FROM[from]}`).join(', ')}? What you chose goes in front, their own one there before kept beside it, numbered.{/if}</span>
             <button type="button" class="btn small" disabled={!plan?.length} onclick={() => { frontsAsking = false; putAllIn(); }}>Put them in</button>
             <button type="button" class="btn small ghost" onclick={() => (frontsAsking = false)}>Cancel</button>
           </div>
