@@ -1,0 +1,82 @@
+From 65cc0fd184070dccbcbb0336e1ebb823ba823dd3 Mon Sep 17 00:00:00 2001
+From: Le-Syl21 <sylvain.gargasson@gmail.com>
+Subject: [PATCH 6/7] Bally 6803: log the sound commands, not every write of
+ port 1
+
+The 6803 games write a sound command to port 1, pull the sound strobe
+(port 2 bit 4) low and high again, and on the Squawk & Talk, Cheap
+Squeak, Sounds Deluxe and Turbo Cheap Squeak boards then write the high
+nibble to port 1 (61 then 06). sndbrd_data_w() logged every write of
+port 1, so the sound command log, AltSound and libPinMAME's sound
+command callback got two bytes per command, plus the idle writes.
+
+port2_w() now logs the byte on port 1 when the strobe goes low, and the
+data write log is off for the board (sndbrd_logData()), as by35.c does.
+
+Checked with the strobe traced on beatclck (Squawk & Talk), blackblt
+(Turbo Cheap Squeak) and atlantis (System 11C board, one write per
+command).
+---
+ src/wpc/by6803.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/src/wpc/by6803.c b/src/wpc/by6803.c
+index 82d0178c3..6810d84be 100644
+--- a/src/wpc/by6803.c
++++ b/src/wpc/by6803.c
+@@ -76,6 +76,7 @@
+ #include "machine/6821pia.h"
+ #include "core.h"
+ #include "sndbrd.h"
++#include "snd_cmd.h"
+ #include "by35snd.h"
+ #include "wmssnd.h"
+ #include "by6803.h"
+@@ -118,6 +119,7 @@ static struct {
+   int lampadr;
+   int old_lampadr;
+   UINT16 lampCol; // latched lamp column (0..14)
++  int sndData, sndStb;   // last port 1 byte and sound strobe (port 2 bit 4), see port2_w
+ } locals;
+ 
+ static NVRAM_HANDLER(by6803);
+@@ -519,6 +521,7 @@ static MACHINE_INIT(by6803) {
+   memset(&locals, 0, sizeof(locals));
+   locals.old_lampadr = 0x0f;
+   sndbrd_0_init(core_gameData->hw.soundBoard,1,memory_region(REGION_SOUND1),NULL,by6803_soundLED);
++  sndbrd_logData(0, 0); // port2_w logs the sound commands
+   pia_config(BY6803_PIA0, PIA_STANDARD_ORDERING, &piaIntf[0]);
+   pia_config(BY6803_PIA1, PIA_STANDARD_ORDERING, &piaIntf[1]);
+   locals.vblankCount = 1;
+@@ -597,8 +600,19 @@ static WRITE_HANDLER(port2_w) {
+   locals.enablePhaseAEdgeSense = (data & 0x02) == 0;
+   by6803_update_phaseAEdgeSense();
+   coreGlobals.diagnosticLed = (coreGlobals.diagnosticLed & 0x02) | ((data>>2) & 0x01);
++  /* The game writes the command to port 1, then pulls the sound strobe low and high again;
++     the Squawk & Talk, Cheap Squeak, Sounds Deluxe and Turbo Cheap Squeak then also get
++     the high nibble on port 1. Log the byte the strobe went out with (sound command log,
++     AltSound), not every write of port 1. */
++  if (locals.sndStb && !(data & 0x10))
++    snd_cmd_log(0, locals.sndData);
++  locals.sndStb = (data & 0x10) != 0;
+   sndbrd_0_ctrl_w(0, (data & 0x10) >> 4);
+ }
++static WRITE_HANDLER(port1_w) {
++  locals.sndData = data;
++  sndbrd_0_data_w(0, data);
++}
+ 
+ /*-----------------------------------
+ /  Memory map for CPU board
+@@ -645,7 +659,7 @@ static PORT_READ_START( by6803_readport )
+ PORT_END
+ 
+ static PORT_WRITE_START( by6803_writeport )
+-  { M6803_PORT1, M6803_PORT1, sndbrd_0_data_w }, // PB0-3 connected on schem
++  { M6803_PORT1, M6803_PORT1, port1_w }, // PB0-3 connected on schem
+   { M6803_PORT2, M6803_PORT2, port2_w },
+ PORT_END
+ 
+-- 
+2.55.0.windows.3
+

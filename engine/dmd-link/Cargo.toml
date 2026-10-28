@@ -1,0 +1,12 @@
+[package]
+name = "dmd-link"
+version.workspace = true
+description = "The link between the player and vpi-dmd, the program that drives a cabinet's real DMD panel through libdmdutil: one block of shared memory holding the display's newest frame, and a named event."
+edition.workspace = true
+# BSD, as the other links are: code any of the engine's programs may use.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

@@ -1,0 +1,98 @@
+From 6cb019fe905e743e6dcdd28d2e5d7f8432e27e13 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] Read PinSound packs as PinMAME's own AltSound does (Visual
+ Pinball Infinite)
+
+Each sound's folder and its files are joined with a slash, as PinMAME's own
+AltSound joins them: without one, no file of a PinSound pack was found -
+neither the sounds nor the gain.txt and ducking.txt of their folders - and
+no sound played.
+
+Windows' opendir (third-party/include/dirent) hands out one DIR for every
+directory, so the parser's backup of the outer directory, kept as a pointer,
+was lost to the inner one: only each kind's first folder was read (two of
+Jurassic Park's 309 sounds). It is kept by value on Windows, as PinMAME's own
+AltSound keeps it. A file where a folder should be is passed over instead of
+read as one, which crashed.
+---
+ src/altsound_file_parser.cpp | 27 ++++++++++++++++++++++-----
+ 1 file changed, 22 insertions(+), 5 deletions(-)
+
+diff --git a/src/altsound_file_parser.cpp b/src/altsound_file_parser.cpp
+index 1c85124..95fb7ee 100644
+--- a/src/altsound_file_parser.cpp
++++ b/src/altsound_file_parser.cpp
+@@ -151,7 +151,15 @@ bool AltsoundFileParser::parse(std::vector<AltsoundSampleInfo>& samples_out)
+ 				// Not a system file or txt file.  Assume it's a directory
+ 				// (per PinSound format requirements).  Backup the current
+ 				// directory stream and entry
++#ifdef _WIN32
++				// Visual Pinball Infinite: Windows' opendir (third-party/include/dirent) hands out
++				// one DIR for every directory, so the outer one is kept by value and put back, as
++				// PinMAME's own AltSound keeps it; kept as a pointer, it was lost to the inner
++				// directory and only each kind's first folder was read
++				const DIR backup_dir = *dir;
++#else
+ 				DIR* backup_dir = dir;
++#endif
+ 				struct dirent backup_entry = *entry;
+ 
+ 				float gain = default_gain;
+@@ -163,14 +171,16 @@ bool AltsoundFileParser::parse(std::vector<AltsoundSampleInfo>& samples_out)
+ 				string PATH2 = PATH + entry->d_name;
+ 
+ 				// Check for overriding gain value
+-				string PATHG = PATH2 + "gain.txt";
++				// Visual Pinball Infinite: the folder's files are inside it, after a slash, as
++				// PinMAME's own AltSound finds them (without one, no file was found)
++				string PATHG = PATH2 + '/' + "gain.txt";
+ 				float parsedGain = parseFileValue(PATHG);
+ 				if (parsedGain != -1.0f) {
+ 					gain = parsedGain;
+ 				}
+ 
+ 				// check for overriding ducking value
+-				PATHG = PATH2 + "ducking.txt";
++				PATHG = PATH2 + '/' + "ducking.txt";
+ 				float parsedDucking = parseFileValue(PATHG);
+ 				if (parsedDucking != -1.0f) {
+ 					ducking = parsedDucking;
+@@ -179,7 +189,9 @@ bool AltsoundFileParser::parse(std::vector<AltsoundSampleInfo>& samples_out)
+ 				dir2 = opendir(PATH2.c_str());
+ 				ALT_INFO(1, "opendir(%s)", PATH2.c_str());
+ 
+-				entry2 = readdir(dir2);
++				// Visual Pinball Infinite: a file where a folder should be (a stray Thumbs.db) is
++				// passed over; reading it as a folder crashed
++				entry2 = dir2 ? readdir(dir2) : nullptr;
+ 				while (entry2 != nullptr) {
+ 					if (entry2->d_name[0] != '.'
+ 						&& strstr(entry2->d_name, ".txt") == nullptr
+@@ -191,7 +203,7 @@ bool AltsoundFileParser::parse(std::vector<AltsoundSampleInfo>& samples_out)
+ 
+ 						AltsoundSampleInfo sample;
+ 
+-						sample.fname = PATH2 + entry2->d_name;
++						sample.fname = PATH2 + '/' + entry2->d_name;
+ 
+ 						memcpy(id, ptr + 1, 6);
+ 						sample.id = std::stoul(trim(id), nullptr);
+@@ -239,9 +251,14 @@ bool AltsoundFileParser::parse(std::vector<AltsoundSampleInfo>& samples_out)
+ 					}
+ 					entry2 = readdir(dir2);
+ 				}
+-				closedir(dir2);
++				if (dir2)
++					closedir(dir2);
+ 
++#ifdef _WIN32
++				*dir = backup_dir;
++#else
+ 				dir = backup_dir;
++#endif
+ 				*entry = backup_entry;
+ 			}
+ 			entry = readdir(dir);
+-- 
+2.55.0.windows.3
+

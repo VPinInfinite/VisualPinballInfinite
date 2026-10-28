@@ -1,0 +1,48 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Visual Pinball Infinite's app: the library, the VPS browser, files dropped in and the settings, our engine underneath"
+
+[[bin]]
+name = "vpi-app"
+path = "src/main.rs"
+
+[dependencies]
+library = { path = "../engine/library" }
+# the settings file's own rules, as the player reads them, for the settings pages
+vpi-settings = { path = "../engine/settings" }
+# achievement packs, what's earned and mastered (ours, shared with the player)
+vpi-achievements = { path = "../engine/achievements" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# the app's window: Windows' own web viewer (WebView2) showing the screens in ui/, built into the
+# program at build time; pinned, as every package added for the app, to a version at least
+# two weeks old when added
+tauri = { version = "=2.12.2", features = ["custom-protocol"] }
+# a problem report written as one zip, and the user's folder taken out of it (the versions the
+# table library already uses)
+zip = { version = "8", default-features = false, features = ["deflate"] }
+regex = "1"
+# a machine's recordings, kept compressed, written out whole for ColorizingDMD (the version the
+# player already uses)
+flate2 = "1"
+# a pack downloaded from VPIDB checked against the checksum VPIDB lists for it (the version the
+# workspace's lock already holds)
+sha2 = "0.10"
+# a media file's size and a wheel's corners (the version and kinds the table library already uses)
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# the one-click updater: a new version found on GitHub's releases,
+# its signature checked against our public key, and installed
+tauri-plugin-updater = "=2.13.2"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+# the test mode's pictures, taken by the web viewer itself (the same versions Tauri uses); Windows'
+# location service, its folder picker for first setup, and its data protection for VPIDB's token
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39.1"
+windows = { version = "0.62.2", features = ["Devices_Geolocation", "Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Shell_Common"] }

@@ -1,0 +1,12 @@
+[package]
+name = "sdl3-src"
+version = "3.4.18"
+edition = "2021"
+authors = ["SDL developers"]
+license = "Zlib"
+description = "Source code of the SDL 3 library"
+repository = "https://codeberg.org/maia/sdl3-sys-rs"
+documentation = "https://docs.rs/sdl3-src"
+keywords = ["sdl"]
+categories = ["no-std"]
+exclude = ["SDL/examples", "SDL/test"]

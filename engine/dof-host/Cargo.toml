@@ -1,0 +1,21 @@
+[package]
+name = "dof-host"
+version.workspace = true
+description = "vpi-dof: drives a cabinet's toys beside the player through libdof, the VPX team's C++ port of the DirectOutput Framework, linked to the player through shared memory."
+edition.workspace = true
+# GPL-3.0-or-later, as the engine is, and libdof too; a program of its own so that a fault in
+# libdof (its README: "NOT fully accurate" yet) can never end a game.
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-dof"
+path = "src/main.rs"
+
+[dependencies]
+dof-link = { path = "../dof-link" }
+
+[build-dependencies]
+cc = "1"

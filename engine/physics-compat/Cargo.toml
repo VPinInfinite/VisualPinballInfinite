@@ -1,0 +1,11 @@
+[package]
+name = "physics-compat"
+version.workspace = true
+description = "Compatibility-mode physics: Visual Pinball X's physics, ported to Rust so existing tables play as authored."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

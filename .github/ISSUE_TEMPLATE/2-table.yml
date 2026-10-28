@@ -1,0 +1,48 @@
+name: A table plays differently from VPX
+description: A table looks, sounds or plays differently in Visual Pinball Infinite than in Visual Pinball X.
+labels: ["table"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Visual Pinball Infinite plays tables as VPX 10.8.1 does, so a difference is a bug for us. The table's page in the app has **Report a problem with it** in its **…** menu: it makes one file with what the table holds and the logs. Please attach it below.
+  - type: input
+    id: table
+    attributes:
+      label: The table
+      description: Its name, maker and year, who made the table and which version — or its link on the Virtual Pinball Spreadsheet.
+      placeholder: Medieval Madness (Williams 1997), VPW's 1.1 — or https://virtualpinballspreadsheet.github.io/...
+    validations:
+      required: true
+  - type: dropdown
+    id: what
+    attributes:
+      label: What's different?
+      multiple: true
+      options:
+        - The ball, flippers or other physics
+        - The picture or lights
+        - The sound or music
+        - The backglass, score display or a PinUP pack
+        - A script error, or something that never happens
+        - It doesn't start
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happens, and what VPX does there
+      description: When it happens, and what VPX does instead. A video or screenshot of each helps.
+    validations:
+      required: true
+  - type: input
+    id: vpx
+    attributes:
+      label: The VPX you compared with
+      placeholder: 10.8.0, or 10.8.1 build 5436
+  - type: textarea
+    id: report
+    attributes:
+      label: The report file
+      description: Drag the zip that Report a problem made into this box.

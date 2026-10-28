@@ -1,0 +1,12 @@
+[package]
+name = "dof-link"
+version.workspace = true
+description = "The link between the player and vpi-dof, the program that drives a cabinet's toys through libdof: one block of shared memory holding the game's events, and a named event."
+edition.workspace = true
+# BSD, as the other links are: code any of the engine's programs may use.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

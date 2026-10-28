@@ -1,0 +1,116 @@
+From 1e8a85d2f58db651bfd620553b009f8c45a01a57 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] Older boards pair two bytes per command unless the pack keys
+ its sounds by single bytes (Visual Pinball Infinite)
+
+libaltsound's 1d4435f reads one byte per command on every generation without a case of its own;
+packs made with PinMAME's own AltSound for those boards name their sounds by two-byte IDs
+(Gorgar's, a Williams System 6 game: 0xff7f, 0x7f5f, ...) and go silent. Those boards pair two
+bytes per command again, unless the pack keys every sound by one byte (no ID above 0xFF), as packs
+made by rom2altsound do: then one byte per command. The Bally MPU-17 and MPU-35 case of 83f04b0
+stays.
+---
+ src/altsound.cpp                | 20 +++++++++++++++++---
+ src/altsound_processor.cpp      |  5 +++++
+ src/altsound_processor_base.hpp |  7 +++++++
+ src/gsound_processor.cpp        |  5 +++++
+ 4 files changed, 34 insertions(+), 3 deletions(-)
+
+diff --git a/src/altsound.cpp b/src/altsound.cpp
+index 2946e11..7c94cfe 100644
+--- a/src/altsound.cpp
++++ b/src/altsound.cpp
+@@ -291,9 +291,8 @@ void altsound_preprocess_commands(int cmd)
+ 		}
+ 
+ 		case ALTSOUND_HARDWARE_GEN_BY17: // PinMAME logs one byte per sound command
+-		case ALTSOUND_HARDWARE_GEN_BY35:
+-		default: { // and so on every generation without a case above
+-			ALT_DEBUG(0, "Hardware Generation: BY17, BY35 or other (one byte per command)");
++		case ALTSOUND_HARDWARE_GEN_BY35: {
++			ALT_DEBUG(0, "Hardware Generation: BY17, BY35 (one byte per command)");
+ 
+ 			g_cmdData.stored_command = 0;
+ 			g_cmdData.cmd_counter = 0;
+@@ -301,6 +300,21 @@ void altsound_preprocess_commands(int cmd)
+ 
+ 			break;
+ 		}
++
++		// Visual Pinball Infinite: every other generation pairs two bytes per command, as PinMAME's
++		// own AltSound does and the packs made with it expect (Gorgar's, a Williams System 6 game:
++		// all its IDs are two bytes, 0xff7f, 0x7f5f, ...), unless the pack keys its sounds one
++		// byte per command (no ID above 0xFF, as packs made by rom2altsound key them): then one
++		// byte per command, as libaltsound's own default
++		default:
++			if (g_pProcessor && !g_pProcessor->idsArePairs()) {
++				ALT_DEBUG(0, "Hardware Generation: other, the pack keyed one byte per command");
++
++				g_cmdData.stored_command = 0;
++				g_cmdData.cmd_counter = 0;
++				g_cmdData.cmd_filter = 0;
++			}
++			break;
+ 	}
+ 
+ 	ALT_OUTDENT;
+diff --git a/src/altsound_processor.cpp b/src/altsound_processor.cpp
+index 2b3fa18..6fd5401 100644
+--- a/src/altsound_processor.cpp
++++ b/src/altsound_processor.cpp
+@@ -323,6 +323,11 @@ bool AltsoundProcessor::loadSamples()
+ 		ALT_INFO(0, "SUCCESS AltsoundFileParser::parse()");
+ 	}
+ 
++	// Visual Pinball Infinite: keyed by two-byte IDs, or one byte per command
++	ids_are_pairs = false;
++	for (const auto& sample : samples)
++		ids_are_pairs = ids_are_pairs || sample.id > 0xFF;
++
+ 	ALT_OUTDENT;
+ 	ALT_DEBUG(0, "END AltsoundProcessor::loadSamples");
+ 	return true;
+diff --git a/src/altsound_processor_base.hpp b/src/altsound_processor_base.hpp
+index 9c5cba8..d8cfb80 100644
+--- a/src/altsound_processor_base.hpp
++++ b/src/altsound_processor_base.hpp
+@@ -78,6 +78,10 @@ public:
+ 	// whether the pack has a sample for this command
+ 	bool hasSample(const unsigned int cmd_combined_in) { return getSample(cmd_combined_in) != ~0u; }
+ 
++	// Visual Pinball Infinite: whether the pack keys its sounds by two-byte IDs (any above 0xFF),
++	// as packs made with PinMAME's own AltSound do on the boards whose bytes it pairs
++	bool idsArePairs() const { return ids_are_pairs; }
++
+ public: // data
+ 
+ protected: // functions
+@@ -85,6 +89,9 @@ protected: // functions
+ 	// populate sample data
+ 	virtual bool loadSamples() = 0;
+ 
++	// Visual Pinball Infinite: set once the samples are loaded (see idsArePairs)
++	bool ids_are_pairs = true;
++
+ 	// find sample matching provided command
+ 	virtual unsigned int getSample(const unsigned int cmd_combined_in) = 0;
+ 
+diff --git a/src/gsound_processor.cpp b/src/gsound_processor.cpp
+index 3ef3d82..c825fcd 100644
+--- a/src/gsound_processor.cpp
++++ b/src/gsound_processor.cpp
+@@ -411,6 +411,11 @@ bool GSoundProcessor::loadSamples()
+ 	}
+ 	ALT_INFO(1, "SUCCESS GSoundCsvParser::parse()");
+ 
++	// Visual Pinball Infinite: keyed by two-byte IDs, or one byte per command
++	ids_are_pairs = false;
++	for (const auto& sample : samples)
++		ids_are_pairs = ids_are_pairs || sample.id > 0xFF;
++
+ 	ALT_OUTDENT;
+ 	ALT_DEBUG(0, "END GSoundProcessor::init()");
+ 	return true;
+-- 
+2.55.0.windows.3
+

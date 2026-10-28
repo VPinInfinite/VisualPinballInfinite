@@ -1,0 +1,40 @@
+name: Something doesn't work
+description: The app or the player did something wrong, crashed, or stopped.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us. **Report a problem** in the app — the bug button at the top, or a table's **…** menu — makes one file with the logs and this PC's facts (your Windows user folder taken out of every path). Please attach it below: nothing in it goes anywhere until you do.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what happened, and what you expected to happen.
+    validations:
+      required: true
+  - type: dropdown
+    id: how-often
+    attributes:
+      label: How often?
+      options:
+        - Every time
+        - Sometimes
+        - Once so far
+    validations:
+      required: true
+  - type: input
+    id: table
+    attributes:
+      label: The table, if it's about one
+      placeholder: Attack from Mars (Bally 1995), JPSalas's 6.0.0
+  - type: input
+    id: version
+    attributes:
+      label: Visual Pinball Infinite's version
+      description: From the installer's name, or the app's Settings › General.
+  - type: textarea
+    id: report
+    attributes:
+      label: The report file
+      description: Drag the zip that Report a problem made into this box.

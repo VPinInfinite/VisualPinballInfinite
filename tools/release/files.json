@@ -1,0 +1,47 @@
+{
+  "about": "Every file the installer installs beside the app, what it is, where it's built and its licence; stage.ps1 gathers them, notices.py writes their notices. Paths are from the repository's root; 'cargo' means our own program, built by stage.ps1.",
+  "programs": [
+    { "file": "vpi-player.exe", "from": "cargo", "package": "player", "what": "The player: plays a table in its windows, with its sound, score displays, backglass and toys" },
+    { "file": "vpi-pinmame.exe", "from": "cargo", "package": "pinmame-host", "what": "Runs a ROM machine's computer through PinMAME, beside the player" },
+    { "file": "vpi-colour.exe", "from": "cargo", "package": "colour-host", "what": "Colours a machine's display with a Serum or VNI colour file, beside the player" },
+    { "file": "vpi-dmd.exe", "from": "cargo", "package": "dmd-host", "what": "Shows the score display on a real DMD panel through libdmdutil" },
+    { "file": "vpi-dmddevice.exe", "from": "cargo", "package": "dmddevice-host", "what": "Shows the score display through a display device a cabinet already uses (its DmdDevice64.dll)" },
+    { "file": "vpi-dof.exe", "from": "cargo", "package": "dof-host", "what": "Drives a cabinet's toys (lights, solenoids, shakers) through libdof" },
+    { "file": "vpi-headless.exe", "from": "cargo", "package": "headless", "what": "Runs a table with no window, for the app's Test it and a table's options" }
+  ],
+  "libraries": [
+    { "file": "pinmame64.dll", "from": "vpx-build/pinmame-5436/build/Release", "what": "PinMAME, which emulates the machines' computers (loaded by vpi-pinmame)", "licence": "BSD-3-Clause and the old MAME terms, file by file", "licenceFiles": ["vpx-build/pinmame-5436/LICENSE"], "name": "PinMAME" },
+    { "file": "altsound64.dll", "from": "vpx-build/libaltsound/build/Release", "what": "libaltsound, which plays a machine's AltSound pack (loaded by vpi-pinmame)", "licence": "BSD-3-Clause", "licenceFiles": ["vpx-build/libaltsound/LICENSE"], "name": "libaltsound" },
+    { "file": "winevbs64.dll", "from": "vpx-build/libwinevbs/build", "what": "libwinevbs, the VBScript engine tables' scripts run in (loaded by the player)", "licence": "LGPL-2.1-or-later", "licenceFiles": [], "name": "libwinevbs" },
+    { "file": "libwinpthread-1.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "MinGW-w64's threads, which libwinevbs and FFmpeg use", "licence": "MIT and BSD", "licenceKey": "mingw-libwinpthread", "name": "MinGW-w64 winpthreads" },
+    { "file": "avcodec64-62.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "FFmpeg's decoders, for PinUP packs' and Media Player's sound and videos and the preview videos", "licence": "LGPL-2.1-or-later", "licenceKey": "ffmpeg", "name": "FFmpeg" },
+    { "file": "avformat64-62.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "FFmpeg's file readers and writers", "licence": "LGPL-2.1-or-later", "licenceKey": "ffmpeg", "name": "FFmpeg" },
+    { "file": "avutil64-60.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "FFmpeg's shared parts", "licence": "LGPL-2.1-or-later", "licenceKey": "ffmpeg", "name": "FFmpeg" },
+    { "file": "swresample64-6.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "FFmpeg's sound resampler", "licence": "LGPL-2.1-or-later", "licenceKey": "ffmpeg", "name": "FFmpeg" },
+    { "file": "swscale64-9.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "FFmpeg's picture scaler", "licence": "LGPL-2.1-or-later", "licenceKey": "ffmpeg", "name": "FFmpeg" },
+    { "file": "zlib1.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "zlib, which FFmpeg unpacks with", "licence": "Zlib", "licenceKey": "mingw-zlib", "name": "zlib" },
+    { "file": "libbz2-1.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "bzip2, which FFmpeg unpacks with", "licence": "bzip2-1.0.6", "licenceKey": "mingw-bzip2", "name": "bzip2" },
+    { "file": "liblzma-5.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "XZ Utils' liblzma, which FFmpeg unpacks with", "licence": "0BSD", "licenceKey": "mingw-xz", "name": "XZ Utils" },
+    { "file": "libiconv-2.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "GNU libiconv, which FFmpeg converts text with", "licence": "LGPL-2.1-or-later", "licenceKey": "mingw-libiconv", "name": "GNU libiconv" },
+    { "file": "serum64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libserum, which reads Serum colour files (loaded by vpi-colour)", "licence": "GPL-2.0", "licenceKey": "libserum", "name": "libserum" },
+    { "file": "vni64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libvni, which reads PIN2DMD's colour files (loaded by vpi-colour)", "licence": "GPL-2.0", "licenceKey": "libvni", "name": "libvni" },
+    { "file": "dmdutil64.dll", "from": "vpx-build/libdmdutil/build/Release", "what": "libdmdutil, which drives real DMD panels (loaded by vpi-dmd)", "licence": "GPL-3.0-or-later", "licenceFiles": ["vpx-build/libdmdutil/LICENSE"], "name": "libdmdutil" },
+    { "file": "zedmd64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libzedmd, for ZeDMD panels (loaded by libdmdutil)", "licence": "GPL-3.0", "licenceKey": "libzedmd", "name": "libzedmd" },
+    { "file": "pupdmd64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libpupdmd, for PinUP packs' DMD triggers on a panel (loaded by libdmdutil)", "licence": "GPL-3.0", "licenceKey": "libpupdmd", "name": "libpupdmd" },
+    { "file": "sockpp64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "sockpp, network sockets for ZeDMD's Wi-Fi panels", "licence": "BSD-3-Clause", "licenceKey": "sockpp", "name": "sockpp" },
+    { "file": "libserialport64-0.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libserialport, for panels and boards on a serial port", "licence": "LGPL-3.0-or-later", "licenceKey": "libserialport", "name": "libserialport" },
+    { "file": "libusb64-1.0.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libusb, for panels and boards on USB", "licence": "LGPL-2.1-or-later", "licenceKey": "libusb", "name": "libusb" },
+    { "file": "dof64.dll", "from": "vpx-build/libdof/build/Release", "what": "libdof, which drives a cabinet's toys (loaded by vpi-dof)", "licence": "GPL-3.0-or-later", "licenceFiles": ["vpx-build/libdof/LICENSE"], "name": "libdof" },
+    { "file": "hidapi64.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "hidapi, for toy boards that are USB HID devices", "licence": "BSD-3-Clause (one of its three choices)", "licenceKey": "hidapi", "name": "hidapi" },
+    { "file": "libftdi164.dll", "from": "vpx-build/thirdparty/out/windows-x64/bin", "what": "libftdi, for toy boards on FTDI chips", "licence": "LGPL-2.1-only", "licenceKey": "libftdi", "name": "libftdi" },
+    { "file": "archive.dll", "from": "vpx-build/libarchive/vpi-build/bin/Release", "what": "libarchive's RAR readers, for tables downloaded as RAR archives", "licence": "BSD-2-Clause", "licenceFiles": ["vpx-build/libarchive/COPYING"], "name": "libarchive" },
+    { "file": "rom2altsound.exe", "from": "vpx-build/rom2altsound/target/release", "what": "rom2altsound, which makes a table's AltSound pack from its ROM (the app runs it)", "licence": "BSD-3-Clause; the PinMAME built into it BSD-3-Clause and the old MAME terms, file by file", "licenceFiles": ["vpx-build/rom2altsound/LICENSE", "vpx-build/rom2altsound/vendor/pinmame/LICENSE"], "name": "rom2altsound" },
+    { "file": "msvcp140.dll", "from": "msvc-redist", "what": "Microsoft's C++ runtime, which the libraries built with Visual Studio need", "licence": "Microsoft Visual Studio distributable code", "licenceFiles": [], "name": "Microsoft Visual C++ runtime" },
+    { "file": "vcruntime140.dll", "from": "msvc-redist", "what": "Microsoft's C++ runtime", "licence": "Microsoft Visual Studio distributable code", "licenceFiles": [], "name": "Microsoft Visual C++ runtime" },
+    { "file": "vcruntime140_1.dll", "from": "msvc-redist", "what": "Microsoft's C++ runtime", "licence": "Microsoft Visual Studio distributable code", "licenceFiles": [], "name": "Microsoft Visual C++ runtime" }
+  ],
+  "folders": [
+    { "folder": "scripts", "from": "vpx-build/vpinball-5436/scripts", "pattern": "*.vbs", "what": "Visual Pinball X's shared scripts that tables load (core.vbs, controller.vbs and the machines' scripts), unchanged", "licence": "Visual Pinball's licence (free to share, never sold, its credit kept): no file carries terms of its own", "licenceFiles": ["vpx-build/vpinball-5436/LICENSE"], "name": "Visual Pinball X's shared scripts" }
+  ],
+  "held": []
+}

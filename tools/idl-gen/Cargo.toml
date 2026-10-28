@@ -1,0 +1,11 @@
+[package]
+name = "idl-gen"
+version.workspace = true
+description = "Turns Visual Pinball X's script interface definition into Rust tables for the player's script objects."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

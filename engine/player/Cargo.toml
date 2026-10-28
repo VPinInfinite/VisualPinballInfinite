@@ -1,0 +1,54 @@
+[package]
+name = "player"
+version.workspace = true
+description = "Plays a table: window, input, physics, drawing, sound and the table's script."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-player"
+path = "src/main.rs"
+
+[dependencies]
+# achievement packs followed as a table plays (ours)
+vpi-achievements = { path = "../achievements" }
+# Backglass files (.directb2s) keep their pictures as base64 text inside XML
+base64 = "0.22"
+# A primitive's animation frames are zlib-compressed in the table file (VPX's M3AX)
+flate2 = "1"
+# FlexDMD's GIFs, composited as GDI+ shows them (the crate `image` decodes them with, used directly)
+gif = "0.14"
+# Half floats, for a table's high-range environment picture in VPX's look (already used by the EXR decoder)
+half = "2"
+exr = "1.74"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif", "hdr", "exr", "tga"] }
+physics-compat = { path = "../physics-compat" }
+# A ROM machine's high scores read from its memory with the Pinball Memory Maps, for the screenshot
+# when a game makes them (as the app's library reads them)
+pinmame-nvram = "=0.4.18"
+# The shared memory to vpi-pinmame, the program that runs PinMAME
+pinmame-link = { path = "../pinmame-link" }
+colour-link = { path = "../colour-link" }
+dof-link = { path = "../dof-link" }
+dmd-link = { path = "../dmd-link" }
+roxmltree = "0.21"
+# Built into the program, with no C runtime of its own: the program carries the
+# runtime it uses itself, and two copies would clash.
+sdl3-sys = { version = "0.7", default-features = false, features = ["build-from-source-static", "no-sdl-libc"] }
+# PinUP labels' text, as VPX draws it: SDL_ttf with its own FreeType and HarfBuzz, built in
+# statically like SDL; no SVG glyphs (plutosvg), which packs' fonts don't use
+sdl3-ttf-sys = { version = "0.7", default-features = false, features = ["build-static-vendored", "no-sdlttf-plutosvg"] }
+serde_json = "1"
+# Compressed sounds and music (MP3, Ogg Vorbis, FLAC, WAV), as VPX decodes them with miniaudio
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm", "adpcm", "opt-simd"] }
+table-physics = { path = "../table-physics" }
+vpin = "0.38"
+# The settings file's own rules, shared with the app's settings pages
+vpi-settings = { path = "../settings" }
+
+[build-dependencies]
+# The bridge to FFmpeg for PinUP packs' media (native/pup_av.cpp)
+cc = "1"

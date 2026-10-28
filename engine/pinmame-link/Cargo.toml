@@ -1,0 +1,13 @@
+[package]
+name = "pinmame-link"
+version.workspace = true
+description = "The link between the player and vpi-pinmame, the program that runs PinMAME: one block of shared memory and two named events."
+edition.workspace = true
+# Not GPL: vpi-pinmame links PinMAME, whose terms can't be combined with GPL code,
+# and it uses this crate. The GPL engine may use BSD code, so both sides share it.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]

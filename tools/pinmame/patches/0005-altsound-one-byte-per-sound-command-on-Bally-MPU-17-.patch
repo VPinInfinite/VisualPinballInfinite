@@ -1,0 +1,35 @@
+From e0cf0870d4857be5c30ea44ea5f63b19cc269f6f Mon Sep 17 00:00:00 2001
+From: Le-Syl21 <sylvain.gargasson@gmail.com>
+Subject: [PATCH 5/7] altsound: one byte per sound command on Bally
+ MPU-17/MPU-35
+
+These machines now log one byte per sound command, so take it as a
+complete command instead of pairing it with the next one.
+---
+ src/wpc/altsound/snd_alt.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/wpc/altsound/snd_alt.cpp b/src/wpc/altsound/snd_alt.cpp
+index 550ac7000..919a70ee7 100644
+--- a/src/wpc/altsound/snd_alt.cpp
++++ b/src/wpc/altsound/snd_alt.cpp
+@@ -681,6 +681,16 @@ void preprocess_commands(CmdData* cmds_out, int cmd_in)
+ 		}
+ 	}
+ 
++	if ((hardware_gen == GEN_BY17) || // Bally MPU-17 and MPU-35: PinMAME logs one byte per sound command
++		(hardware_gen == GEN_BY35))
++	{
++		ALT_DEBUG(0, "Hardware Generation: GEN_BY17, GEN_BY35");
++
++		*stored_command = 0;
++		*cmd_counter = 0;
++		*cmd_filter = 0;
++	}
++
+ 	OUTDENT;
+ 	ALT_DEBUG(0, "END preprocess_commands()");
+ }
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,21 @@
+name: An idea
+description: Something you'd like Visual Pinball Infinite to do, or to do differently.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What you'd like, in a few words.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: How you'd use it
+      description: What you're doing when you'd want it — on a desk or a cabinet, choosing tables, playing, setting things up.
+  - type: textarea
+    id: elsewhere
+    attributes:
+      label: Seen it somewhere else?
+      description: Another program that does it (VPX, PinUP Popper, VPin Studio, a game), and how.

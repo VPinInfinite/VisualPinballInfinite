@@ -1,0 +1,22 @@
+[package]
+name = "dmd-host"
+version.workspace = true
+description = "vpi-dmd: drives a cabinet's real DMD panel beside the player through libdmdutil, the VPX team's DMD library, linked to the player through shared memory."
+edition.workspace = true
+# GPL-3.0-or-later, as the engine is, and libdmdutil too; a program of its own so that a fault in
+# libdmdutil or a panel's driver can never end a game, as with the toys.
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-dmd"
+path = "src/main.rs"
+
+[dependencies]
+dmd-link = { path = "../dmd-link" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[build-dependencies]
+cc = "1"

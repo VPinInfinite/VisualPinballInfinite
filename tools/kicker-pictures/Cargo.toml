@@ -1,0 +1,13 @@
+[package]
+name = "kicker-pictures"
+version.workspace = true
+description = "Our own kicker pictures, painted from VPX's kicker shapes: the player's stand-ins for VPX's built-in ones, which can't be taken."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+player = { path = "../../engine/player" }
+image = { version = "0.25", default-features = false, features = ["png"] }

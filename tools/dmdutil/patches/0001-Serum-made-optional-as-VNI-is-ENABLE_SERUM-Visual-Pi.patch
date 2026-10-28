@@ -1,0 +1,229 @@
+From 9205df9358fa96e717b6812aba4d008c0031d495 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] Serum made optional, as VNI is: ENABLE_SERUM (Visual Pinball
+ Infinite)
+
+With ENABLE_SERUM off, nothing of libserum is compiled in or linked:
+its includes, its log callback, the Serum thread's body and the
+queueing of its frames are left out (DMDUTIL_ENABLE_SERUM), and the
+link lines name serum64 only when it's on. Upstream's default, on, is
+unchanged. Visual Pinball Infinite builds libdmdutil with it off: its
+engine is GPL-3.0-or-later and libserum ships the GPL's version 2 text
+alone, so libserum runs in a program of its own (vpi-colour).
+---
+ CMakeLists.txt | 34 ++++++++++++++++++++++------------
+ src/DMD.cpp    | 12 ++++++++++++
+ 2 files changed, 34 insertions(+), 12 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 842ca1e..ed3b165 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -8,6 +8,7 @@ option(BUILD_STATIC "Option to build static library" ON)
+ option(POST_BUILD_COPY_EXT_LIBS "Option to copy external libraries to build directory" ON)
+ option(ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan for Debug builds" OFF)
+ option(ENABLE_VNI "Enable VNI colorization support" ON)
++option(ENABLE_SERUM "Enable Serum colorization support" ON)
+ 
+ message(STATUS "PLATFORM: ${PLATFORM}")
+ message(STATUS "ARCH: ${ARCH}")
+@@ -17,6 +18,7 @@ message(STATUS "BUILD_STATIC: ${BUILD_STATIC}")
+ message(STATUS "POST_BUILD_COPY_EXT_LIBS: ${POST_BUILD_COPY_EXT_LIBS}")
+ message(STATUS "ENABLE_SANITIZERS: ${ENABLE_SANITIZERS}")
+ message(STATUS "ENABLE_VNI: ${ENABLE_VNI}")
++message(STATUS "ENABLE_SERUM: ${ENABLE_SERUM}")
+ 
+ if(PLATFORM STREQUAL "ios" OR PLATFORM STREQUAL "ios-simulator")
+    set(CMAKE_SYSTEM_NAME iOS)
+@@ -111,6 +113,14 @@ set(DMDUTIL_COMPILE_DEFINITIONS "")
+ if(ENABLE_VNI)
+    list(APPEND DMDUTIL_COMPILE_DEFINITIONS DMDUTIL_ENABLE_VNI)
+ endif()
++if(ENABLE_SERUM)
++   list(APPEND DMDUTIL_COMPILE_DEFINITIONS DMDUTIL_ENABLE_SERUM)
++   set(DMDUTIL_SERUM64 serum64)
++   set(DMDUTIL_SERUM serum)
++else()
++   set(DMDUTIL_SERUM64 "")
++   set(DMDUTIL_SERUM "")
++endif()
+ 
+ if(PLATFORM STREQUAL "win" OR PLATFORM STREQUAL "win-mingw" OR PLATFORM STREQUAL "macos" OR PLATFORM STREQUAL "linux")
+    list(APPEND DMDUTIL_SOURCES
+@@ -139,12 +149,12 @@ if(BUILD_SHARED)
+          third-party/runtime-libs/${PLATFORM}/${ARCH}
+       )
+       if(ARCH STREQUAL "x64")
+-         target_link_libraries(dmdutil_shared PUBLIC cargs64 zedmd64 serum64 libusb64-1.0 libserialport64 sockpp64 pupdmd64 ws2_32)
++         target_link_libraries(dmdutil_shared PUBLIC cargs64 zedmd64 ${DMDUTIL_SERUM64} libusb64-1.0 libserialport64 sockpp64 pupdmd64 ws2_32)
+          if(ENABLE_VNI)
+             target_link_libraries(dmdutil_shared PUBLIC vni64)
+          endif()
+       else()
+-        target_link_libraries(dmdutil_shared PUBLIC cargs zedmd serum libusb-1.0 libserialport sockpp pupdmd ws2_32)
++        target_link_libraries(dmdutil_shared PUBLIC cargs zedmd ${DMDUTIL_SERUM} libusb-1.0 libserialport sockpp pupdmd ws2_32)
+         if(ENABLE_VNI)
+            target_link_libraries(dmdutil_shared PUBLIC vni)
+         endif()
+@@ -154,7 +164,7 @@ if(BUILD_SHARED)
+          third-party/build-libs/${PLATFORM}/${ARCH}
+          third-party/runtime-libs/${PLATFORM}/${ARCH}
+       )
+-      target_link_libraries(dmdutil_shared PUBLIC cargs64 zedmd64 serum64 usb64-1.0 serialport64 sockpp64 pupdmd64 ws2_32)
++      target_link_libraries(dmdutil_shared PUBLIC cargs64 zedmd64 ${DMDUTIL_SERUM64} usb64-1.0 serialport64 sockpp64 pupdmd64 ws2_32)
+       if(ENABLE_VNI)
+          target_link_libraries(dmdutil_shared PUBLIC vni64)
+       endif()
+@@ -162,7 +172,7 @@ if(BUILD_SHARED)
+       target_link_directories(dmdutil_shared PUBLIC
+          third-party/runtime-libs/${PLATFORM}/${ARCH}
+       )
+-      target_link_libraries(dmdutil_shared PUBLIC cargs zedmd serum usb-1.0 serialport sockpp pupdmd)
++      target_link_libraries(dmdutil_shared PUBLIC cargs zedmd ${DMDUTIL_SERUM} usb-1.0 serialport sockpp pupdmd)
+       if(ENABLE_VNI)
+          target_link_libraries(dmdutil_shared PUBLIC vni)
+       endif()
+@@ -170,7 +180,7 @@ if(BUILD_SHARED)
+       target_link_directories(dmdutil_shared PUBLIC
+          third-party/runtime-libs/${PLATFORM}/${ARCH}
+       )
+-      target_link_libraries(dmdutil_shared PUBLIC cargs zedmd serum serialport usb-1.0 sockpp pupdmd)
++      target_link_libraries(dmdutil_shared PUBLIC cargs zedmd ${DMDUTIL_SERUM} serialport usb-1.0 sockpp pupdmd)
+       if(ENABLE_VNI)
+          target_link_libraries(dmdutil_shared PUBLIC vni)
+       endif()
+@@ -178,7 +188,7 @@ if(BUILD_SHARED)
+       target_link_directories(dmdutil_shared PUBLIC
+          third-party/build-libs/${PLATFORM}/${ARCH}
+       )
+-      target_link_libraries(dmdutil_shared PUBLIC zedmd serum sockpp pupdmd)
++      target_link_libraries(dmdutil_shared PUBLIC zedmd ${DMDUTIL_SERUM} sockpp pupdmd)
+       if(ENABLE_VNI)
+          target_link_libraries(dmdutil_shared PUBLIC vni)
+       endif()
+@@ -186,7 +196,7 @@ if(BUILD_SHARED)
+       target_link_directories(dmdutil_shared PUBLIC
+          third-party/runtime-libs/${PLATFORM}/${ARCH}
+       )
+-      target_link_libraries(dmdutil_shared PUBLIC zedmd serum sockpp pupdmd)
++      target_link_libraries(dmdutil_shared PUBLIC zedmd ${DMDUTIL_SERUM} sockpp pupdmd)
+       if(ENABLE_VNI)
+          target_link_libraries(dmdutil_shared PUBLIC vni)
+       endif()
+@@ -302,12 +312,12 @@ if(BUILD_STATIC)
+             third-party/runtime-libs/${PLATFORM}/${ARCH}
+          )
+          if(ARCH STREQUAL "x64")
+-            target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs64 zedmd64 serum64 libusb64-1.0 libserialport64 sockpp64 pupdmd64 ws2_32)
++            target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs64 zedmd64 ${DMDUTIL_SERUM64} libusb64-1.0 libserialport64 sockpp64 pupdmd64 ws2_32)
+             if(ENABLE_VNI)
+                target_link_libraries(dmdutil_test_s PUBLIC vni64)
+             endif()
+           else()
+-            target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd serum libusb-1.0 libserialport sockpp pupdmd ws2_32)
++            target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd ${DMDUTIL_SERUM} libusb-1.0 libserialport sockpp pupdmd ws2_32)
+             if(ENABLE_VNI)
+                target_link_libraries(dmdutil_test_s PUBLIC vni)
+             endif()
+@@ -317,7 +327,7 @@ if(BUILD_STATIC)
+             third-party/build-libs/${PLATFORM}/${ARCH}
+             third-party/runtime-libs/${PLATFORM}/${ARCH}
+          )
+-         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs64 zedmd64 serum64 usb64-1.0 serialport64 sockpp64 pupdmd64 ws2_32)
++         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs64 zedmd64 ${DMDUTIL_SERUM64} usb64-1.0 serialport64 sockpp64 pupdmd64 ws2_32)
+          if(ENABLE_VNI)
+             target_link_libraries(dmdutil_test_s PUBLIC vni64)
+          endif()
+@@ -325,7 +335,7 @@ if(BUILD_STATIC)
+          target_link_directories(dmdutil_test_s PUBLIC
+             third-party/runtime-libs/${PLATFORM}/${ARCH}
+          )
+-         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd serum usb-1.0 serialport sockpp pupdmd)
++         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd ${DMDUTIL_SERUM} usb-1.0 serialport sockpp pupdmd)
+          if(ENABLE_VNI)
+             target_link_libraries(dmdutil_test_s PUBLIC vni)
+          endif()
+@@ -333,7 +343,7 @@ if(BUILD_STATIC)
+          target_link_directories(dmdutil_test_s PUBLIC
+             third-party/runtime-libs/${PLATFORM}/${ARCH}
+          )
+-         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd serum usb-1.0 serialport sockpp pupdmd)
++         target_link_libraries(dmdutil_test_s PUBLIC dmdutil_static cargs zedmd ${DMDUTIL_SERUM} usb-1.0 serialport sockpp pupdmd)
+          if(ENABLE_VNI)
+             target_link_libraries(dmdutil_test_s PUBLIC vni)
+          endif()
+diff --git a/src/DMD.cpp b/src/DMD.cpp
+index 694676b..dfc3352 100644
+--- a/src/DMD.cpp
++++ b/src/DMD.cpp
+@@ -43,13 +43,17 @@
+ #include "FrameUtil.h"
+ #include "DMDUtil/Logger.h"
+ #include "OutputFilters.h"
++#ifdef DMDUTIL_ENABLE_SERUM
+ #include "TimeUtils.h"
++#endif
+ #include "ZeDMD.h"
+ #include "komihash/komihash.h"
+ #include "miniz/miniz.h"
+ #include "pupdmd.h"
++#ifdef DMDUTIL_ENABLE_SERUM
+ #include "serum-decode.h"
+ #include "serum.h"
++#endif
+ #include "sockpp/tcp_connector.h"
+ #ifdef DMDUTIL_ENABLE_VNI
+ #include "vni.h"
+@@ -173,6 +177,7 @@ size_t PaletteBytesForDepth(uint8_t depth)
+ namespace DMDUtil
+ {
+ 
++#ifdef DMDUTIL_ENABLE_SERUM
+ void SERUM_CALLBACK Serum_LogCallback(const char* format, va_list args, const void* pUserData)
+ {
+   char buffer[1024];
+@@ -180,6 +185,7 @@ void SERUM_CALLBACK Serum_LogCallback(const char* format, va_list args, const vo
+ 
+   Log(DMDUtil_LogLevel_INFO, "%s", buffer);
+ }
++#endif
+ 
+ void PUPDMDCALLBACK PUPDMDLogCallback(const char* format, va_list args, const void* pUserData)
+ {
+@@ -1415,6 +1421,7 @@ void DMD::ZeDMDThread()
+ 
+ void DMD::SerumThread()
+ {
++#ifdef DMDUTIL_ENABLE_SERUM
+   Config* const pConfig = Config::GetInstance();
+   constexpr uint16_t kSerumTriggerMinEvent = 50000;
+   constexpr uint16_t kSerumTriggerMaxEvent = 62000;
+@@ -1736,6 +1743,7 @@ void DMD::SerumThread()
+       }
+     }
+   }
++#endif
+ }
+ 
+ void DMD::VniThread()
+@@ -1909,6 +1917,9 @@ void DMD::VniThread()
+ void DMD::QueueSerumFrames(Update* dmdUpdate, bool render32, bool render64, bool hasTimestamp, uint32_t timestampMs,
+                            std::shared_ptr<Update>* primaryOutput)
+ {
++#ifndef DMDUTIL_ENABLE_SERUM
++  (void)dmdUpdate, (void)render32, (void)render64, (void)hasTimestamp, (void)timestampMs, (void)primaryOutput;
++#else
+   if (!render32 && !render64) return;
+ 
+   if (!hasTimestamp && m_serumHasTimestamp && m_pSerum && m_pSerum->rotationtimer > 0)
+@@ -2058,6 +2069,7 @@ void DMD::QueueSerumFrames(Update* dmdUpdate, bool render32, bool render64, bool
+       }
+     }
+   }
++#endif
+ }
+ 
+ #if !(                                                                                                                \
+-- 
+2.55.0.windows.3
+

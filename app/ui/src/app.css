@@ -1,0 +1,123 @@
+/* The app's look: dark; Inter for text, Barlow Condensed for titles; one blue accent, green for PLAY. */
+:root {
+  --bg: #0d1016;
+  --bar: #12161e;
+  --side: #10141b;
+  --line: #262d3b;
+  --line-soft: #1d2330;
+  --control: #161b25;
+  --control-line: #2c3445;
+  --card: #161b25;
+  --card-line: #252d3c;
+  --panel: #131820;
+  --panel-line: #232a38;
+  --hover: #1a212d;
+  --selected: #1f2a3c;
+  --fg: #e9edf4;
+  --fg-soft: #c3cad6;
+  --muted: #aab3c2;
+  --faint: #8b94a6;
+  --accent: #4cc2ff;
+  --accent-soft: #8bd8ff;
+  --accent-bg: #24314a;
+  --play: #3ddc84;
+  --play-hover: #5ae79a;
+  --play-fg: #062012;
+  --good: #9ff0c2;
+  --warn: #ffd27a;
+  --bad: #ff9b9b;
+  --tag-bg: #242a4e;
+  --tag-fg: #cdd1fb;
+  --mark-bg: #1d2433;
+  --mark-fg: #9fb4d6;
+  --picture-bg: #0a0d13;
+  --display: 'Barlow Condensed', 'Arial Narrow', Inter, system-ui, sans-serif;
+  --body: Inter, system-ui, 'Segoe UI', sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { height: 100%; }
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+
+a { color: var(--accent); }
+a:hover { color: var(--accent-soft); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+h1, h2, h3 { margin: 0; }
+
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #283043; border-radius: 8px; border: 3px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #34405a; }
+
+/* the controls every screen shares */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 14px; border-radius: 10px;
+  background: var(--control); border: 1px solid var(--control-line);
+  color: var(--fg); font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: #1f2633; }
+.btn:disabled { opacity: 0.55; }
+.btn.small { height: 32px; padding: 0 12px; border-radius: 8px; font-size: 13px; }
+.btn.icon { width: 44px; padding: 0; }
+.btn.square { width: 46px; height: 46px; padding: 0; border-radius: 12px; color: #dbe1ea; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--fg-soft); }
+.btn.ghost:hover:not(:disabled) { background: var(--hover); }
+.btn.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.select {
+  height: 34px; padding: 0 10px; border-radius: 8px;
+  background: var(--control); border: 1px solid var(--control-line); color: var(--fg); font-size: 13px;
+}
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
+  border-radius: 999px; background: var(--control); border: 1px solid var(--control-line);
+  color: var(--fg-soft); font-size: 13px;
+}
+.chip[aria-pressed='true'] { background: var(--accent-bg); border-color: var(--accent); color: #e9f6ff; }
+
+.section-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint);
+}
+
+.display { font-family: var(--display); font-weight: 700; letter-spacing: 0.01em; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* A picture or video kept on its side (a front end's playfield media made for a cabinet's screen
+   laid on its side) shown upright: its frame measured as a size container (and the media placed
+   in it, where nothing else places it), the media's box the frame's turned — or as the frame
+   says, `--turn-w` and `--turn-h`, where its height isn't its own (a table page's big picture,
+   as tall as the facts beside it), then turned a quarter right, filling or fitting the frame as before */
+.turn-frame { container-type: size; position: relative; }
+.turned {
+  position: absolute !important; inset: auto !important; left: 50% !important; top: 50% !important;
+  width: var(--turn-w, 100cqh) !important; height: var(--turn-h, 100cqw) !important; max-width: none !important; max-height: none !important;
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+}
+/* one kept the other way, its foot to the left: a quarter left */
+.turned.ccw { transform: translate(-50%, -50%) rotate(-90deg) !important; }
+/* one turned upside down */
+.upside { transform: rotate(180deg) !important; }

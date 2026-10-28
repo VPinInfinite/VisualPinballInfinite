@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "cabinet",
+  "description": "Cabinet mode's other screens (cabinet-*): the backglass's, the score display's and a topper's, each showing the table chosen as the main window tells it, so they listen for its word.",
+  "windows": ["cabinet-*"],
+  "permissions": ["core:default"]
+}

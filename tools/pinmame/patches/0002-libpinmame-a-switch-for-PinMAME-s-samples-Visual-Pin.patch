@@ -1,0 +1,61 @@
+From 0687ddb831f06071b391b644f103836d0381cc2a Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] libpinmame: a switch for PinMAME's samples (Visual Pinball
+ Infinite)
+
+PinmameSetUseSamples and PinmameGetUseSamples set MAME's use_samples option, which
+PinmameSetConfig clears, so older machines' recorded sounds can play when a game's settings
+ask for them, as VPinMAME's per-game "samples" setting does. Off unless set, as libpinmame
+has it. Only libpinmame's BSD files change.
+---
+ src/libpinmame/libpinmame.cpp | 20 ++++++++++++++++++++
+ src/libpinmame/libpinmame.h   |  2 ++
+ 2 files changed, 22 insertions(+)
+
+diff --git a/src/libpinmame/libpinmame.cpp b/src/libpinmame/libpinmame.cpp
+index a1b38fd12..747a59a0c 100644
+--- a/src/libpinmame/libpinmame.cpp
++++ b/src/libpinmame/libpinmame.cpp
+@@ -1053,6 +1053,26 @@ PINMAMEAPI void PinmameSetCheat(const int cheat)
+ 	options.cheat = cheat;
+ }
+ 
++/******************************************************
++ * PinmameGetUseSamples
++ ******************************************************/
++
++// Visual Pinball Infinite: PinMAME's own samples (older machines' recorded sounds), off unless
++// asked; PinmameSetConfig clears the option, so this comes after it
++PINMAMEAPI int PinmameGetUseSamples()
++{
++	return options.use_samples;
++}
++
++/******************************************************
++ * PinmameSetUseSamples
++ ******************************************************/
++
++PINMAMEAPI void PinmameSetUseSamples(const int useSamples)
++{
++	options.use_samples = useSamples ? 1 : 0;
++}
++
+ /******************************************************
+  * PinmameGetHandleKeyboard
+  ******************************************************/
+diff --git a/src/libpinmame/libpinmame.h b/src/libpinmame/libpinmame.h
+index 98ab05aca..cdd5ee43f 100644
+--- a/src/libpinmame/libpinmame.h
++++ b/src/libpinmame/libpinmame.h
+@@ -441,6 +441,8 @@ PINMAMEAPI void PinmameSetConfig(const PinmameConfig* const p_config);
+ PINMAMEAPI void PinmameSetPath(const PINMAME_FILE_TYPE fileType, const char* const p_path);
+ PINMAMEAPI int PinmameGetCheat();
+ PINMAMEAPI void PinmameSetCheat(const int cheat);
++PINMAMEAPI int PinmameGetUseSamples();
++PINMAMEAPI void PinmameSetUseSamples(const int useSamples);
+ PINMAMEAPI int PinmameGetHandleKeyboard();
+ PINMAMEAPI void PinmameSetHandleKeyboard(const int handleKeyboard);
+ PINMAMEAPI int PinmameGetHandleMechanics();
+-- 
+2.55.0.windows.3
+

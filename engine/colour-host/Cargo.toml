@@ -1,0 +1,21 @@
+[package]
+name = "colour-host"
+version.workspace = true
+description = "vpi-colour: colours a ROM game's score display with its Serum file (libserum) or PIN2DMD's palette and animation files (libvni) beside the player, linked to it through shared memory."
+edition.workspace = true
+# GPL-2.0-or-later, not the workspace's GPL-3.0-or-later: it runs libserum and libvni, which are
+# under version 2 of the GPL alone, and code under version 3 can't be combined with them.
+# Written from their headers, not from VPX's plugins (GPL-3.0-or-later); its crates are BSD
+# (colour-link) and MIT or Apache-2.0 (flate2, for PIN2DMD's locked files).
+license = "GPL-2.0-or-later"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-colour"
+path = "src/main.rs"
+
+[dependencies]
+colour-link = { path = "../colour-link" }
+flate2 = "1.1"

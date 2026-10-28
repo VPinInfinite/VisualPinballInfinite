@@ -1,0 +1,46 @@
+[workspace]
+resolver = "3"
+members = [
+    "engine/headless",
+    "engine/player",
+    "engine/physics-compat",
+    "engine/table-physics",
+    "engine/pinmame-link",
+    "engine/pinmame-host",
+    "engine/colour-link",
+    "engine/colour-host",
+    "engine/dof-link",
+    "engine/dof-host",
+    "engine/dmd-link",
+    "engine/dmd-host",
+    "engine/dmddevice-host",
+    "engine/library",
+    "engine/settings",
+    "engine/achievements",
+    "app",
+    "tools/idl-gen",
+    "tools/kicker-pictures",
+]
+
+[workspace.package]
+# every program's version, from this one place: Semantic Versioning, 0.1.0 the first release, 1.0.0
+# once it's called stable; the app's, which the updater compares, too
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/VPinInfinite/VisualPinballInfinite"
+rust-version = "1.98"
+
+# The release build with line tables, for crash reports that name source lines:
+# cargo build --profile crashdebug -p player (target/crashdebug/)
+[profile.crashdebug]
+inherits = "release"
+debug = "line-tables-only"
+
+# Our copies of SDL 3.4.18's source — two fixes to its Direct3D 12 descriptor heaps, which wrote
+# past a heap's end when a draw's descriptors didn't fit, and its source files' paths recorded from
+# its own folder — and of SDL_ttf's binding, built for the C runtime the programs link in and with
+# its asserts left out of a release build (vendor/README.md)
+[patch.crates-io]
+sdl3-src = { path = "vendor/sdl3-src" }
+sdl3-ttf-sys = { path = "vendor/sdl3-ttf-sys" }

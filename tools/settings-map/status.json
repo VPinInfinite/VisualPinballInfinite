@@ -1,0 +1,1184 @@
+{
+  "vpx_note": "VPX 5436's own settings (`src/core/Settings_properties.inl`), in its order. A table's `<table>.ini` beside it may hold any of them for that table alone, as VPX's does. Besides these, VPX 5436 makes settings as devices and actions appear — the input mappings (`[Input]` `Mapping.<action>`, `Mapping.Nudge<n>.…`, `Mapping.Plunger<n>.…`, `Device.<id>.…`) a table's options (`[TableOption]`), and its audio sources' gains (`[Player]` `AudioSource.<plugin>.Gain`, 0 to 2: ours reads PinMAME's, AltSound's, PUP's and WMP's, which the pause menu sets): ours reads them under the same names. VPX 10.8.0's older names that 5436 replaced (its joystick axis and button settings among them) aren't read: bringing a 10.8.0 settings file over belongs to the first setup.",
+  "plugins_note": "The settings VPX 5436's plugins declare (`plugins/*`), under `[Plugin.<name>]`. Ours plays everything those plugins do itself, so a plugin's `Enable` switches our part off where that makes sense.",
+  "vpx": {
+    "Version.VPinball": [
+      "not-ours",
+      "the VPX version that saved the file"
+    ],
+    "Editor.EnableLog": [
+      "later",
+      "a log file of the player's own, with the settings screen; it prints to its console now"
+    ],
+    "Editor.DisableHash": [
+      "not-ours",
+      "VPX's check of a table file's signature; ours reads tables without it"
+    ],
+    "Editor.ThrowBallsAlwaysOn": [
+      "later",
+      "VPX's debugging tools for throwing and steering balls, not built"
+    ],
+    "Editor.BallControlAlwaysOn": [
+      "later",
+      "VPX's debugging tools for throwing and steering balls, not built"
+    ],
+    "Editor.*": [
+      "later",
+      "VPX's editor's own settings — windows, grids, dialogs; ours plays tables and has no editor yet"
+    ],
+    "CVEdit.*": [
+      "later",
+      "the look of VPX's script editor; ours has none yet (a simple one is planned)"
+    ],
+    "RecentDir.*": [
+      "later",
+      "the editor's recent folders and files; our library keeps its own"
+    ],
+    "DefaultProps*": [
+      "later",
+      "the values VPX's editor gives a new part; ours has no editor"
+    ],
+    "DefaultCamera.*": [
+      "later",
+      "the views VPX's editor gives a new table; ours has no editor"
+    ],
+    "Player.MusicVolume": [
+      "works",
+      "the backglass's volume"
+    ],
+    "Player.SoundVolume": [
+      "works",
+      "the playfield's volume"
+    ],
+    "Player.SoundDeviceBG": [
+      "works",
+      "the backglass's sound output, by name (`vpi-player --sound-outputs`)"
+    ],
+    "Player.SoundDevice": [
+      "works",
+      "the playfield's sound output, by name"
+    ],
+    "Player.Sound3D": [
+      "works",
+      "VPX's six speaker layouts"
+    ],
+    "Player.Playfield*": [
+      "works",
+      "the table's window: screen, place, size, borderless full screen"
+    ],
+    "Player.PlayfieldFSWidth": [
+      "not-ours",
+      "a display mode for VPX's exclusive full screen, which its BGFX build — like ours — doesn't have (windowed or borderless only)"
+    ],
+    "Player.PlayfieldFSHeight": [
+      "not-ours",
+      "as above"
+    ],
+    "Player.PlayfieldRefreshRate": [
+      "not-ours",
+      "as above"
+    ],
+    "Player.PlayfieldColorDepth": [
+      "not-ours",
+      "as above"
+    ],
+    "Backglass.*": [
+      "works",
+      "the backglass window: off, its own window, or drawn inside the table's"
+    ],
+    "Backglass.BackglassFS*": [
+      "not-ours",
+      "exclusive full screen's display mode, as above"
+    ],
+    "Backglass.BackglassRefreshRate": [
+      "not-ours",
+      "as above"
+    ],
+    "Backglass.BackglassColorDepth": [
+      "not-ours",
+      "as above"
+    ],
+    "ScoreView.*": [
+      "works",
+      "the score display's window, likewise"
+    ],
+    "ScoreView.ScoreViewFS*": [
+      "not-ours",
+      "as above"
+    ],
+    "ScoreView.ScoreViewRefreshRate": [
+      "not-ours",
+      "as above"
+    ],
+    "ScoreView.ScoreViewColorDepth": [
+      "not-ours",
+      "as above"
+    ],
+    "Topper.*": [
+      "works",
+      "the topper window, likewise"
+    ],
+    "Topper.TopperFS*": [
+      "not-ours",
+      "as above"
+    ],
+    "Topper.TopperRefreshRate": [
+      "not-ours",
+      "as above"
+    ],
+    "Topper.TopperColorDepth": [
+      "not-ours",
+      "as above"
+    ],
+    "PlayerVR.*": [
+      "later",
+      "VR, deferred (charter)"
+    ],
+    "Player.VRPreview": [
+      "later",
+      "VR, deferred"
+    ],
+    "Player.SyncMode": [
+      "works",
+      "none, vertical sync, adaptive sync or frame pacing: adaptive sync draws as vertical sync, SDL having no adaptive mode; with nothing set, ours stays fastest, tearing allowed, at most 240 frames a second"
+    ],
+    "Player.MaxFramerate": [
+      "works",
+      "worked out against the screen's refresh rate as VPX does"
+    ],
+    "Player.MaxPrerenderedFrames": [
+      "works",
+      "the frames the graphics card may queue, 1 to 3 (1, VPX's default and ours)"
+    ],
+    "Player.GfxBackend": [
+      "not-ours",
+      "the graphics library VPX's BGFX build draws through; ours draws through SDL's on Direct3D 12"
+    ],
+    "Player.ShowFPS": [
+      "works",
+      "our readout shown or not (ours has one readout for VPX's two kinds)"
+    ],
+    "Player.SSRefl": [
+      "later",
+      "VPX's additive screen-space reflections, not ported yet (off by default in VPX)"
+    ],
+    "Player.HDRDisableToneMapper": [
+      "works",
+      "VPX's HDR10 output"
+    ],
+    "Player.HDRGlobalExposure": [
+      "works",
+      "VPX's HDR10 output"
+    ],
+    "Player.ForceBloomOff": [
+      "works",
+      "no bloom"
+    ],
+    "Player.ForceMotionBlurOff": [
+      "works",
+      "the balls' motion blur off"
+    ],
+    "Player.ForceAnisotropicFiltering": [
+      "works",
+      "the parts' pictures read anisotropically, or trilinearly when off"
+    ],
+    "Player.CompressTextures": [
+      "later",
+      "pictures compressed on the graphics card as a table loads, for speed (off by default in VPX)"
+    ],
+    "Player.UseNVidiaAPI": [
+      "not-ours",
+      "for VPX's DirectX 9 build only"
+    ],
+    "Player.SoftwareVertexProcessing": [
+      "not-ours",
+      "for VPX's DirectX 9 build only"
+    ],
+    "Player.DisableAO": [
+      "works",
+      "ambient occlusion off"
+    ],
+    "Player.DynamicAO": [
+      "works",
+      "ambient occlusion every frame, or made once into the still parts"
+    ],
+    "Player.PFReflection": [
+      "works",
+      "the most a mirror reflects, VPX's six modes"
+    ],
+    "Player.MaxTexDimension": [
+      "later",
+      "pictures above a size shrunk as a table loads, for small graphics cards (none shrunk by default on a desktop)"
+    ],
+    "Player.AlphaRampAccuracy": [
+      "works",
+      "VPX's detail level for rubbers, ramps and balls, drawn and in the physics as VPX takes it (VPX's low-detail ball below 10)"
+    ],
+    "Player.BGSet": [
+      "works",
+      "the view: desktop, cabinet or full single screen; for one table on its Settings window"
+    ],
+    "Player.CabinetAutofitMode": [
+      "later",
+      "VPX 5436's automatic cabinet view fitting, not ported yet (manual by default in VPX)"
+    ],
+    "Player.CabinetAutofitPos": [
+      "later",
+      "as above"
+    ],
+    "Player.AAFactor": [
+      "works",
+      "supersampling"
+    ],
+    "Player.MSAASamples": [
+      "works",
+      "multisampling; VPX's 6 samples draws with 8, SDL having no 6 (VPX 5436's BGFX build has none either and draws without)"
+    ],
+    "Player.FXAA": [
+      "works",
+      "VPX's seven post-processed antialiasing filters"
+    ],
+    "Player.Sharpen": [
+      "works",
+      "CAS and bilateral CAS"
+    ],
+    "Player.BallAntiStretch": [
+      "works",
+      "a ball squeezed back against the view's stretching, as VPX does it"
+    ],
+    "Player.DisableLightingForBalls": [
+      "works",
+      "balls without lighting or reflections"
+    ],
+    "Player.BallTrail": [
+      "later",
+      "VPX's legacy ball trails, not ported (off by default; VPX means to replace them with motion blur, which ours has)"
+    ],
+    "Player.BallTrailStrength": [
+      "later",
+      "as above"
+    ],
+    "Player.OverwriteBallImage": [
+      "works",
+      "the player's own pictures for every ball"
+    ],
+    "Player.BallImage": [
+      "works",
+      "as above: the ball's room picture, read as a sphere map"
+    ],
+    "Player.DecalImage": [
+      "works",
+      "as above: its decal"
+    ],
+    "Player.TouchOverlay": [
+      "not-ours",
+      "touch screens' controls on phones and tablets"
+    ],
+    "Player.NumberOfTimesToShowTouchMessage": [
+      "not-ours",
+      "as above"
+    ],
+    "Player.EnableCameraModeFlyAround": [
+      "later",
+      "moving the camera from VPX's in-game menu, which ours doesn't have yet"
+    ],
+    "Player.DetectHang": [
+      "later",
+      "a script that hangs found and reported; with the settings screen"
+    ],
+    "Player.SecurityLevel": [
+      "not-ours",
+      "VPX's levels of what scripts may do; ours fences every script instead, a stricter mode planned"
+    ],
+    "Player.Mirror": [
+      "later",
+      "the whole table mirrored left to right, not built"
+    ],
+    "Player.CacheMode": [
+      "not-ours",
+      "VPX's cache of its pictures for faster loading; ours loads its own way"
+    ],
+    "Player.RumbleMode": [
+      "works",
+      "a gamepad's rumble"
+    ],
+    "Player.MinPhysLoopTime": [
+      "not-ours",
+      "a legacy delay VPX's BGFX build doesn't have either"
+    ],
+    "Player.PhysicsMaxLoops": [
+      "not-ours",
+      "VPX's limit on catching up when a slow machine falls behind; ours keeps up on its own thread"
+    ],
+    "Player.Autostart": [
+      "not-ours",
+      "VPX starting a table by itself after a while; front ends launch tables"
+    ],
+    "Player.AutostartRetry": [
+      "not-ours",
+      "as above"
+    ],
+    "Player.asenable": [
+      "not-ours",
+      "as above"
+    ],
+    "Player.Exitconfirm": [
+      "later",
+      "a long press of Esc to leave, with an in-game menu for the short press"
+    ],
+    "Input.Devices": [
+      "works",
+      "the devices the mappings name, and each one's automatic layout switch (`Device.<id>.NoAutoLayout`); the list itself is for the settings screen"
+    ],
+    "Player.SimulatedPlumb": [
+      "works",
+      "VPX's tilt bob"
+    ],
+    "Player.PlumbDamping": [
+      "works",
+      "VPX's tilt bob"
+    ],
+    "Player.PlumbThresholdAngle": [
+      "works",
+      "VPX's tilt bob"
+    ],
+    "Player.KeyboardNudgeMode": [
+      "works",
+      "VPX's three keyboard nudges; ours defaults to the released VPX's"
+    ],
+    "Player.KeyboardNudgeStrength": [
+      "works",
+      "how hard a key nudges"
+    ],
+    "Player.NudgeStrength": [
+      "works",
+      "how far a nudge shakes the picture"
+    ],
+    "Input.NudgeSensorCount": [
+      "works",
+      "the cabinet's nudge sensors"
+    ],
+    "Player.PlungerRetract": [
+      "works",
+      "a plunger pulled by a key eases forward again after a second"
+    ],
+    "Player.PlungerNormalize": [
+      "not-ours",
+      "VPX 5436 defines it but nothing in it reads it"
+    ],
+    "Input.PlungerSensorCount": [
+      "works",
+      "the cabinet's plunger sensors"
+    ],
+    "Player.FlipperPhysics*": [
+      "works",
+      "VPX's eight physics sets — flippers' and the table's values, and each set's name — for tables and flippers that choose one"
+    ],
+    "Player.TablePhysics*": [
+      "works",
+      "VPX's eight physics sets — flippers' and the table's values, and each set's name — for tables and flippers that choose one"
+    ],
+    "Player.PhysicsSetName*": [
+      "works",
+      "VPX's eight physics sets — flippers' and the table's values, and each set's name — for tables and flippers that choose one"
+    ],
+    "Player.Stereo3D*": [
+      "later",
+      "stereo 3D (glasses and 3D screens), not built"
+    ],
+    "Player.Anaglyph*": [
+      "later",
+      "stereo 3D (glasses and 3D screens), not built"
+    ],
+    "Player.ScreenWidth": [
+      "works",
+      "the cabinet screen's size, for VPX's window view"
+    ],
+    "Player.ScreenHeight": [
+      "later",
+      "used only by the cabinet autofit and VR, not built"
+    ],
+    "Player.ScreenInclination": [
+      "works",
+      "the cabinet screen's tilt"
+    ],
+    "Player.LockbarWidth": [
+      "later",
+      "VR, deferred"
+    ],
+    "Player.LockbarHeight": [
+      "later",
+      "VR, deferred"
+    ],
+    "Player.ScreenPlayerX": [
+      "works",
+      "where the player stands, for VPX's window view"
+    ],
+    "Player.ScreenPlayerY": [
+      "works",
+      "as above"
+    ],
+    "Player.ScreenPlayerZ": [
+      "works",
+      "as above"
+    ],
+    "Player.OverrideTableEmissionScale": [
+      "works",
+      "the player's light level over the table's; for one table on its Settings window, as VPX 5436's in-game menu offers it (\"Scene lighting\")"
+    ],
+    "Player.EmissionScale": [
+      "works",
+      "the player's light level, day to night"
+    ],
+    "Player.DynamicDayNight": [
+      "works",
+      "the light level from the sun where the player lives, now, as VPX works it out"
+    ],
+    "Player.Latitude": [
+      "works",
+      "as above"
+    ],
+    "Player.Longitude": [
+      "works",
+      "as above"
+    ],
+    "TableOverride.View*": [
+      "works",
+      "the views' settings over the table's"
+    ],
+    "TableOverride.Difficulty": [
+      "works",
+      "the player's difficulty for the table, on its Settings window"
+    ],
+    "TableOverride.Exposure": [
+      "works",
+      "the player's exposure for the table, on its Settings window"
+    ],
+    "TableOverride.ToneMapper": [
+      "works",
+      "the player's tone mapper for the table, on its Settings window"
+    ],
+    "DMD.*": [
+      "works",
+      "VPX's seven DMD looks for the score view"
+    ],
+    "Alpha.*": [
+      "works",
+      "VPX's eight segment display looks"
+    ],
+    "Controller.*": [
+      "works",
+      "the cabinet's toy choices that tables' `controller.vbs` reads"
+    ],
+    "Plugin.AltSound.Enable": [
+      "works",
+      "AltSound packs on or off"
+    ],
+    "Plugin.B2SLegacy.Enable": [
+      "not-ours",
+      "which of VPX's two B2S plugins draws; ours is one, VPX 5436's newer one"
+    ],
+    "Plugin.DMDUtil.Enable": [
+      "works",
+      "a real DMD panel through libdmdutil"
+    ],
+    "Plugin.FlexDMD.Enable": [
+      "not-ours",
+      "in VPX it chooses its plugin or the installed FlexDMD; ours is always our own port"
+    ],
+    "Plugin.PinMAME.Enable": [
+      "not-ours",
+      "in VPX it chooses its plugin or the installed VPinMAME; ours always runs PinMAME itself"
+    ],
+    "Plugin.PUP.Enable": [
+      "works",
+      "PinUP packs on or off"
+    ],
+    "Plugin.ScoreView.Enable": [
+      "works",
+      "VPX's score view layouts on or off"
+    ],
+    "Plugin.Serum.Enable": [
+      "works",
+      "Serum colorings on or off"
+    ],
+    "Plugin.WMP.Enable": [
+      "not-ours",
+      "in VPX it chooses its plugin or Windows Media Player itself; ours is always the stand-in"
+    ],
+    "Plugin.VNI.Enable": [
+      "works",
+      "PIN2DMD colorings on or off"
+    ],
+    "Standalone.*": [
+      "not-ours",
+      "VPX's builds for phones, tablets and Linux"
+    ],
+    "Plugin.AltSound.Folder": [
+      "works",
+      "where AltSound packs are, besides beside the table"
+    ],
+    "Plugin.B2S.ShowGrill": [
+      "works",
+      "the backglass picture's speaker grill shown"
+    ],
+    "Plugin.B2S.ScoreViewDMD*": [
+      "works",
+      "the DMD over the backglass file's score panel: off, found by itself, or placed"
+    ],
+    "Plugin.B2S.BackglassDMD*": [
+      "works",
+      "the DMD over the backglass: likewise"
+    ],
+    "Plugin.B2SLegacy.B2SHideGrill": [
+      "works",
+      "the grill hidden, when the newer plugin's `ShowGrill` isn't set"
+    ],
+    "Plugin.B2SLegacy.B2SHideB2SDMD": [
+      "works",
+      "the backglass file's score panel left out"
+    ],
+    "Plugin.B2SLegacy.B2SHideB2SBackglass": [
+      "later",
+      "the backglass file left out while a PinUP pack still draws there; for now `[Backglass]` `BackglassOutput = 0` turns the window off"
+    ],
+    "Plugin.B2SLegacy.B2SHideDMD": [
+      "not-ours",
+      "VPX 5436 defines it but nothing in it reads it"
+    ],
+    "Plugin.B2SLegacy.B2SDualMode": [
+      "later",
+      "two-mode backglasses (authentic and fantasy), with B2S Server's other extras"
+    ],
+    "Plugin.B2SLegacy.B2SBackglass*": [
+      "not-ours",
+      "the legacy plugin's own window sizes; ours takes the backglass window's"
+    ],
+    "Plugin.B2SLegacy.B2SDMD*": [
+      "not-ours",
+      "as above, for its DMD window"
+    ],
+    "Plugin.B2SLegacy.ScoreViewDMD*": [
+      "works",
+      "as the newer plugin's"
+    ],
+    "Plugin.B2SLegacy.BackglassDMD*": [
+      "works",
+      "as the newer plugin's"
+    ],
+    "Plugin.DMDUtil.*": [
+      "works",
+      "handed to libdmdutil as VPX's plugin hands them"
+    ],
+    "Plugin.Inspector.*": [
+      "not-ours",
+      "VPX's web page for looking inside a running table, a developer's tool"
+    ],
+    "Plugin.PinMAME.Sound": [
+      "works",
+      "the machines' sound on or off"
+    ],
+    "Plugin.PinMAME.PinMAMEPath": [
+      "works",
+      "a PinMAME folder of the user's own: its `roms` and `samples`, after a `pinmame` folder beside the table, as VPX 5436 looks"
+    ],
+    "Plugin.PinMAME.Cheat": [
+      "works",
+      "PinMAME's cheat mode, which skips some games' start-up tests"
+    ],
+    "Plugin.PUP.MainVol": [
+      "works",
+      "a PinUP pack's main volume"
+    ],
+    "Plugin.PUP.BGPad*": [
+      "works",
+      "the backglass window's padding, the pack's screens drawn inside it"
+    ],
+    "Plugin.PUP.SVPad*": [
+      "works",
+      "the score window's padding, likewise"
+    ],
+    "Plugin.PUP.TopperPad*": [
+      "works",
+      "the topper window's padding, likewise"
+    ],
+    "Plugin.PUP.BGFrameOverlay": [
+      "not-ours",
+      "VPX 5436 defines it but never registers or reads it"
+    ],
+    "Plugin.PUP.SVFrameOverlay": [
+      "not-ours",
+      "as above"
+    ],
+    "Plugin.PUP.TopperFrameOverlay": [
+      "not-ours",
+      "as above"
+    ],
+    "Plugin.PUP.PUPFolder": [
+      "works",
+      "a PinUP folder of the user's own, its `PUPVideos` holding the packs"
+    ],
+    "Plugin.RemoteControl.*": [
+      "not-ours",
+      "VPX's remote control between two of its own copies, a developer's tool"
+    ],
+    "Plugin.ScoreView.LayoutFolder": [
+      "works",
+      "a folder of the user's own score view layouts, tried after the table's own"
+    ],
+    "Plugin.Serum.SerumPath": [
+      "works",
+      "where Serum colorings are, besides VPX's places"
+    ],
+    "Plugin.UpscaleDMD.UpscaleMode": [
+      "works",
+      "VPX's DMD upscalers"
+    ],
+    "Plugin.VNI.VniPath": [
+      "works",
+      "where PIN2DMD colorings are"
+    ]
+  },
+  "vpi": [
+    {
+      "key": "AchievementSound",
+      "label": "A sound for each achievement",
+      "kind": "bool",
+      "def": 1,
+      "what": "Whether a sound plays as each achievement is announced: the pack's own, or the player's chime (Settings › Sound)."
+    },
+    {
+      "key": "AchievementGain",
+      "label": "The achievements' sound level",
+      "kind": "float",
+      "min": 0,
+      "max": 2,
+      "def": 1,
+      "what": "The level of the sound played as an achievement is announced, over the backglass volume, from 0 to 2: one of the pause menu's sound levels (Settings › Sound too)."
+    },
+    {
+      "key": "MusicGain",
+      "label": "The table's music level",
+      "kind": "float",
+      "min": 0,
+      "max": 2,
+      "def": 1,
+      "what": "The level of a table's own music, what its script plays with PlayMusic, over the backglass volume, from 0 to 2: one of the pause menu's sound levels, beside the machine's, AltSound's, PinUP's and Media Player's ([Player] AudioSource.….Gain)."
+    },
+    {
+      "key": "Present",
+      "label": "How frames reach the screen",
+      "kind": "choice",
+      "opts": [
+        [
+          "",
+          "As [Player] SyncMode says"
+        ],
+        [
+          "immediate",
+          "As soon as drawn"
+        ],
+        [
+          "mailbox",
+          "Tear-free, without waiting (mailbox)"
+        ],
+        [
+          "vsync",
+          "The display's queue (vsync)"
+        ],
+        [
+          "paced",
+          "Drawn just before the refresh that shows them (paced)"
+        ]
+      ],
+      "what": "How frames reach the screen: as soon as each is drawn (immediate, which can tear), tear-free without waiting (mailbox), in the display's queue (vsync), or each drawn just before the refresh that shows it (paced); empty, as [Player] SyncMode says."
+    },
+    {
+      "key": "FloatingScore",
+      "label": "The score display floating over the table",
+      "kind": "bool",
+      "def": true,
+      "what": "On one screen, a ROM table's score display floats over the table while its script leaves PinMAME's window shown."
+    },
+    {
+      "key": "ExtraWindowsAtStart",
+      "label": "The other windows shown from the start",
+      "kind": "bool",
+      "def": false,
+      "what": "The backglass, score and topper windows show as the table starts; off, each shows with its first picture."
+    },
+    {
+      "key": "TiltCountsNudges",
+      "label": "Tilt by counting nudges",
+      "kind": "bool",
+      "def": false,
+      "what": "A tilt comes from counting presses of the nudge keys, in place of the tilt bob's swing."
+    },
+    {
+      "key": "HDROutput",
+      "label": "HDR on screens with HDR on",
+      "kind": "bool",
+      "def": true,
+      "what": "An HDR picture (HDR10) on a screen with Windows' HDR on; off, ordinary colors there too."
+    },
+    {
+      "key": "HDRScoreView",
+      "label": "The score window in the HDR look",
+      "kind": "bool",
+      "def": false,
+      "what": "On an HDR screen, the score window in the HDR look; off, in its true colors."
+    },
+    {
+      "key": "DmdDevice",
+      "label": "A display device for a real DMD",
+      "kind": "string",
+      "def": "",
+      "what": "A display device for a real DMD panel: the path of its DmdDevice64.dll (DMD Extensions', or a panel maker's), or 1 for the one in VPinMAME's folder; empty, none."
+    },
+    {
+      "key": "DmdDeviceConfig",
+      "label": "The display device's settings file",
+      "kind": "string",
+      "def": "",
+      "what": "The display device's own settings file (its DmdDevice.ini); empty, the one beside it."
+    },
+    {
+      "key": "PauseMenuBeforeQuit",
+      "label": "Esc opens the pause menu first",
+      "kind": "bool",
+      "def": true,
+      "what": "Esc (or Q) opens the pause menu with Quit the table picked; off, Esc ends play at once. A front end that starts a table with -minimized always gets the at-once end."
+    },
+    {
+      "key": "ScreenPreset",
+      "label": "The screens layout tables play with",
+      "kind": "string",
+      "def": "",
+      "what": "One of the Screens page's saved layouts, by its name; a table's own settings can name another."
+    },
+    {
+      "key": "ScreenshotAtHighScore",
+      "label": "A screenshot at a high score",
+      "kind": "bool",
+      "def": false,
+      "what": "A screenshot when a game makes the high scores — a ROM machine's in its memory, or a table script's own when it saves a new one — into the table's screenshots."
+    },
+    {
+      "key": "ScreenshotScreens",
+      "label": "The windows a screenshot takes",
+      "kind": "string",
+      "def": "",
+      "what": "The windows a screenshot takes: playfield, backglass, dmd and topper, separated by commas; empty, every window that shows."
+    },
+    {
+      "key": "ScriptsReachOutside",
+      "label": "Tables may reach outside their files",
+      "kind": "bool",
+      "def": false,
+      "what": "Tables' scripts may reach outside their own files — the internet, other programs, every file — as some tables' online features need; off, each script keeps to its table's own files. A table's own line in a [ScriptsReachOutside] section, its file's name = 1 or 0, counts over this for that table."
+    },
+    {
+      "key": "TablesFolder",
+      "label": "The library's tables folder",
+      "kind": "string",
+      "def": "",
+      "what": "The folder holding the library's tables, which first setup sets; the app and the player read the library from it."
+    },
+    {
+      "key": "ScriptsFolder",
+      "label": "The library's scripts folder",
+      "kind": "string",
+      "def": "",
+      "what": "The folder of the scripts tables load (core.vbs, controller.vbs and the machines' own); empty, the Scripts folder beside the tables folder."
+    },
+    {
+      "key": "PinUPFolder",
+      "label": "The library's PinUP packs folder",
+      "kind": "string",
+      "def": "",
+      "what": "The folder holding the library's PinUP packs (PinUP's PUPVideos); empty, the one found above the tables."
+    },
+    {
+      "key": "LibraryLayout",
+      "label": "How the library keeps its tables",
+      "kind": "string",
+      "def": "",
+      "what": "game: each game in a folder of its own, its versions sharing it, as Visual Pinball X 10.8.1 keeps tables; empty, VPX's shared folders. The app's Library settings switch between them, moving the files."
+    },
+    {
+      "key": "PinballXFolder",
+      "label": "PinballX's folder",
+      "kind": "string",
+      "def": "",
+      "what": "Where PinballX is installed, for putting a table's media where it shows them; empty, its usual folders are looked in."
+    },
+    {
+      "key": "PinballYFolder",
+      "label": "PinballY's folder",
+      "kind": "string",
+      "def": "",
+      "what": "Where PinballY is installed, for putting a table's media where it shows them; empty, its usual folders are looked in."
+    }
+  ],
+  "others": [
+    {
+      "title": "VPinMAME — each game's settings",
+      "note": "VPinMAME (which VPX 10.8 drives) keeps these for each game in the registry; ours keeps them in `Machine settings.ini` beside the settings file, under VPinMAME's names, a `[default]` section for every game and one named for a game for that game. A table's script may still set them for its game, over the file's, as VPinMAME lets it. VPin Studio's \"VPinMAME settings\" page edits the same.",
+      "settings": [
+        [
+          "`sound`",
+          "the machine's sound on or off",
+          "works",
+          "with `[Plugin.PinMAME]` `Sound` for every game"
+        ],
+        [
+          "`volume`",
+          "the machine's sound louder or softer, -32 to 32 dB (its attenuation)",
+          "works",
+          "AltSound's mix keeps its own levels"
+        ],
+        [
+          "`cheat`",
+          "PinMAME's cheat mode (VPin Studio: \"skip pinball startup test\")",
+          "works",
+          "over `[Plugin.PinMAME]` `Cheat`"
+        ],
+        [
+          "`sound_mode`",
+          "PinMAME's own sound, AltSound, PinSound or PinSound with recordings",
+          "works",
+          "0 plays the game's own sound, 1 to 3 its AltSound pack if it has one; unset, a pack plays when there is one, as in VPX 5436"
+        ],
+        [
+          "`samples`",
+          "older games' recorded sounds used",
+          "works",
+          "off unless the game's settings say 1 (VPinMAME's default is on, VPX 5436's PinMAME never plays them), through our build of PinMAME (`PinmameSetUseSamples`, `vpi-pinmame --use-samples`)"
+        ],
+        [
+          "`showpindmd`",
+          "a real DMD for the game",
+          "works",
+          "0: none for the game; 1: the one `[VPI]` `DmdDevice` names"
+        ],
+        [
+          "`showwindmd`",
+          "VPinMAME's own score window shown",
+          "works",
+          "0: no floating score window for the game"
+        ],
+        [
+          "`dmd_red`, `dmd_green`, `dmd_blue`, `dmd_perc0`, `dmd_perc33`, `dmd_perc66`, `dmd_colorize`, `dmd_red66` … `dmd_blue0`",
+          "the DMD's color and its shades' brightness, or four colors of its own",
+          "works",
+          "handed to a real DMD as VPinMAME hands them; the score window draws VPX's looks (`[DMD]`)"
+        ],
+        [
+          "`dmd_pos_x`, `dmd_pos_y`, `dmd_width`, `dmd_height`, `dmd_doublesize`",
+          "VPinMAME's own window's place and size",
+          "not-ours",
+          "ours keeps the floating window's place itself, dragged with the mouse (`Score windows.ini`)"
+        ],
+        [
+          "`dmd_border`, `dmd_title`, `dmd_opacity`, `dmd_compact`, `dmd_antialias`, `dmd_only`",
+          "VPinMAME's own window's looks",
+          "later",
+          "ours draws VPX's score view; other looks are an idea for later"
+        ],
+        [
+          "`rol`, `ror`, `flipx`, `flipy`",
+          "VPinMAME's own window turned or flipped",
+          "not-ours",
+          "our windows turn with the view"
+        ],
+        [
+          "`ignore_rom_crc`",
+          "a ROM whose files differ from PinMAME's list run anyway",
+          "not-ours",
+          "the PinMAME library runs it regardless, with no message"
+        ],
+        [
+          "`cabinet_mode`",
+          "no messages on start",
+          "not-ours",
+          "the PinMAME library shows none"
+        ],
+        [
+          "`fastframes`, `synclevel`, `threadpriority`, `low_latency_throttle`, `cpu_affinity_mask`",
+          "VPinMAME's timing and threads",
+          "not-ours",
+          "our PinMAME helper keeps the machine in step with the game"
+        ],
+        [
+          "`samplerate`, `resampling_quality`, `force_stereo`",
+          "VPinMAME's sound output",
+          "not-ours",
+          "the machine's sound goes into our mixer, which plays it on the backglass's output"
+        ],
+        [
+          "`vgmwrite`",
+          "a recording of the sound chips",
+          "not-ours",
+          "a developer's tool"
+        ]
+      ]
+    },
+    {
+      "title": "B2S Server — each table's backglass settings",
+      "note": "B2S Server (VPX 10.8's backglass program) keeps these in `B2STableSettings.xml`; VPin Studio's backglass settings edit the same. VPX 5436 draws backglasses itself, and so do we; a table's own `<table>.ini` holds a table's settings in ours.",
+      "settings": [
+        [
+          "`HideGrill`",
+          "the speaker grill hidden",
+          "works",
+          "`[Plugin.B2S]` `ShowGrill`"
+        ],
+        [
+          "`HideB2SDMD`",
+          "the backglass file's score panel left out",
+          "works",
+          "`[Plugin.B2SLegacy]` `B2SHideB2SDMD`, or `--score-panel off`"
+        ],
+        [
+          "`HideB2SBackglass`",
+          "the backglass left out",
+          "later",
+          "as the legacy plugin's above; for now `[Backglass]` `BackglassOutput = 0` turns the window off"
+        ],
+        [
+          "`HideDMD`",
+          "VPinMAME's own score window hidden",
+          "works",
+          "`showwindmd = 0` for the game (VPinMAME's settings above)"
+        ],
+        [
+          "`DualMode`",
+          "a two-mode backglass's mode",
+          "later",
+          "with B2S Server's other extras"
+        ],
+        [
+          "`UsedLEDType`, `IsGlowBulbOn`, `GlowIndex`",
+          "how B2S Server draws its LEDs and lights' glow",
+          "not-ours",
+          "ours draws them as VPX 5436 does"
+        ],
+        [
+          "`AnimationSlowDowns`, `AllAnimationSlowDown`",
+          "the backglass's light shows slowed",
+          "later",
+          "with B2S Server's other extras"
+        ],
+        [
+          "`LampsSkipFrames`, `SolenoidsSkipFrames`, `GIStringsSkipFrames`, `LEDsSkipFrames`",
+          "fewer updates, for slow computers",
+          "not-ours",
+          "ours updates every frame"
+        ],
+        [
+          "`StartAsEXE`, `StartBackground`, `FormToFront`, `FormToBack`, `FormNoFocus`",
+          "how B2S Server's own program and window run",
+          "not-ours",
+          "ours draws inside the player"
+        ],
+        [
+          "`MatchingFileName`, `DisableFuzzyMatching`",
+          "which backglass file a table gets",
+          "later",
+          "the library; now the one named like the table"
+        ],
+        [
+          "`ScreenRes.txt`, `<table>.res`",
+          "where B2S Server's windows go",
+          "works",
+          "our windows from `[Backglass]` and `[ScoreView]`; bringing them over at setup, planned"
+        ],
+        [
+          "`ArePluginsOn`, logs, screenshots",
+          "B2S Server's plugins and records",
+          "not-ours",
+          "ours runs DOF itself"
+        ]
+      ]
+    },
+    {
+      "title": "PinUP Player and PinUP Popper",
+      "note": "PinUP Player plays packs in windows of its own, placed by `PinUpPlayer.ini` (one section per screen), which Popper's screen setup writes. VPX 5436 draws packs inside its own windows instead, and so do we.",
+      "settings": [
+        [
+          "`[INFO…]` `ScreenXPos`, `ScreenYPos`, `ScreenWidth`, `ScreenHeight`, `ScreenRotation`",
+          "where each of PinUP Player's screens is",
+          "later",
+          "screen roles at setup, every layout; packs draw in our backglass, score and topper windows now"
+        ],
+        [
+          "`[INFO…]` `volume`",
+          "each screen's volume",
+          "later",
+          "with the pause menu's sound sliders; the pack's main volume works (`[Plugin.PUP]` `MainVol`)"
+        ],
+        [
+          "`[INFO…]` `hidestopped`, `fitToWindow`, `AspectWide`, `AspectHigh`, `VideoDriver`",
+          "PinUP Player's own windows and decoding",
+          "not-ours",
+          "ours plays packs inside the player through FFmpeg"
+        ],
+        [
+          "Popper's screens, themes, wheels, videos, menus, playlists, statistics",
+          "the front end",
+          "later",
+          "planned: our own cabinet mode, and launching Popper kept"
+        ],
+        [
+          "Popper's per-game launch options, scripts and volume",
+          "how Popper starts a table",
+          "later",
+          "the library and cabinet mode; a table's volume works now in its own `<table>.ini`"
+        ]
+      ]
+    },
+    {
+      "title": "VPin Studio",
+      "note": "VPin Studio is a manager: most of its settings are its own (library, media, high scores, front ends), for the app. Those that change how a table plays edit other programs' settings, each covered above.",
+      "settings": [
+        [
+          "Table settings: VPX's per-table `.ini`, POV files, script options",
+          "a table's own VPX settings",
+          "works",
+          "`<table>.ini`, `<table>.pov`, `[TableOption]`"
+        ],
+        [
+          "VPinMAME settings",
+          "each game's VPinMAME settings",
+          "works",
+          "`Machine settings.ini` (above); the sound, volume, recorded sounds, cheat mode and a real DMD's for each game on a table's Settings window"
+        ],
+        [
+          "Backglass settings",
+          "B2S Server's per-table settings",
+          "works",
+          "as in the B2S Server table above"
+        ],
+        [
+          "DMD position",
+          "where the score display goes (VPinMAME, DMD Extensions, B2S)",
+          "works",
+          "the score window's place (`[ScoreView]`, the floating window's own); DMD Extensions keeps its own file"
+        ],
+        [
+          "ALT Sound and ALT Color on or off",
+          "a table's sound and color packs",
+          "works",
+          "`[Plugin.AltSound]`, `[Plugin.Serum]`, `[Plugin.VNI]` `Enable`, in the table's own `.ini` for one table"
+        ],
+        [
+          "PUP pack on or off, its options",
+          "a table's PinUP pack",
+          "works",
+          "`[Plugin.PUP]` `Enable` in the table's own `.ini`; a pack's option scripts with the pack manager"
+        ],
+        [
+          "PinVol volumes",
+          "each table's volume",
+          "works",
+          "PinVol's table below"
+        ],
+        [
+          "Its own preferences: folders, media, high scores, Popper, PinballX, PinballY",
+          "the manager itself",
+          "later",
+          "planned"
+        ]
+      ]
+    },
+    {
+      "title": "PinVol",
+      "note": "PinVol (which VPin Studio drives) sets Windows' volume for each table.",
+      "settings": [
+        [
+          "primary and secondary volume",
+          "the table's volume on each output",
+          "works",
+          "`[Player]` `SoundVolume` and `MusicVolume` in the table's own `<table>.ini`"
+        ],
+        [
+          "SSF bass, front and rear volumes",
+          "each speaker group's level in a surround or SSF cabinet",
+          "later",
+          "with the speaker test and the sound settings; VPX's speaker layouts work (`Sound3D`)"
+        ],
+        [
+          "night mode",
+          "everything quieter at night",
+          "later",
+          "volume presets on the settings screen"
+        ]
+      ]
+    },
+    {
+      "title": "Table scripts",
+      "settings": [
+        [
+          "`Table.Option` (VPX 10.8's table options)",
+          "a table's own choices: sound levels, extras, looks",
+          "works",
+          "`[TableOption]` in the settings or the table's `.ini`; set on a table's Settings window"
+        ],
+        [
+          "`controller.vbs`'s toy choices",
+          "B2S, and contactors and other toys through DOF or as sounds",
+          "works",
+          "`[Controller]`"
+        ],
+        [
+          "`Controller.Games(…).Settings` and `Controller.Settings`",
+          "VPinMAME's settings, which scripts read and set",
+          "works",
+          "`Machine settings.ini`, the script's values over the file's for the session"
+        ],
+        [
+          "a script's own options at its top (`Const …`)",
+          "choices written into the script",
+          "works",
+          "a `<table>.vbs` beside the table in the script's place, as VPX reads it; a simple editor for them, planned"
+        ],
+        [
+          "UltraDMD's and FlexDMD's registry settings",
+          "the add-ons' own choices",
+          "works",
+          "`Add-on settings.ini`"
+        ]
+      ]
+    },
+    {
+      "title": "DOF, DMD Extensions, AltSound, libdmdutil",
+      "note": "Programs we run beside the player, each reading its own settings file, as in a VPX setup.",
+      "settings": [
+        [
+          "DOF's `GlobalConfig_B2SServer.xml`, `Cabinet.xml`, the DOF Config Tool's files",
+          "the cabinet's toys",
+          "own-file",
+          "libdof reads them from the DOF folder; the configurator, planned"
+        ],
+        [
+          "DMD Extensions' `DmdDevice.ini`",
+          "its displays, panels and coloring",
+          "own-file",
+          "`[VPI]` `DmdDeviceConfig` names the file"
+        ],
+        [
+          "an AltSound pack's `altsound.ini`",
+          "the pack's mixer",
+          "own-file",
+          "libaltsound reads it"
+        ],
+        [
+          "libdmdutil",
+          "real DMD panels",
+          "works",
+          "`[Plugin.DMDUtil]`, above"
+        ]
+      ]
+    }
+  ]
+}

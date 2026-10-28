@@ -1,0 +1,41 @@
+{
+  "about": "What the public repository holds, for public.py: the program, its sources and what builds it. A path ending in / is a folder. 'keep' is copied from the last commit; 'drop' is then taken out of it.",
+  "keep": [
+    { "path": "Cargo.toml", "why": "the workspace: its members cut down to those kept" },
+    { "path": "Cargo.lock", "why": "the versions of every crate, without those only the others used" },
+    { "path": ".cargo/", "why": "the build's own settings (the C runtime built into each program)" },
+    { "path": ".gitattributes", "why": "line endings" },
+    { "path": "LICENSE", "why": "the GNU General Public License, version 3" },
+    { "path": "CREDITS.md", "why": "every project it builds on, without the private blocks" },
+    { "path": "docs/resources/settings.md", "why": "every setting the program has: its name in the settings file, what it does, its values and its default" },
+    { "path": "engine/", "why": "the engine: the physics, the player, the helper programs, the library and the settings" },
+    { "path": "app/", "why": "the app and its screens" },
+    { "path": "vendor/", "why": "our copies of SDL and SDL_ttf's binding, and FFmpeg's headers" },
+    { "path": ".github/", "why": "the issue forms" },
+    { "path": "tools/setup/", "why": "installs the tools a build needs" },
+    { "path": "tools/cmake/", "why": "how the libraries are told to keep this PC's folders out of what they record" },
+    { "path": "tools/thirdparty/", "why": "builds FFmpeg, libserum, libvni, the USB libraries and what libdmdutil loads" },
+    { "path": "tools/pinmame/", "why": "builds PinMAME, with our patches" },
+    { "path": "tools/altsound/", "why": "builds libaltsound, with our patches" },
+    { "path": "tools/rom2altsound/", "why": "builds rom2altsound, which makes AltSound packs from a table's ROM" },
+    { "path": "tools/libwinevbs/", "why": "builds libwinevbs, with our patches" },
+    { "path": "tools/dof/", "why": "builds libdof, with our patches" },
+    { "path": "tools/dmdutil/", "why": "builds libdmdutil, with our patches" },
+    { "path": "tools/libarchive/", "why": "builds libarchive" },
+    { "path": "tools/release/", "why": "gathers, checks and packs a release" },
+    { "path": "tools/idl-gen/", "why": "makes the player's script-object tables from VPX's interface" },
+    { "path": "tools/kicker-pictures/", "why": "paints the kickers' pictures" },
+    { "path": "tools/room-picture/", "why": "makes the default room picture" },
+    { "path": "tools/settings-map/", "why": "makes the app's catalog of every setting" },
+    { "path": "tools/menu-fonts/", "why": "makes the pause menu's fonts" }
+  ],
+  "drop": [
+    { "path": "tools/dof/check/", "why": "a test of our libdof patches against made-up cabinets, run on the development PC" },
+    { "path": "tools/release/public/", "why": "the public README and .gitignore, put at the top instead" },
+    { "path": "tools/release/security_scan.py", "why": "the release's own security and privacy scan, run on the development PC: its patterns name the team's own words" }
+  ],
+  "top": [
+    { "path": "README.md", "from": "tools/release/public/README.md" },
+    { "path": ".gitignore", "from": "tools/release/public/.gitignore" }
+  ]
+}
