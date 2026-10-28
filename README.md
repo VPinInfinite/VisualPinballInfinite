@@ -1,6 +1,8 @@
-# Visual Pinball Infinite
+<p align="center"><img src="app/icons/icon.png" width="128" alt="The Visual Pinball Infinite logo: an infinity sign in a glowing ring"></p>
 
-**A new pinball engine, and everything around it, in one app.** Free and open source, for Windows 10 and 11.
+<h1 align="center">Visual Pinball Infinite</h1>
+
+<p align="center"><strong>A new pinball engine, and everything around it, in one app.</strong> Free and open source, for Windows 10 and 11.</p>
 
 <p align="center"><img src="https://visualpinballinfinite.org/images/library-1600.webp" width="100%" alt="The app's library: each table as a card with its playfield picture, its maker and year, and what it holds"></p>
 <p align="center"><sub>The library. Tables shown: AC/DC (LUCI Premium) and Andromeda by VPin Workshop, Apollo 13 by UnclePaulie and team, Attack from Mars by JPSalas and team. Pictures from the Virtual Pinball Spreadsheet.</sub></p>
