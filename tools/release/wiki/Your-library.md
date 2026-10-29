@@ -15,7 +15,7 @@ Settings › Library sets what the library opens as, what tiles show and their s
 
 - **All tables**, **Favourites**, **Top rated** (the tables you've given stars, the most stars first), **Recently played**, **Recently added**, and **Needs attention** (the tables needing a look, by kind).
 - **Smart playlists:** VPin Workshop's tables, Originals, The 1990s, and any of VPS's tags you tick in Settings › Library › Playlists (a release's features such as SSF, VR or FastFlips, or a machine's themes).
-- **Your playlists:** **New playlist** makes one; **Add to a playlist…** on a table's page puts a table in it. Settings › Library › Playlists renames or deletes them (their tables stay in the library).
+- **Your playlists:** **New playlist** makes one; **Add to a playlist…**, in a table's right-click menu or on its page, puts a table in it. Settings › Library › Playlists renames or deletes them (their tables stay in the library).
 - **Browse by** maker, decade or type.
 - **Has:** only the tables with a backglass, ROM, PinUP pack, AltSound pack or color DMD, or with a playfield picture or a wheel.
 - **Hidden:** the tables you've hidden, when Settings › Library › Playlists shows the Hidden playlist.

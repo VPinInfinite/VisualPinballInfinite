@@ -154,7 +154,7 @@
           {/if}
         </div>
       {:else}
-        <p class="what">None yet. Make one here, or from a table’s page: its … menu, Add to a playlist.</p>
+        <p class="what">None yet. Make one here, or right-click a table in the library: Add to a playlist.</p>
       {/each}
       <form class="row" onsubmit={(e) => { e.preventDefault(); if (newName.trim()) { newPlaylist(newName); newName = ''; } }}>
         <input class="select" bind:value={newName} placeholder="A new playlist’s name" aria-label="A new playlist’s name" />
