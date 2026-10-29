@@ -11,7 +11,7 @@
   import ListView from './ListView.svelte';
   import {
     app, savePrefs, decade, needsAttention, problems, PROBLEM_KINDS, isVpw, isOriginal, hasTests, groupOf, openTable, renamePacks,
-    tagPlaylists, newPlaylist, setHidden, inspect, play,
+    tagPlaylists, newPlaylist, togglePlaylist, setHidden, inspect, play,
   } from './store.svelte.js';
 
   // the tables shown: all but those hidden, which only the Hidden smart playlist shows
@@ -20,14 +20,45 @@
   const hiddenTables = $derived(all.filter((t) => t.hiddenTable));
   const by = $derived(app.prefs.groupBy);
 
-  // a right-click on a table's tile or row: its menu; Remove asks first, in its own window
+  // a right-click on a table's tile or row: its menu; Remove asks first, in its own window. Add to a
+  // playlist opens the user's playlists beside it, and a pick puts the table in that one and closes both
   let tableMenu = $state(null);
+  let plName = $state('');
   function menuOn(e) {
     const id = e.target.closest?.('[data-table]')?.dataset.table;
     const t = id && all.find((x) => x.id === id);
     if (!t) return;
     e.preventDefault();
-    tableMenu = { t, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 240) };
+    plName = '';
+    tableMenu = { t, sub: null, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 240) };
+  }
+
+  // the playlists' flyout, to the right of its item, or to the left where the window runs out
+  // it closes a moment after the pointer reaches another of the menu's items, so a slant across one on
+  // the way to the flyout leaves it open
+  let subClosing = null;
+  function keepSub() {
+    clearTimeout(subClosing);
+    subClosing = null;
+  }
+  function leaveSub(e) {
+    if (!tableMenu?.sub || subClosing || !e.target.closest('.ctx > button') || e.target.closest('.hassub')) return;
+    subClosing = setTimeout(() => {
+      subClosing = null;
+      if (tableMenu) tableMenu.sub = null;
+    }, 300);
+  }
+  function openSub(e) {
+    keepSub();
+    if (tableMenu.sub) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = r.right + 256 <= window.innerWidth ? r.right + 8 : r.left - 254;
+    const y = Math.max(8, Math.min(r.top - 7, window.innerHeight - 200));
+    tableMenu.sub = { x, y, maxH: window.innerHeight - y - 12 };
+  }
+  function addTo(pl) {
+    if (!pl.tables.includes(tableMenu.t.key)) togglePlaylist(pl, tableMenu.t);
+    tableMenu = null;
   }
 
   // the newest twenty, the newest first
@@ -170,7 +201,7 @@
   const attentionShown = $derived(app.pick === 'attention' ? attention.map((g) => ({ ...g, shown: arrange(g.list, false) })).filter((g) => g.shown.length) : []);
 
   const emptyText = $derived(
-    shown.length ? '' : chosen.list.length ? 'No table here matches. Clear a filter, or search for something else.' : empties[app.pick] || (app.pick.startsWith('pl:') ? 'Nothing in it yet: add tables from a table’s page, its … menu, Add to a playlist.' : 'No tables here.'),
+    shown.length ? '' : chosen.list.length ? 'No table here matches. Clear a filter, or search for something else.' : empties[app.pick] || (app.pick.startsWith('pl:') ? 'Nothing in it yet: right-click a table, Add to a playlist, or use its page’s … menu.' : 'No tables here.'),
   );
 
   const chips = [
@@ -378,10 +409,13 @@
 </div>
 
 <!-- a table's menu closed by a click anywhere, Escape or scrolling -->
-<svelte:window onclick={() => (tableMenu = null)} onkeydown={(e) => e.key === 'Escape' && (tableMenu = null)} onwheel={() => (tableMenu = null)} />
+<svelte:window onclick={() => (tableMenu = null)} onkeydown={(e) => e.key === 'Escape' && (tableMenu = null)} onwheel={(e) => !e.target.closest?.('.ctx') && (tableMenu = null)} />
 
 {#if tableMenu}
-  <div class="ctx" role="menu" style="left: {tableMenu.x}px; top: {tableMenu.y}px">
+  <!-- hovering another item closes the playlists' flyout -->
+  <!-- svelte-ignore a11y_mouse_events_have_key_events -->
+  <div class="ctx" role="menu" tabindex="-1" style="left: {tableMenu.x}px; top: {tableMenu.y}px" onmouseover={leaveSub}>
+    <button type="button" role="menuitem" class="hassub" class:open={tableMenu.sub} aria-haspopup="menu" aria-expanded={!!tableMenu.sub} onmouseenter={openSub} onclick={(e) => { e.stopPropagation(); openSub(e); }}>Add to a playlist<Icon name="chevR" size={14} /></button>
     <button type="button" role="menuitem" onclick={() => openTable(tableMenu.t.id, shown.map((x) => x.id))}>Open its page</button>
     <button type="button" role="menuitem" onclick={() => { const id = tableMenu.t.id; tableMenu = null; inspect(id); }}>Open in the table editor</button>
     <button type="button" role="menuitem" onclick={() => { const t = tableMenu.t; tableMenu = null; play(t); }}>Play</button>
@@ -393,6 +427,21 @@
     {/if}
     <button type="button" role="menuitem" class="bad" onclick={() => (app.removing = tableMenu.t)}>Remove from library…</button>
   </div>
+  {#if tableMenu.sub}
+    <!-- the user's playlists, ticked where it's in one already; a pick adds it and closes the menu -->
+    <div class="ctx sub" role="menu" tabindex="-1" onmouseenter={keepSub} style="left: {tableMenu.sub.x}px; top: {tableMenu.sub.y}px; max-height: {tableMenu.sub.maxH}px">
+      {#each app.playlists as pl (pl.id)}
+        {@const has = pl.tables.includes(tableMenu.t.key)}
+        <button type="button" role="menuitem" disabled={has} title={has ? 'It’s in this one already' : ''} onclick={() => addTo(pl)}>
+          <span class="tick">{#if has}<Icon name="check" size={14} width={2.6} />{/if}</span>{pl.name}
+        </button>
+      {/each}
+      <form class="newpl ctxnew" class:alone={!app.playlists.length} onsubmit={(e) => { e.preventDefault(); if (plName.trim()) { newPlaylist(plName, tableMenu.t); tableMenu = null; } }}>
+        <input class="select" bind:value={plName} placeholder="New Playlist" aria-label="A new playlist’s name" onclick={(e) => e.stopPropagation()} />
+        <button type="submit" class="btn small" onclick={(e) => e.stopPropagation()}>Make</button>
+      </form>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -401,9 +450,15 @@
     position: fixed; z-index: 40; width: 240px; padding: 6px; border-radius: 12px; background: #151a24; border: 1px solid var(--control-line);
     box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55); display: flex; flex-direction: column; gap: 2px;
   }
-  .ctx > button { padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: var(--fg); }
-  .ctx > button:hover { background: var(--selected); }
+  .ctx.sub { z-index: 41; overflow-y: auto; }
+  .ctx > button { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; text-align: left; color: var(--fg); }
+  .ctx > button:hover:not(:disabled), .ctx > button.open { background: var(--selected); }
+  .ctx > button:disabled { color: var(--muted); cursor: default; }
   .ctx > button.bad { color: #f0a8a8; }
+  .ctx > .hassub { justify-content: space-between; }
+  .ctx .tick { display: inline-flex; flex: 0 0 16px; color: var(--good); }
+  .ctx > .ctxnew { padding: 6px 6px 4px; border-top: 1px solid var(--line-soft); margin-top: 4px; }
+  .ctx > .ctxnew.alone { border-top: 0; margin-top: 0; }
   aside {
     flex: 0 0 248px; padding: 18px 12px 28px; background: var(--side); border-right: 1px solid var(--line);
     display: flex; flex-direction: column; gap: 20px; position: sticky; top: 61px; align-self: flex-start;
