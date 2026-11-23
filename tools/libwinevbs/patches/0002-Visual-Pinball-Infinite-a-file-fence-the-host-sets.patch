@@ -1,0 +1,282 @@
+From 8ca4b1abf58d9c76e7fefafc94688061bd0de653 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH 2/4] Visual Pinball Infinite: a file fence the host sets
+
+libwinevbs_set_file_fence(allow, base_dir): every path the file object opens, creates, lists or looks up (CreateFileW, CreateDirectoryW, FindFirstFileW, GetFileAttributesW) is first made absolute - a relative path taken from base_dir - with its . and .. parts and the trailing dots and spaces Windows ignores resolved, and handed to allow(path, write); a refused path fails with access denied, as does a share, a device or a stream. GetFullPathNameW takes relative paths from base_dir too. GetAbsolutePathName keeps the rest of its path when a parent folder can't be looked up, as behind the fence.
+---
+ include/libwinevbs.h          |   9 ++
+ src/wine.c                    | 171 ++++++++++++++++++++++++++++++++++
+ wine/dlls/scrrun/filesystem.c |   6 +-
+ winevbs64.def                 |   1 +
+ 4 files changed, 186 insertions(+), 1 deletion(-)
+
+diff --git a/include/libwinevbs.h b/include/libwinevbs.h
+index 06e5a11..7d75bea 100644
+--- a/include/libwinevbs.h
++++ b/include/libwinevbs.h
+@@ -57,6 +57,15 @@ typedef struct {
+ LIBWINEVBS_API void libwinevbs_init(const libwinevbs_callbacks_t* callbacks);
+ LIBWINEVBS_API void libwinevbs_shutdown(void);
+ 
++/* Visual Pinball Infinite: a fence for the file object (Scripting.FileSystemObject). With one set,
++   every path the file object opens, creates, lists or looks up is first made absolute -- a relative
++   path taken from base_dir -- with its "." and ".." parts resolved, and handed to allow(path, write),
++   write being nonzero for anything that creates or changes a file or folder. A path it refuses
++   fails as if access were denied ("Permission denied" in the script), and so does one that isn't a
++   plain drive path (a share, a device or a stream). NULL lifts the fence. */
++typedef int (*libwinevbs_file_fence_t)(const WCHAR* path, int write);
++LIBWINEVBS_API void libwinevbs_set_file_fence(libwinevbs_file_fence_t allow, const WCHAR* base_dir);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/wine.c b/src/wine.c
+index ece9324..082ab49 100644
+--- a/src/wine.c
++++ b/src/wine.c
+@@ -1146,6 +1146,148 @@ LSTATUS WINAPI RegQueryValueExA(HKEY hkey, LPCSTR name, LPDWORD reserved, LPDWOR
+    return STATUS_SUCCESS;
+ }
+ 
++/* Visual Pinball Infinite: the host's fence for the file object (libwinevbs_set_file_fence). The
++   functions below that reach the disk by a path ask it first. */
++static libwinevbs_file_fence_t g_file_fence;
++static WCHAR g_fence_base[MAX_PATH];
++
++void libwinevbs_set_file_fence(libwinevbs_file_fence_t allow, const WCHAR* base_dir)
++{
++   g_file_fence = allow;
++   g_fence_base[0] = 0;
++   if (base_dir)
++      lstrcpynW(g_fence_base, base_dir, MAX_PATH);
++}
++
++static BOOL fence_is_sep(WCHAR c)
++{
++   return c == '\\' || c == '/';
++}
++
++static BOOL fence_is_letter(WCHAR c)
++{
++   return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
++}
++
++static BOOL fence_same_ascii(const WCHAR *a, const char *b, size_t len)
++{
++   for (size_t i = 0; i < len; i++) {
++      WCHAR c = a[i];
++      if (c >= 'a' && c <= 'z')
++         c -= 'a' - 'A';
++      if (!b[i] || c != (WCHAR)b[i])
++         return FALSE;
++   }
++   return !b[len];
++}
++
++/* Whether Windows would read a path part as a device (CON, NUL, COM1, ...), whatever its extension */
++static BOOL fence_is_device(const WCHAR *name, size_t len)
++{
++   static const char *const devices[] = { "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$" };
++   size_t stem = 0;
++   while (stem < len && name[stem] != '.')
++      stem++;
++   for (size_t i = 0; i < ARRAY_SIZE(devices); i++)
++      if (fence_same_ascii(name, devices[i], stem))
++         return TRUE;
++   return stem == 4 && (fence_same_ascii(name, "COM", 3) || fence_same_ascii(name, "LPT", 3)) && name[3] >= '0' && name[3] <= '9';
++}
++
++/* `path` made absolute -- from the fence's base folder when relative -- with '/' turned to '\\', its
++   "." and ".." parts resolved, and the trailing dots and spaces Windows ignores dropped, into `out`.
++   FALSE for anything but a plain drive path: a share, a device, a stream, a drive's current folder,
++   or a part made only of dots and spaces other than "." and "..". */
++static BOOL fence_normalize(const WCHAR *path, WCHAR *out, size_t size)
++{
++   WCHAR joined[2 * MAX_PATH];
++   size_t j = 0;
++   if (!path || !path[0] || size < 4)
++      return FALSE;
++   if (fence_is_sep(path[0]) && fence_is_sep(path[1]))
++      return FALSE;
++   if (fence_is_letter(path[0]) && path[1] == ':') {
++      if (!fence_is_sep(path[2]))
++         return FALSE;
++   } else {
++      if (!fence_is_letter(g_fence_base[0]) || g_fence_base[1] != ':')
++         return FALSE;
++      /* rooted on the base folder's drive, or inside the base folder */
++      size_t take = fence_is_sep(path[0]) ? 2 : wcslen(g_fence_base);
++      for (size_t i = 0; i < take && j < ARRAY_SIZE(joined) - 1; i++)
++         joined[j++] = g_fence_base[i];
++      if (!fence_is_sep(path[0]) && j < ARRAY_SIZE(joined) - 1)
++         joined[j++] = '\\';
++   }
++   for (const WCHAR *p = path; *p && j < ARRAY_SIZE(joined) - 1; p++)
++      joined[j++] = *p;
++   joined[j] = 0;
++   if (wcschr(joined + 2, ':'))
++      return FALSE;
++
++   /* the drive, then each part; ".." never climbs above the drive */
++   size_t n = 0;
++   out[n++] = (joined[0] >= 'a' && joined[0] <= 'z') ? joined[0] - ('a' - 'A') : joined[0];
++   out[n++] = ':';
++   const size_t root = n;
++   const WCHAR *p = joined + 2;
++   while (*p) {
++      while (fence_is_sep(*p))
++         p++;
++      if (!*p)
++         break;
++      const WCHAR *start = p;
++      while (*p && !fence_is_sep(*p))
++         p++;
++      size_t len = p - start;
++      BOOL dots_only = TRUE;
++      for (size_t i = 0; i < len && dots_only; i++)
++         dots_only = start[i] == '.' || start[i] == ' ';
++      if (dots_only) {
++         size_t trimmed = len;
++         while (trimmed > 0 && start[trimmed - 1] == ' ')
++            trimmed--;
++         if (trimmed == 1 && start[0] == '.')
++            continue;
++         if (trimmed == 2 && start[0] == '.' && start[1] == '.') {
++            while (n > root && out[n - 1] != '\\')
++               n--;
++            if (n > root)
++               n--;
++            continue;
++         }
++         return FALSE;
++      }
++      while (len > 0 && (start[len - 1] == '.' || start[len - 1] == ' '))
++         len--;
++      if (fence_is_device(start, len) || n + 1 + len + 1 > size)
++         return FALSE;
++      out[n++] = '\\';
++      memcpy(out + n, start, len * sizeof(WCHAR));
++      n += len;
++   }
++   if (n == root)
++      out[n++] = '\\';
++   out[n] = 0;
++   return TRUE;
++}
++
++/* Whether the fence lets the file object reach `path`, for writing when `write`: if so, the path to
++   use, made absolute, in `out`; if not, the last error says access is denied. With no fence set,
++   `path` as it is. */
++static BOOL fence_allows(LPCWSTR path, int write, WCHAR *out, size_t size)
++{
++   if (!g_file_fence) {
++      lstrcpynW(out, path ? path : L"", size);
++      return TRUE;
++   }
++   if (!fence_normalize(path, out, size) || !g_file_fence(out, write)) {
++      SetLastError(ERROR_ACCESS_DENIED);
++      return FALSE;
++   }
++   return TRUE;
++}
++
+ BOOL WINAPI CloseHandle(HANDLE handle)
+ {
+    if (handle)
+@@ -1163,6 +1305,10 @@ BOOL WINAPI CopyFileW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, BOOL bF
+ 
+ BOOL WINAPI CreateDirectoryW(LPCWSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)
+ {
++   WCHAR fenced[MAX_PATH];
++   if (!fence_allows(lpPathName, 1, fenced, MAX_PATH))
++      return FALSE;
++   lpPathName = fenced;
+    CHAR szPathName[MAX_PATH];
+    int wlen = wcslen(lpPathName);
+    /* Linux/macOS filesystems use UTF-8 paths; CP_ACP can't represent
+@@ -1249,6 +1395,10 @@ static int resolve_path_ci(char *path) { (void)path; return 0; }
+ 
+ HANDLE WINAPI CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
+ {
++   WCHAR fenced[MAX_PATH];
++   if (!fence_allows(lpFileName, dwDesiredAccess != GENERIC_READ || dwCreationDisposition != OPEN_EXISTING, fenced, MAX_PATH))
++      return INVALID_HANDLE_VALUE;
++   lpFileName = fenced;
+    CHAR szFileName[MAX_PATH];
+    int wlen = wcslen(lpFileName);
+    int blen = WideCharToMultiByte(LIBWINEVBS_PATH_CP, 0, lpFileName, wlen, szFileName, sizeof(szFileName) - 1, NULL, NULL);
+@@ -1366,6 +1516,10 @@ HANDLE WINAPI FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileDa
+ {
+    if (!lpFileName || !lpFindFileData)
+       return INVALID_HANDLE_VALUE;
++   WCHAR fenced[MAX_PATH];
++   if (!fence_allows(lpFileName, 0, fenced, MAX_PATH))
++      return INVALID_HANDLE_VALUE;
++   lpFileName = fenced;
+ 
+    WCHAR pathW[MAX_PATH];
+    wcsncpy(pathW, lpFileName, MAX_PATH);
+@@ -1460,6 +1614,10 @@ BOOL WINAPI GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInf
+ DWORD WINAPI GetFileAttributesW(LPCWSTR lpFileName)
+ {
+    DWORD status = INVALID_FILE_ATTRIBUTES;
++   WCHAR fenced[MAX_PATH];
++   if (!fence_allows(lpFileName, 0, fenced, MAX_PATH))
++      return INVALID_FILE_ATTRIBUTES;
++   lpFileName = fenced;
+    CHAR szFileName[MAX_PATH];
+    int wlen = wcslen(lpFileName);
+    int blen = WideCharToMultiByte(LIBWINEVBS_PATH_CP, 0, lpFileName, wlen, szFileName, sizeof(szFileName) - 1, NULL, NULL);
+@@ -1499,6 +1657,19 @@ BOOL WINAPI GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize)
+ 
+ DWORD WINAPI GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart)
+ {
++   /* Visual Pinball Infinite: behind the fence, a relative path is taken from its base folder */
++   WCHAR full[MAX_PATH];
++   if (g_file_fence && fence_normalize(lpFileName, full, MAX_PATH)) {
++      DWORD len = wcslen(full);
++      if (!lpBuffer || nBufferLength <= len)
++         return len + 1;
++      wcscpy(lpBuffer, full);
++      if (lpFilePart) {
++         WCHAR *last = wcsrchr(lpBuffer, L'\\');
++         *lpFilePart = (last && last[1]) ? last + 1 : NULL;
++      }
++      return len;
++   }
+    if (wcscmp(lpFileName, L".") == 0) {
+       char currentDirBuffer[4096];
+       size_t i;
+diff --git a/wine/dlls/scrrun/filesystem.c b/wine/dlls/scrrun/filesystem.c
+index a827510..68d72ec 100644
+--- a/wine/dlls/scrrun/filesystem.c
++++ b/wine/dlls/scrrun/filesystem.c
+@@ -3775,8 +3775,12 @@ static HRESULT WINAPI filesys_GetAbsolutePathName(IFileSystem3 *iface, BSTR path
+         ch = buf[i];
+         buf[i] = 0;
+         fh = FindFirstFileW(buf, &fdata);
+-        if(fh == INVALID_HANDLE_VALUE)
++        if(fh == INVALID_HANDLE_VALUE) {
++            /* Visual Pinball Infinite: keep the rest of the path when a folder can't be looked up
++               (behind the host's file fence, its parents can't) */
++            buf[i] = ch;
+             break;
++        }
+ 
+         exp_len = lstrlenW(fdata.cFileName);
+         if(exp_len == i-beg)
+diff --git a/winevbs64.def b/winevbs64.def
+index 3535763..2c3d221 100644
+--- a/winevbs64.def
++++ b/winevbs64.def
+@@ -5,6 +5,7 @@ libwinevbs_init
+ libwinevbs_shutdown
+ libwinevbs_log
+ libwinevbs_hresult_name
++libwinevbs_set_file_fence
+ 
+ ; COM/OLE
+ CoCreateInstance
+-- 
+2.55.0.windows.3
+

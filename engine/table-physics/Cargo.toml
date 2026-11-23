@@ -1,0 +1,14 @@
+[package]
+name = "table-physics"
+version.workspace = true
+description = "Builds a converted table's compatibility physics from its parts, as Visual Pinball X does."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+physics-compat = { path = "../physics-compat" }
+roxmltree = "0.21"
+vpin = "0.38"

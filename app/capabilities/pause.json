@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pause",
+  "description": "The app's pause menu over VPX: a window of its own over the playfield while a game is paused, hearing the app and closing itself.",
+  "windows": ["pause-menu"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-set-focus"
+  ]
+}

@@ -1,0 +1,45 @@
+# Changes
+
+- 0.7.1
+    - Use fixed sdl3-ttf-src 3.2.3 (SDL_ttf 3.2.2 with CMake 4 compatibility fix)
+
+- 0.7.0
+    - Update sdl3-sys to 0.7.0
+
+- 0.6.1:
+    - Enable `use-pkg-config` and `use-vcpkg` features by default
+    - Require exact version match for source crate when building from source (fix for Android)
+    - Add `new` and `value` assoc function/method for groups (ids, enums, etc)
+    - impl Display for ids under the `display-impls` feature
+    - Add metadata for structs and unions
+    - Fix Android builds being built for the wrong arch (Thanks to Archee)
+
+- 0.6.0:
+    - Update sdl3-sys to 0.6.0
+    - Synchronize version number with sdl3-sys
+    - Add metadata
+    - Remove deprecated aliases
+    - Make some functions safe and/or const
+    - MSRV 1.85
+
+- 0.2.1:
+    - Expose `TTF_TextData`
+    - Fix an issue where creating symlinks after a build could fail
+    - Fix copying the built library when cross compiling
+
+- 0.2.0:
+    - Update sdl3-sys to 0.5.0
+    - Add `no-link` feature
+    - On Apple targets, look for frameworks in `~/Library/Frameworks` too
+
+- 0.1.3:
+    - Add `link-framework` feature (doesn't work with `build-from-source` yet)
+
+- 0.1.2:
+    - Fix vendored build of Freetype with CMake 4
+
+- 0.1.1:
+    - Update SDL_ttf to 3.2.2
+
+- 0.1.0:
+    - First release

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the app's own screens may ask of its window: its events and the window's basics. The app's own commands are open to them, as Tauri's are by default.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

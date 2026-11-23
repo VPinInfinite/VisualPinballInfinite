@@ -1,0 +1,57 @@
+From 1f4fb2a03fffac568a0c872204e5bafcb6636c3e Mon Sep 17 00:00:00 2001
+From: Jason Millard <jsm174@gmail.com>
+Subject: [PATCH] fix: crash when a DMD is destroyed while FindDisplays is
+ still probing (#123)
+
+---
+ include/DMDUtil/DMD.h | 1 +
+ src/DMD.cpp           | 7 ++++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/include/DMDUtil/DMD.h b/include/DMDUtil/DMD.h
+index 17f4a4f..76e5a7a 100644
+--- a/include/DMDUtil/DMD.h
++++ b/include/DMDUtil/DMD.h
+@@ -327,6 +327,7 @@ class DMDUTILAPI DMD
+   std::thread* m_pDumpDMDRgb565Thread;
+   std::thread* m_pDumpDMDRgb888Thread;
+   std::thread* m_pPupDMDThread;
++  std::thread m_findDisplaysThread;
+   std::thread* m_pSerumThread;
+   std::thread* m_pVniThread;
+   std::shared_mutex m_dmdSharedMutex;
+diff --git a/src/DMD.cpp b/src/DMD.cpp
+index dfc3352..d60d1e3 100644
+--- a/src/DMD.cpp
++++ b/src/DMD.cpp
+@@ -338,6 +338,7 @@ DMD::DMD()
+ DMD::~DMD()
+ {
+   Log(DMDUtil_LogLevel_INFO, "DMD destructor start");
++  if (m_findDisplaysThread.joinable()) m_findDisplaysThread.join();
+   std::unique_lock<std::shared_mutex> ul(m_dmdSharedMutex);
+   m_stopFlag.store(true, std::memory_order_release);
+   ul.unlock();
+@@ -1037,7 +1038,8 @@ void DMD::FindDisplays()
+   {
+     m_finding.store(true, std::memory_order_release);
+ 
+-    std::thread(
++    if (m_findDisplaysThread.joinable()) m_findDisplaysThread.join();
++    m_findDisplaysThread = std::thread(
+         [this]()
+         {
+           Config* const pConfig = Config::GetInstance();
+@@ -1156,8 +1158,7 @@ void DMD::FindDisplays()
+ #endif
+ 
+           m_finding.store(false, std::memory_order_release);
+-        })
+-        .detach();
++        });
+   }
+ }
+ 
+-- 
+2.55.0.windows.3
+

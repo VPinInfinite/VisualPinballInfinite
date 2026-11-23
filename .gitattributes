@@ -1,0 +1,25 @@
+# Line endings: LF in the repository and working copy, except Windows
+# scripts, which stay CRLF.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary formats
+*.vpx binary
+*.directb2s binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.zip binary
+
+# Patches onto VPX sources must stay byte-exact (VPX mixes line endings).
+tools/vpx-tester/patches/*.patch -text
+# and onto PinMAME's, whose files mix them too
+tools/pinmame/patches/*.patch -text
+
+# Files copied from VPX stay exactly as VPX has them.
+engine/player/assets/vpx/** -text
+
+# FlexDMD's own fonts and pictures stay exactly as FlexDMD has them.
+engine/player/assets/flexdmd/** -text

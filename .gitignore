@@ -1,0 +1,23 @@
+# Build output
+target/
+node_modules/
+# The app's screens as built (npm run build in app/ui) and the schemas Tauri's build writes
+/app/ui/dist/
+/app/gen/
+
+# Where the setup scripts build the libraries (tools/*/setup.ps1)
+/vpx-build/
+
+# What the release scripts gather (tools/release)
+/dist/
+
+# Logs
+*.log
+
+# Python's caches; the system's and editors' files
+__pycache__/
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

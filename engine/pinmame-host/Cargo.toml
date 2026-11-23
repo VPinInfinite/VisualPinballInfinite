@@ -1,0 +1,21 @@
+[package]
+name = "pinmame-host"
+version.workspace = true
+description = "vpi-pinmame: runs a game's ROM in PinMAME (libpinmame) beside the player, linked to it through shared memory."
+edition.workspace = true
+# Not GPL: it links PinMAME, whose terms can't be combined with GPL code. It's
+# written from libpinmame.h (BSD-3-Clause) alone, and uses no GPL crate.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-pinmame"
+path = "src/main.rs"
+
+[dependencies]
+pinmame-link = { path = "../pinmame-link" }
+
+[build-dependencies]
+cc = "1"

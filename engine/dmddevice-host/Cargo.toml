@@ -1,0 +1,20 @@
+[package]
+name = "dmddevice-host"
+version.workspace = true
+description = "vpi-dmddevice: drives a cabinet's real DMD panel beside the player through a VPinMAME display device — DMD Extensions, or a panel maker's own DmdDevice.dll — as VPinMAME drives one, linked to the player through shared memory."
+edition.workspace = true
+# BSD-3-Clause, as PinMAME's driver it follows (src/win32com/ControllerDmdDevice.cpp) and the
+# display device's header (ext/dmddevice/dmddevice.h) are: it loads whichever device the user has —
+# DMD Extensions (GPL-2.0) or a panel maker's own — in a program of its own, so that neither can
+# end a game, nor its licence reach the engine's.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-dmddevice"
+path = "src/main.rs"
+
+[dependencies]
+dmd-link = { path = "../dmd-link" }

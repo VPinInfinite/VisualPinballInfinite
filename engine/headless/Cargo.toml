@@ -1,0 +1,20 @@
+[package]
+name = "headless"
+version.workspace = true
+description = "Runs tables' physics without graphics, for automated tests and to time the physics."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "vpi-headless"
+path = "src/main.rs"
+
+[dependencies]
+physics-compat = { path = "../physics-compat" }
+player = { path = "../player" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+table-physics = { path = "../table-physics" }
+vpin = "0.38"

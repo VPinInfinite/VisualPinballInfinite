@@ -1,0 +1,1360 @@
+From 993a6c84904e395db0506381cd58a57f2a9a96e1 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH 2/3] philipshue: DOF's PhilipsHueController and its
+ auto-configurator, from DirectOutput
+
+Ported from DirectOutput's PhilipsHueController.cs and PhilipsHueAutoConfigurator.cs
+(Rambo3's, MIT) for Visual Pinball Infinite, under DOF's names, so a Cabinet.xml
+written for DOF works unchanged: up to 50 lights on a bridge as 150 RGB outputs,
+LedWizEquivalent 70 added by the auto-configurator for a controller the
+Cabinet.xml names, commands paced to the bridge as DOF paces them (a light's
+new colour no sooner than the measured delay after the last command, offs at
+once, the delay remeasured every 3 s), every light it touched turned off at
+the end.
+
+DOF talks to the bridge through Q42.HueApi 3.21.0 (Michiel Post, MIT); in its
+place LocalHueClient.cpp makes the same HTTP requests (description.xml and the
+key's state for the connection check, PUT lights/<id>/state for a command),
+writes the commands as Q42.HueApi writes them, and converts colours with its
+HSB converter (Q42.HueApi.ColorConverters 3.20.1), down to .NET Framework's
+TimeSpan rounding (a 100 ms transition is sent as 0, as DOF sends it).
+
+Differences: commands go out in order from a thread of their own, where .NET
+fires them in parallel; requests give up after 2 s, where .NET's HttpClient
+waits 100 s; the commands left at the end are sent before DOF finishes (up to
+3 s), as a process ending at once would drop them; the bridge's key is not
+written to the log; the units' nested lock of DOF's CopyNewToCurrent, which
+C#'s reentrant locks allow and std::mutex doesn't, is taken once.
+---
+ CMakeLists.txt                                |   3 +
+ src/cab/Cabinet.cpp                           |   4 +
+ src/cab/out/OutputControllerList.cpp          |   3 +
+ src/cab/out/philipshue/LocalHueClient.cpp     | 376 ++++++++++++
+ src/cab/out/philipshue/LocalHueClient.h       |  66 +++
+ .../philipshue/PhilipsHueAutoConfigurator.cpp |  77 +++
+ .../philipshue/PhilipsHueAutoConfigurator.h   |  18 +
+ .../out/philipshue/PhilipsHueController.cpp   | 548 ++++++++++++++++++
+ src/cab/out/philipshue/PhilipsHueController.h | 134 +++++
+ 9 files changed, 1229 insertions(+)
+ create mode 100644 src/cab/out/philipshue/LocalHueClient.cpp
+ create mode 100644 src/cab/out/philipshue/LocalHueClient.h
+ create mode 100644 src/cab/out/philipshue/PhilipsHueAutoConfigurator.cpp
+ create mode 100644 src/cab/out/philipshue/PhilipsHueAutoConfigurator.h
+ create mode 100644 src/cab/out/philipshue/PhilipsHueController.cpp
+ create mode 100644 src/cab/out/philipshue/PhilipsHueController.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 20a7832..53cb3ad 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -196,6 +196,9 @@ set(LIBDOF_SOURCES
+    src/cab/out/dmx/DMXOutput.cpp
+    src/cab/out/dmx/artnetengine/ArtnetEngine.cpp
+    src/cab/out/dmx/artnetengine/Engine.cpp
++   src/cab/out/philipshue/LocalHueClient.cpp
++   src/cab/out/philipshue/PhilipsHueAutoConfigurator.cpp
++   src/cab/out/philipshue/PhilipsHueController.cpp
+    src/cab/overrides/TableOverrideSetting.cpp
+    src/cab/overrides/TableOverrideSettingDevice.cpp
+    src/cab/overrides/TableOverrideSettings.cpp
+diff --git a/src/cab/Cabinet.cpp b/src/cab/Cabinet.cpp
+index cbb4552..df63b7b 100644
+--- a/src/cab/Cabinet.cpp
++++ b/src/cab/Cabinet.cpp
+@@ -41,6 +41,8 @@
+ #include "out/pinone/PinOneAutoConfigurator.h"
+ #endif
+ 
++#include "out/philipshue/PhilipsHueAutoConfigurator.h"
++
+ namespace DOF
+ {
+ 
+@@ -117,6 +119,8 @@ void Cabinet::AutoConfig()
+    items.push_back(new PinOneAutoConfigurator());
+ #endif
+ 
++   items.push_back(new PhilipsHueAutoConfigurator());
++
+    for (auto& item : items)
+       item->AutoConfig(this);
+ 
+diff --git a/src/cab/out/OutputControllerList.cpp b/src/cab/out/OutputControllerList.cpp
+index a52dbe7..d053a56 100644
+--- a/src/cab/out/OutputControllerList.cpp
++++ b/src/cab/out/OutputControllerList.cpp
+@@ -31,6 +31,7 @@
+ #endif
+ 
+ #include "dmx/ArtNet.h"
++#include "philipshue/PhilipsHueController.h"
+ 
+ namespace DOF
+ {
+@@ -143,6 +144,8 @@ IOutputController* OutputControllerList::CreateController(const std::string& typ
+ #endif
+    else if (typeName == "ArtNet")
+       return new ArtNet();
++   else if (typeName == "PhilipsHueController")
++      return new PhilipsHueController();
+    else
+    {
+       Log::Warning(StringExtensions::Build("Unknown output controller type: {0}", typeName));
+diff --git a/src/cab/out/philipshue/LocalHueClient.cpp b/src/cab/out/philipshue/LocalHueClient.cpp
+new file mode 100644
+index 0000000..9c612ac
+--- /dev/null
++++ b/src/cab/out/philipshue/LocalHueClient.cpp
+@@ -0,0 +1,376 @@
++#include "LocalHueClient.h"
++
++#include <algorithm>
++#include <cctype>
++#include <cerrno>
++#include <chrono>
++#include <cmath>
++#include <cstdlib>
++#include <cstring>
++
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#else
++#include <fcntl.h>
++#include <netdb.h>
++#include <poll.h>
++#include <sys/socket.h>
++#include <sys/time.h>
++#include <unistd.h>
++#endif
++
++namespace DOF
++{
++
++namespace
++{
++
++#ifdef _WIN32
++typedef SOCKET Socket;
++const Socket InvalidSocket = INVALID_SOCKET;
++void CloseSocket(Socket s) { closesocket(s); }
++#else
++typedef int Socket;
++const Socket InvalidSocket = -1;
++void CloseSocket(Socket s) { close(s); }
++#endif
++
++const int RequestTimeoutMs = 2000;
++const size_t MaxResponseSize = 8 * 1024 * 1024;
++
++bool AlmostEquals(double a, double b) { return std::abs(a - b) <= static_cast<double>(1.401298464324817E-45f); }
++
++std::string ToLower(std::string s)
++{
++   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++   return s;
++}
++
++bool ConnectWithTimeout(Socket s, const sockaddr* addr, int addrLen, int timeoutMs)
++{
++#ifdef _WIN32
++   u_long nonBlocking = 1;
++   ioctlsocket(s, FIONBIO, &nonBlocking);
++   if (connect(s, addr, addrLen) == SOCKET_ERROR)
++   {
++      if (WSAGetLastError() != WSAEWOULDBLOCK)
++         return false;
++      fd_set writeSet;
++      FD_ZERO(&writeSet);
++      FD_SET(s, &writeSet);
++      fd_set errorSet;
++      FD_ZERO(&errorSet);
++      FD_SET(s, &errorSet);
++      timeval tv { timeoutMs / 1000, (timeoutMs % 1000) * 1000 };
++      if (select(0, nullptr, &writeSet, &errorSet, &tv) <= 0 || FD_ISSET(s, &errorSet))
++         return false;
++   }
++   u_long blocking = 0;
++   ioctlsocket(s, FIONBIO, &blocking);
++   DWORD t = static_cast<DWORD>(timeoutMs);
++   setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&t), sizeof(t));
++   setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&t), sizeof(t));
++#else
++   int flags = fcntl(s, F_GETFL, 0);
++   fcntl(s, F_SETFL, flags | O_NONBLOCK);
++   if (connect(s, addr, static_cast<socklen_t>(addrLen)) < 0)
++   {
++      if (errno != EINPROGRESS)
++         return false;
++      pollfd p { s, POLLOUT, 0 };
++      if (poll(&p, 1, timeoutMs) <= 0)
++         return false;
++      int err = 0;
++      socklen_t len = sizeof(err);
++      if (getsockopt(s, SOL_SOCKET, SO_ERROR, &err, &len) < 0 || err != 0)
++         return false;
++   }
++   fcntl(s, F_SETFL, flags);
++   timeval tv { timeoutMs / 1000, (timeoutMs % 1000) * 1000 };
++   setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
++   setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
++#endif
++   return true;
++}
++
++bool ResponseComplete(const std::string& raw)
++{
++   size_t headerEnd = raw.find("\r\n\r\n");
++   if (headerEnd == std::string::npos)
++      return false;
++   std::string head = ToLower(raw.substr(0, headerEnd));
++   size_t bodyLength = raw.size() - headerEnd - 4;
++   if (head.find("transfer-encoding: chunked") != std::string::npos)
++      return raw.size() >= 5 && raw.compare(raw.size() - 5, 5, "0\r\n\r\n") == 0;
++   size_t lengthAt = head.find("content-length:");
++   if (lengthAt != std::string::npos)
++      return bodyLength >= std::strtoull(head.c_str() + lengthAt + 15, nullptr, 10);
++   return false;
++}
++
++std::string Dechunk(const std::string& body)
++{
++   std::string out;
++   size_t at = 0;
++   while (at < body.size())
++   {
++      size_t lineEnd = body.find("\r\n", at);
++      if (lineEnd == std::string::npos)
++         break;
++      size_t size = std::strtoull(body.substr(at, lineEnd - at).c_str(), nullptr, 16);
++      if (size == 0)
++         break;
++      at = lineEnd + 2;
++      out.append(body, at, std::min(size, body.size() - at));
++      at += size + 2;
++   }
++   return out;
++}
++
++}
++
++LightCommand& LightCommand::TurnOff()
++{
++   m_on = false;
++   return *this;
++}
++
++LightCommand& LightCommand::SetColor(const std::string& hexColor)
++{
++   double r = std::strtol(hexColor.substr(0, 2).c_str(), nullptr, 16) / 255.0;
++   double g = std::strtol(hexColor.substr(2, 2).c_str(), nullptr, 16) / 255.0;
++   double b = std::strtol(hexColor.substr(4, 2).c_str(), nullptr, 16) / 255.0;
++   double min = std::min({ r, g, b });
++   double max = std::max({ r, g, b });
++
++   double hue = 0;
++   if (!(r == g && g == b))
++   {
++      double delta = max - min;
++      if (AlmostEquals(r, max))
++         hue = (g - b) / delta;
++      else if (AlmostEquals(g, max))
++         hue = 2 + (b - r) / delta;
++      else
++         hue = 4 + (r - g) / delta;
++      hue *= 60;
++      if (hue < 0)
++         hue += 360;
++      hue *= static_cast<double>(182.04f);
++   }
++   double saturation = AlmostEquals(max, min) ? 0 : (AlmostEquals(max, 0) ? 0 : 1 - (1 * min / max)) * 255;
++   double brightness = max * 255;
++
++   const int hueMaxValue = 65535;
++   m_brightness = static_cast<uint8_t>(static_cast<int>(brightness));
++   m_hue = ((static_cast<int>(hue) % hueMaxValue) + hueMaxValue) % hueMaxValue;
++   m_saturation = static_cast<int>(saturation);
++   return *this;
++}
++
++std::string LightCommand::ToJson() const
++{
++   std::string json = "{";
++   auto add = [&json](const std::string& item)
++   {
++      if (json.size() > 1)
++         json += ",";
++      json += item;
++   };
++   if (m_brightness)
++      add("\"bri\":" + std::to_string(*m_brightness));
++   if (m_hue)
++      add("\"hue\":" + std::to_string(*m_hue));
++   if (m_saturation)
++      add("\"sat\":" + std::to_string(*m_saturation));
++   if (m_on)
++      add(std::string("\"on\":") + (*m_on ? "true" : "false"));
++   if (m_transitionTimeMs)
++   {
++      long long ticks = static_cast<long long>(*m_transitionTimeMs + 0.5) * 10000;
++      double totalSeconds = static_cast<double>(ticks) * (1.0 / 10000000);
++      add("\"transitiontime\":" + std::to_string(static_cast<int>(totalSeconds * 10)));
++   }
++   return json + "}";
++}
++
++LocalHueClient::LocalHueClient(const std::string& ip)
++{
++#ifdef _WIN32
++   WSADATA wsaData;
++   WSAStartup(MAKEWORD(2, 2), &wsaData);
++#endif
++   m_host = ip;
++   m_port = "80";
++   if (!ip.empty() && ip[0] == '[')
++   {
++      size_t close = ip.find(']');
++      m_host = ip.substr(1, close == std::string::npos ? std::string::npos : close - 1);
++      if (close != std::string::npos && close + 1 < ip.size() && ip[close + 1] == ':')
++         m_port = ip.substr(close + 2);
++   }
++   else if (std::count(ip.begin(), ip.end(), ':') == 1)
++   {
++      m_host = ip.substr(0, ip.find(':'));
++      m_port = ip.substr(ip.find(':') + 1);
++   }
++   m_sender = std::thread(&LocalHueClient::SenderDoIt, this);
++}
++
++LocalHueClient::~LocalHueClient()
++{
++   {
++      std::lock_guard<std::mutex> lock(m_queueLocker);
++      m_keepSenderAlive = false;
++   }
++   m_queueCondition.notify_all();
++   if (m_sender.joinable())
++      m_sender.join();
++#ifdef _WIN32
++   WSACleanup();
++#endif
++}
++
++void LocalHueClient::Initialize(const std::string& appKey) { m_appKey = appKey; }
++
++std::string LocalHueClient::ApiBase() const
++{
++   bool blank = std::all_of(m_appKey.begin(), m_appKey.end(), [](unsigned char c) { return std::isspace(c) != 0; });
++   return blank ? "/api/" : "/api/" + m_appKey + "/";
++}
++
++bool LocalHueClient::Request(const std::string& method, const std::string& path, const std::string& body, int& status, std::string& response) const
++{
++   status = 0;
++   response.clear();
++
++   addrinfo hints {};
++   hints.ai_family = AF_UNSPEC;
++   hints.ai_socktype = SOCK_STREAM;
++   addrinfo* addresses = nullptr;
++   if (getaddrinfo(m_host.c_str(), m_port.c_str(), &hints, &addresses) != 0 || !addresses)
++      return false;
++
++   Socket s = InvalidSocket;
++   for (addrinfo* a = addresses; a && s == InvalidSocket; a = a->ai_next)
++   {
++      s = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
++      if (s != InvalidSocket && !ConnectWithTimeout(s, a->ai_addr, static_cast<int>(a->ai_addrlen), RequestTimeoutMs))
++      {
++         CloseSocket(s);
++         s = InvalidSocket;
++      }
++   }
++   freeaddrinfo(addresses);
++   if (s == InvalidSocket)
++      return false;
++
++   std::string host = m_host.find(':') != std::string::npos ? "[" + m_host + "]" : m_host;
++   if (m_port != "80")
++      host += ":" + m_port;
++   std::string request = method + " " + path + " HTTP/1.1\r\nHost: " + host + "\r\n";
++   if (method != "GET")
++      request += "Content-Type: application/json; charset=utf-8\r\nContent-Length: " + std::to_string(body.size()) + "\r\n";
++   request += "Connection: close\r\n\r\n" + body;
++
++   bool sent = true;
++   for (size_t at = 0; at < request.size();)
++   {
++      int n = send(s, request.data() + at, static_cast<int>(request.size() - at), 0);
++      if (n <= 0)
++      {
++         sent = false;
++         break;
++      }
++      at += static_cast<size_t>(n);
++   }
++
++   std::string raw;
++   if (sent)
++   {
++      char buffer[8192];
++      while (raw.size() < MaxResponseSize && !ResponseComplete(raw))
++      {
++         int n = recv(s, buffer, sizeof(buffer), 0);
++         if (n <= 0)
++            break;
++         raw.append(buffer, static_cast<size_t>(n));
++      }
++   }
++   CloseSocket(s);
++
++   size_t headerEnd = raw.find("\r\n\r\n");
++   if (headerEnd == std::string::npos || raw.compare(0, 5, "HTTP/") != 0)
++      return false;
++   size_t space = raw.find(' ');
++   if (space == std::string::npos || space > headerEnd)
++      return false;
++   status = std::atoi(raw.c_str() + space + 1);
++   response = raw.substr(headerEnd + 4);
++   if (ToLower(raw.substr(0, headerEnd)).find("transfer-encoding: chunked") != std::string::npos)
++      response = Dechunk(response);
++   return true;
++}
++
++bool LocalHueClient::CheckConnection()
++{
++   int status = 0;
++   std::string response;
++   if (!Request("GET", "/description.xml", "", status, response) || status < 200 || status > 299)
++      return false;
++   bool blank = std::all_of(response.begin(), response.end(), [](unsigned char c) { return std::isspace(c) != 0; });
++   if (!blank && ToLower(response).find("philips hue bridge") == std::string::npos)
++      return false;
++
++   if (!Request("GET", ApiBase(), "", status, response) || status < 200 || status > 299)
++      return false;
++   size_t first = response.find_first_not_of(" \t\r\n");
++   if (first != std::string::npos && response[first] == '[' && response.find("\"error\"") != std::string::npos)
++      return false;
++   return true;
++}
++
++void LocalHueClient::SendCommandAsync(const LightCommand& command, const std::vector<std::string>& lightList)
++{
++   std::string json = command.ToJson();
++   {
++      std::lock_guard<std::mutex> lock(m_queueLocker);
++      for (const std::string& lightId : lightList)
++         m_queue.emplace_back(ApiBase() + "lights/" + lightId + "/state", json);
++   }
++   m_queueCondition.notify_all();
++}
++
++void LocalHueClient::Flush(int timeoutMs)
++{
++   std::unique_lock<std::mutex> lock(m_queueLocker);
++   m_queueCondition.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this]() { return m_queue.empty() && !m_sending; });
++}
++
++void LocalHueClient::SenderDoIt()
++{
++   std::unique_lock<std::mutex> lock(m_queueLocker);
++   while (true)
++   {
++      m_queueCondition.wait(lock, [this]() { return !m_queue.empty() || !m_keepSenderAlive; });
++      if (!m_keepSenderAlive)
++         break;
++      std::pair<std::string, std::string> item = m_queue.front();
++      m_queue.pop_front();
++      m_sending = true;
++      lock.unlock();
++
++      int status = 0;
++      std::string response;
++      Request("PUT", item.first, item.second, status, response);
++
++      lock.lock();
++      m_sending = false;
++      m_queueCondition.notify_all();
++   }
++}
++
++}
+diff --git a/src/cab/out/philipshue/LocalHueClient.h b/src/cab/out/philipshue/LocalHueClient.h
+new file mode 100644
+index 0000000..b5220e0
+--- /dev/null
++++ b/src/cab/out/philipshue/LocalHueClient.h
+@@ -0,0 +1,66 @@
++#pragma once
++
++// Stands in for Q42.HueApi 3.21.0's LocalHueClient and LightCommand (Michiel Post, Q42, MIT), which
++// DirectOutput's PhilipsHueController uses: the same requests to the bridge's local HTTP interface, the
++// commands written as Q42.HueApi writes them, and its RGB to hue, saturation and brightness
++// conversion (Q42.HueApi.ColorConverters 3.20.1, HSB). For Visual Pinball Infinite.
++
++#include <condition_variable>
++#include <cstdint>
++#include <deque>
++#include <mutex>
++#include <optional>
++#include <string>
++#include <thread>
++#include <utility>
++#include <vector>
++
++namespace DOF
++{
++
++class LightCommand
++{
++public:
++   std::optional<uint8_t> m_brightness;
++   std::optional<int> m_hue;
++   std::optional<int> m_saturation;
++   std::optional<bool> m_on;
++   std::optional<int> m_transitionTimeMs;
++
++   void SetTransitionTime(int milliseconds) { m_transitionTimeMs = milliseconds; }
++   void SetOn(bool on) { m_on = on; }
++   bool GetOn() const { return m_on.value_or(false); }
++   LightCommand& TurnOff();
++   LightCommand& SetColor(const std::string& hexColor);
++   std::string ToJson() const;
++};
++
++class LocalHueClient
++{
++public:
++   LocalHueClient(const std::string& ip);
++   ~LocalHueClient();
++
++   void Initialize(const std::string& appKey);
++   bool CheckConnection();
++   void SendCommandAsync(const LightCommand& command, const std::vector<std::string>& lightList);
++   void Flush(int timeoutMs);
++
++private:
++   std::string ApiBase() const;
++   bool Request(const std::string& method, const std::string& path, const std::string& body, int& status, std::string& response) const;
++   void SenderDoIt();
++
++   std::string m_host;
++   std::string m_port;
++   std::string m_appKey;
++
++   std::mutex m_queueLocker;
++   std::condition_variable m_queueCondition;
++   std::deque<std::pair<std::string, std::string>> m_queue;
++   bool m_keepSenderAlive = true;
++   bool m_sending = false;
++   std::thread m_sender;
++};
++
++}
+diff --git a/src/cab/out/philipshue/PhilipsHueAutoConfigurator.cpp b/src/cab/out/philipshue/PhilipsHueAutoConfigurator.cpp
+new file mode 100644
+index 0000000..17c2c2a
+--- /dev/null
++++ b/src/cab/out/philipshue/PhilipsHueAutoConfigurator.cpp
+@@ -0,0 +1,77 @@
++#include "PhilipsHueAutoConfigurator.h"
++#include "PhilipsHueController.h"
++#include "../../Cabinet.h"
++#include "../OutputControllerList.h"
++#include "../../../general/StringExtensions.h"
++#include "../../../Log.h"
++#include "../../toys/lwequivalent/LedWizEquivalent.h"
++#include "../../toys/ToyList.h"
++
++namespace DOF
++{
++
++void PhilipsHueAutoConfigurator::AutoConfig(Cabinet* cabinet)
++{
++   int idCounter = 0;
++
++   Log::Write("PhilipsHueAutoConfigurator.AutoConfig started...note, actual connection detection will happen asynchronously, and device disabled if not succesfull (check further down in the log)");
++
++   OutputControllerList* controllers = cabinet->GetOutputControllers();
++   for (size_t c = 0; c < controllers->size(); c++)
++   {
++      PhilipsHueController* phc = dynamic_cast<PhilipsHueController*>(controllers->at(c));
++      if (phc)
++      {
++         Log::Write("PhilipsHueAutoConfigurator.AutoConfig...found existing instance, adding output toys to: " + phc->GetName());
++
++         phc->SetId(idCounter);
++         phc->SetBridgeIP(std::string(phc->GetBridgeIP()));
++         phc->SetBridgeKey(std::string(phc->GetBridgeKey()));
++
++         phc->ConnectHub();
++
++         if (!controllers->Contains(phc->GetName()))
++         {
++            controllers->push_back(phc);
++            Log::Write(StringExtensions::Build("Detected and added PhilipsHueController Id {0} with name {1}", std::to_string(phc->GetId()), phc->GetName()));
++         }
++
++         bool foundEquivalent = false;
++         for (auto* toy : *cabinet->GetToys())
++         {
++            LedWizEquivalent* lwe = dynamic_cast<LedWizEquivalent*>(toy);
++            if (lwe && lwe->GetLedWizNumber() == phc->GetId() - 0 + 70)
++            {
++               foundEquivalent = true;
++               break;
++            }
++         }
++
++         if (!foundEquivalent)
++         {
++            LedWizEquivalent* lwe = new LedWizEquivalent();
++            lwe->SetLedWizNumber(phc->GetId() - 0 + 70);
++            lwe->SetName(StringExtensions::Build("{0} Equivalent 1", phc->GetName()));
++            for (int i = 1; i <= 150; i++)
++            {
++               LedWizEquivalentOutput* lweo = new LedWizEquivalentOutput();
++               lweo->SetOutputName(StringExtensions::Build("{0}\\{0}.{1:00}", phc->GetName(), std::to_string(i)));
++               lweo->SetLedWizEquivalentOutputNumber(i);
++               lwe->GetOutputs().AddOutput(lweo);
++            }
++            if (!cabinet->GetToys()->Contains(lwe->GetName()))
++            {
++               cabinet->GetToys()->push_back(lwe);
++               Log::Write(StringExtensions::Build(
++                  "Added LedwizEquivalent Nr. {0} with name {1} for PhilipsHueController with Id {2}", std::to_string(lwe->GetLedWizNumber()), lwe->GetName(), std::to_string(phc->GetId())));
++            }
++            else
++               delete lwe;
++         }
++
++         idCounter++;
++      }
++   }
++}
++
++}
+diff --git a/src/cab/out/philipshue/PhilipsHueAutoConfigurator.h b/src/cab/out/philipshue/PhilipsHueAutoConfigurator.h
+new file mode 100644
+index 0000000..3d8c6d9
+--- /dev/null
++++ b/src/cab/out/philipshue/PhilipsHueAutoConfigurator.h
+@@ -0,0 +1,18 @@
++#pragma once
++
++// Ported from DirectOutput's PhilipsHueAutoConfigurator.cs (Rambo3's, MIT) for Visual Pinball Infinite.
++
++#include "../IAutoConfigOutputController.h"
++
++namespace DOF
++{
++
++class Cabinet;
++
++class PhilipsHueAutoConfigurator : public IAutoConfigOutputController
++{
++public:
++   virtual void AutoConfig(Cabinet* cabinet) override;
++};
++
++}
+diff --git a/src/cab/out/philipshue/PhilipsHueController.cpp b/src/cab/out/philipshue/PhilipsHueController.cpp
+new file mode 100644
+index 0000000..0bb4ccc
+--- /dev/null
++++ b/src/cab/out/philipshue/PhilipsHueController.cpp
+@@ -0,0 +1,548 @@
++#include "PhilipsHueController.h"
++#include "LocalHueClient.h"
++#include "../../Cabinet.h"
++#include "../Output.h"
++#include "../OutputList.h"
++#include "../../overrides/TableOverrideSettings.h"
++#include "../../schedules/ScheduledSettings.h"
++#include "../../../Log.h"
++#include "../../../general/StringExtensions.h"
++#include "../../../general/MathExtensions.h"
++#include <algorithm>
++#include <chrono>
++#include <cmath>
++#include <cstdio>
++#include <stdexcept>
++
++namespace DOF
++{
++
++namespace
++{
++
++long long NowMs() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
++
++std::string Hex2(uint8_t value)
++{
++   char buffer[3];
++   snprintf(buffer, sizeof(buffer), "%02x", value);
++   return buffer;
++}
++
++}
++
++std::map<int, PhilipsHueController::PhilipsHueControllerUnit*> PhilipsHueController::s_philipsHueControllerUnits;
++bool PhilipsHueController::s_unitsInitialized = false;
++
++void PhilipsHueController::InitializeUnits()
++{
++   if (!s_unitsInitialized)
++   {
++      for (int i = 0; i <= 1; i++)
++         s_philipsHueControllerUnits[i] = new PhilipsHueControllerUnit(i);
++      s_unitsInitialized = true;
++   }
++}
++
++void PhilipsHueController::SetId(int value)
++{
++   if (!MathExtensions::IsBetween(value, 0, 1))
++      throw std::runtime_error(StringExtensions::Build("PhilipsHueController Ids must be between 0-1. The supplied Id {0} is out of range.", std::to_string(value)));
++
++   std::lock_guard<std::mutex> lock(m_idUpdateLocker);
++   if (m_id != value)
++   {
++      if (GetName().empty() || GetName() == StringExtensions::Build("PhilipsHueController {0:0}", std::to_string(m_id)))
++         SetName(StringExtensions::Build("PhilipsHueController {0:0}", std::to_string(value)));
++
++      m_id = value;
++   }
++}
++
++void PhilipsHueController::SetBridgeIP(const std::string& value)
++{
++   std::lock_guard<std::mutex> lock(m_idUpdateLocker);
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->SetBridgeIP(value);
++   m_bridgeIP = value;
++}
++
++void PhilipsHueController::SetBridgeKey(const std::string& value)
++{
++   std::lock_guard<std::mutex> lock(m_idUpdateLocker);
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->SetBridgeKey(value);
++   m_bridgeKey = value;
++}
++
++void PhilipsHueController::SetBridgeDeviceType(const std::string& value)
++{
++   std::lock_guard<std::mutex> lock(m_idUpdateLocker);
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->SetBridgeDeviceType(value);
++   m_bridgeDeviceType = value;
++}
++
++void PhilipsHueController::Update()
++{
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->TriggerPhilipsHueControllerUpdaterThread();
++}
++
++void PhilipsHueController::Init(Cabinet* cabinet)
++{
++   AddOutputs();
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->Init(cabinet);
++   Log::Write(StringExtensions::Build("PhilipsHueController Id:{0} initialized and updater thread started.", std::to_string(m_id)));
++}
++
++void PhilipsHueController::Finish()
++{
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->Finish();
++   s_philipsHueControllerUnits.at(m_id)->ShutdownLighting();
++   s_philipsHueControllerUnits.at(m_id)->FlushCommands();
++   Log::Write(StringExtensions::Build("PhilipsHueController Id:{0} finished and updater thread stopped.", std::to_string(m_id)));
++}
++
++void PhilipsHueController::AddOutputs()
++{
++   OutputList* outputs = GetOutputs();
++   for (int i = 1; i <= 150; i++)
++   {
++      bool found = false;
++      for (IOutput* output : *outputs)
++      {
++         if (output->GetNumber() == i)
++         {
++            found = true;
++            break;
++         }
++      }
++
++      if (!found)
++      {
++         Output* newOutput = new Output();
++         newOutput->SetName(StringExtensions::Build("{0}.{1:00}", GetName(), std::to_string(i)));
++         newOutput->SetNumber(i);
++         outputs->Add(newOutput);
++      }
++   }
++}
++
++void PhilipsHueController::OnOutputValueChanged(IOutput* output)
++{
++   IOutput* on = output;
++
++   if (!MathExtensions::IsBetween(on->GetNumber(), 1, 150))
++   {
++      throw std::runtime_error(
++         StringExtensions::Build("PhilipsHueController output numbers must be in the range of 1-150. The supplied output number {0} is out of range.", std::to_string(on->GetNumber())));
++   }
++
++   InitializeUnits();
++   PhilipsHueControllerUnit* s = s_philipsHueControllerUnits.at(m_id);
++
++   on = TableOverrideSettings::GetInstance()->GetNewRecalculatedOutput(on, 70, m_id);
++
++   IOutput* scheduled = ScheduledSettings::GetInstance().GetNewRecalculatedOutput(on, 70, m_id);
++   s->UpdateValue(scheduled);
++
++   if (scheduled != on && scheduled != output)
++      delete scheduled;
++   if (on != output)
++      delete on;
++}
++
++PhilipsHueController::PhilipsHueController() { InitializeUnits(); }
++
++PhilipsHueController::PhilipsHueController(int id)
++   : PhilipsHueController()
++{
++   SetId(id);
++}
++
++PhilipsHueController::~PhilipsHueController() { }
++
++void PhilipsHueController::ConnectHub()
++{
++   InitializeUnits();
++   s_philipsHueControllerUnits.at(m_id)->ConnectUnit();
++}
++
++tinyxml2::XMLElement* PhilipsHueController::ToXml(tinyxml2::XMLDocument& doc) const
++{
++   tinyxml2::XMLElement* element = doc.NewElement(GetXmlElementName().c_str());
++
++   auto add = [&doc, element](const char* name, const std::string& value)
++   {
++      tinyxml2::XMLElement* child = doc.NewElement(name);
++      child->SetText(value.c_str());
++      element->InsertEndChild(child);
++   };
++   add("Name", GetName());
++   add("Id", std::to_string(m_id));
++   add("BridgeIP", m_bridgeIP);
++   add("BridgeKey", m_bridgeKey);
++   add("BridgeDeviceType", m_bridgeDeviceType);
++
++   return element;
++}
++
++bool PhilipsHueController::FromXml(const tinyxml2::XMLElement* element)
++{
++   if (!element)
++      return false;
++
++   auto text = [element](const char* name) -> const char*
++   {
++      const tinyxml2::XMLElement* child = element->FirstChildElement(name);
++      return child ? child->GetText() : nullptr;
++   };
++
++   if (const char* name = text("Name"))
++      SetName(name);
++
++   if (const char* id = text("Id"))
++   {
++      try
++      {
++         SetId(std::stoi(id));
++      }
++      catch (...)
++      {
++         return false;
++      }
++   }
++
++   if (const char* bridgeIP = text("BridgeIP"))
++      SetBridgeIP(bridgeIP);
++   if (const char* bridgeKey = text("BridgeKey"))
++      SetBridgeKey(bridgeKey);
++   if (const char* bridgeDeviceType = text("BridgeDeviceType"))
++      SetBridgeDeviceType(bridgeDeviceType);
++
++   return true;
++}
++
++PhilipsHueController::PhilipsHueControllerUnit::PhilipsHueControllerUnit(int id)
++   : m_id(id)
++   , m_index(id)
++{
++   m_bridgecommunicationlastTimestamp = NowMs();
++   m_bridgecommunicationlastpingTimestamp = NowMs();
++
++   std::fill_n(m_newValue, 150, 0);
++   std::fill_n(m_currentValue, 150, 0);
++   std::fill_n(m_lastValueSent, 150, 0);
++   std::fill_n(m_lastStateSent, 150, false);
++
++   std::fill_n(m_affectedLights, 50, false);
++   InitUnit();
++}
++
++PhilipsHueController::PhilipsHueControllerUnit::~PhilipsHueControllerUnit()
++{
++   if (m_keepPhilipsHueControllerUpdaterAlive.load())
++      Finish();
++   FlushCommands();
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::Init(Cabinet* cabinet) { StartPhilipsHueControllerUpdaterThread(); }
++
++void PhilipsHueController::PhilipsHueControllerUnit::Finish()
++{
++   TerminatePhilipsHueControllerUpdaterThread();
++   ShutdownLighting();
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::UpdateValue(IOutput* output)
++{
++   if (!MathExtensions::IsBetween(output->GetNumber(), 1, 150))
++      return;
++
++   int zeroBasedOutputNumber = output->GetNumber() - 1;
++   std::lock_guard<std::mutex> lock(m_valueChangeLocker);
++   if (m_newValue[zeroBasedOutputNumber] != output->GetOutput())
++   {
++      m_newValue[zeroBasedOutputNumber] = output->GetOutput();
++      m_updateRequired = true;
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::CopyNewToCurrent() { std::copy(m_newValue, m_newValue + 150, m_currentValue); }
++
++bool PhilipsHueController::PhilipsHueControllerUnit::IsUpdaterThreadAlive() { return m_philipsHueControllerUpdater.joinable(); }
++
++void PhilipsHueController::PhilipsHueControllerUnit::StartPhilipsHueControllerUpdaterThread()
++{
++   std::lock_guard<std::mutex> lock(m_philipsHueControllerUpdaterThreadLocker);
++   if (!IsUpdaterThreadAlive())
++   {
++      m_keepPhilipsHueControllerUpdaterAlive.store(true);
++      m_updaterThreadFinished = false;
++      m_philipsHueControllerUpdater = std::thread(&PhilipsHueControllerUnit::PhilipsHueControllerUpdaterDoIt, this);
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::TerminatePhilipsHueControllerUpdaterThread()
++{
++   std::unique_lock<std::mutex> lock(m_philipsHueControllerUpdaterThreadLocker);
++   if (m_philipsHueControllerUpdater.joinable())
++   {
++      m_keepPhilipsHueControllerUpdaterAlive.store(false);
++      TriggerPhilipsHueControllerUpdaterThread();
++      lock.unlock();
++
++      auto start = std::chrono::steady_clock::now();
++      while (!m_updaterThreadFinished && std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < 1000)
++         std::this_thread::sleep_for(std::chrono::milliseconds(10));
++
++      if (m_updaterThreadFinished)
++         m_philipsHueControllerUpdater.join();
++      else
++         m_philipsHueControllerUpdater.detach();
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::TriggerPhilipsHueControllerUpdaterThread()
++{
++   m_triggerUpdate.store(true);
++   m_triggerCondition.notify_one();
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::PhilipsHueControllerUpdaterDoIt()
++{
++   try
++   {
++      ResetFadeTime();
++   }
++   catch (const std::exception&)
++   {
++      Log::Exception(StringExtensions::Build("A exception occurred while setting the fadetime for PhilipsHueController {0} to 0.", std::to_string(m_index)));
++      m_updaterThreadFinished = true;
++      return;
++   }
++
++   int failCnt = 0;
++   while (m_keepPhilipsHueControllerUpdaterAlive.load())
++   {
++      try
++      {
++         if (IsPresent())
++            SendPhilipsHueControllerUpdate();
++         failCnt = 0;
++      }
++      catch (const std::exception&)
++      {
++         Log::Exception(StringExtensions::Build("A error occurred when updating PhilipsHueController {0}", std::to_string(m_id)));
++         failCnt++;
++
++         if (failCnt > MAX_UPDATE_FAIL_COUNT)
++         {
++            Log::Exception(StringExtensions::Build("More than {0} consecutive updates failed for PhilipsHueController {1}. Updater thread will terminate.",
++               std::to_string(MAX_UPDATE_FAIL_COUNT), std::to_string(m_id)));
++            m_keepPhilipsHueControllerUpdaterAlive.store(false);
++         }
++      }
++
++      if (m_keepPhilipsHueControllerUpdaterAlive.load())
++      {
++         std::unique_lock<std::mutex> lock(m_philipsHueControllerUpdaterThreadLocker);
++         m_triggerCondition.wait_for(lock, std::chrono::milliseconds(50), [this]() { return m_triggerUpdate.load() || !m_keepPhilipsHueControllerUpdaterAlive.load(); });
++      }
++      m_triggerUpdate.store(false);
++   }
++   m_updaterThreadFinished = true;
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::SendPhilipsHueControllerUpdate()
++{
++   long long bridgecommunicationDelta = NowMs() - m_bridgecommunicationlastTimestamp;
++   long long bridgecommunicationpingDelta = NowMs() - m_bridgecommunicationlastpingTimestamp;
++
++   int bridgebulbID = 0;
++   if (IsPresent())
++   {
++      std::lock_guard<std::mutex> updateLock(m_philipsHueControllerUpdateLocker);
++      {
++         std::lock_guard<std::mutex> valueLock(m_valueChangeLocker);
++         if (!m_updateRequired)
++            return;
++
++         CopyNewToCurrent();
++         m_updateRequired = false;
++      }
++
++      for (int i = 0; i < 150; i++)
++      {
++         if (m_currentValue[i] != m_lastValueSent[i] || m_currentValue[i + 1] != m_lastValueSent[i + 1] || m_currentValue[i + 2] != m_lastValueSent[i + 2])
++         {
++            LightCommand newbridgeCommand;
++            bridgebulbID = ((i + 2 + 1) / 3);
++            std::string newhexColor = Hex2(m_currentValue[i]) + Hex2(m_currentValue[i + 1]) + Hex2(m_currentValue[i + 2]);
++
++            if ((m_lastValueSent[i] == 0 && m_currentValue[i] > 0) || (m_lastValueSent[i + 1] == 0 && m_currentValue[i + 1] > 0)
++               || (m_lastValueSent[i + 2] == 0 && m_currentValue[i + 2] > 0))
++               newbridgeCommand.SetTransitionTime(0);
++            else
++               newbridgeCommand.SetTransitionTime(m_bridgecommunicationDelay.load());
++
++            if (m_currentValue[i] == 0 && m_currentValue[i + 1] == 0 && m_currentValue[i + 2] == 0)
++            {
++               newbridgeCommand.TurnOff();
++               newbridgeCommand.SetOn(false);
++               newbridgeCommand.SetTransitionTime(m_bridgecommunicationDelay.load());
++            }
++            else
++            {
++               newbridgeCommand.SetOn(true);
++               newbridgeCommand.SetColor(newhexColor);
++
++               m_affectedLights[bridgebulbID - 1] = true;
++            }
++
++            m_lastValueSent[i] = m_currentValue[i];
++            m_lastValueSent[i + 1] = m_currentValue[i + 1];
++            m_lastValueSent[i + 2] = m_currentValue[i + 2];
++
++            if (bridgecommunicationDelta >= m_bridgecommunicationDelay.load() || newbridgeCommand.GetOn() == false || newhexColor == "000000")
++            {
++               m_hueClient->SendCommandAsync(newbridgeCommand, { std::to_string(bridgebulbID) });
++
++               m_bridgecommunicationlastTimestamp = NowMs();
++            }
++         }
++
++         i += 2;
++      }
++
++      if (bridgecommunicationpingDelta >= m_bridgecommunicationPing)
++      {
++         m_bridgecommunicationlastpingTimestamp = NowMs();
++         StartConnectionCheck();
++      }
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::ShutdownLighting()
++{
++   int currentlightID = 0;
++   for (int i = 0; i < 50; i++)
++   {
++      if (m_affectedLights[i])
++      {
++         currentlightID = i + 1;
++         LightCommand newbridgeCommand;
++         newbridgeCommand.TurnOff();
++         newbridgeCommand.SetOn(false);
++         newbridgeCommand.SetTransitionTime(2000);
++         Log::Write("PhilipsHueController.ShutdownLighting, Turning off light #" + std::to_string(currentlightID));
++         if (m_hueClient)
++            m_hueClient->SendCommandAsync(newbridgeCommand, { std::to_string(currentlightID) });
++      }
++   }
++
++   std::fill_n(m_lastStateSent, 150, false);
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::ResetFadeTime() { Log::Write("PhilipsHueController.ResetFadeTime"); }
++
++bool PhilipsHueController::PhilipsHueControllerUnit::IsPresent()
++{
++   if (!MathExtensions::IsBetween(m_id, 0, 3) || m_bridgeConnected.load() == false)
++      return false;
++   return m_index >= 0;
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::InitUnit()
++{
++   if (m_index >= 0)
++   {
++      std::fill_n(m_lastValueSent, 150, 0);
++
++      std::fill_n(m_lastStateSent, 150, false);
++      std::fill_n(m_lastValueSent, 150, 0);
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::ConnectUnit()
++{
++   if (m_bridgeIP == "" || m_bridgeKey == "")
++      Log::Write("PhilipsHueController.PhilipsHueControllerUnit... unable to connect to bridge, no IP or key supplied in Cabinet.xml");
++   else
++   {
++      Log::Write("PhilipsHueController.PhilipsHueControllerUnit... connecting to bridge... ip=" + m_bridgeIP + " key=(hidden)");
++      if (m_connectionCheck.joinable())
++         m_connectionCheck.join();
++      delete m_hueClient;
++      m_hueClient = new LocalHueClient(m_bridgeIP);
++      m_hueClient->Initialize(m_bridgeKey);
++
++      StartConnectionCheck();
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::StartConnectionCheck()
++{
++   if (m_connectionCheckRunning.exchange(true))
++      return;
++   if (m_connectionCheck.joinable())
++      m_connectionCheck.join();
++   m_connectionCheck = std::thread(
++      [this]()
++      {
++         CheckConnection();
++         m_connectionCheckRunning = false;
++      });
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::CheckConnection()
++{
++   long long startTimestamp = NowMs();
++   long long deltaTimestamp = 0;
++   long long adjustedPing = 0;
++   bool connectionResult = m_hueClient->CheckConnection();
++
++   m_bridgeConnected = connectionResult;
++
++   if (connectionResult == true)
++   {
++      deltaTimestamp = NowMs() - startTimestamp;
++      adjustedPing = static_cast<int>(std::nearbyint(static_cast<int>(deltaTimestamp) * m_bridgecommunicationdelayFactor));
++
++      if (adjustedPing > m_bridgecommunicationminimumDelay)
++      {
++         m_bridgecommunicationDelay = static_cast<int>(adjustedPing);
++         Log::Write("PhilipsHueController.CheckConnection IP=" + m_bridgeIP + "... current connection lag =" + std::to_string(deltaTimestamp) + "ms, recalibrating from "
++            + std::to_string(m_bridgecommunicationDelay.load()) + "ms -> " + std::to_string(deltaTimestamp) + "ms, buffer factor=1.2 -> " + std::to_string(adjustedPing) + "ms");
++      }
++      else
++      {
++         m_bridgecommunicationDelay = m_bridgecommunicationminimumDelay;
++         Log::Write("PhilipsHueController.CheckConnection IP=" + m_bridgeIP + "... current connection lag =" + std::to_string(deltaTimestamp) + "ms, ignoring and using minimum "
++            + std::to_string(m_bridgecommunicationminimumDelay) + "ms to avoid bridge overload");
++      }
++   }
++   else
++   {
++      Log::Write("PhilipsHueController.CheckConnection... lost connection, or unable to connect to bridge using BridgeIP=" + m_bridgeIP
++         + " and BridgeKey=(hidden)... will ignore for now and attempt reconnecting every " + std::to_string(m_bridgecommunicationPing) + "ms");
++   }
++}
++
++void PhilipsHueController::PhilipsHueControllerUnit::FlushCommands()
++{
++   if (m_connectionCheck.joinable())
++      m_connectionCheck.join();
++   if (m_hueClient)
++   {
++      m_hueClient->Flush(3000);
++      delete m_hueClient;
++      m_hueClient = nullptr;
++   }
++   m_bridgeConnected = false;
++}
++
++}
+diff --git a/src/cab/out/philipshue/PhilipsHueController.h b/src/cab/out/philipshue/PhilipsHueController.h
+new file mode 100644
+index 0000000..c139524
+--- /dev/null
++++ b/src/cab/out/philipshue/PhilipsHueController.h
+@@ -0,0 +1,134 @@
++#pragma once
++
++// Ported from DirectOutput's PhilipsHueController.cs (Rambo3's, MIT) for Visual Pinball Infinite.
++
++#include "../OutputControllerBase.h"
++#include <atomic>
++#include <condition_variable>
++#include <map>
++#include <mutex>
++#include <string>
++#include <thread>
++#include <tinyxml2/tinyxml2.h>
++
++namespace DOF
++{
++
++class LocalHueClient;
++
++class PhilipsHueController : public OutputControllerBase
++{
++private:
++   std::mutex m_idUpdateLocker;
++   int m_id = 0;
++   std::string m_bridgeIP = "";
++   std::string m_bridgeKey = "";
++   std::string m_bridgeDeviceType = "dof_app#pincab";
++
++public:
++   int GetId() const { return m_id; }
++   void SetId(int value);
++   const std::string& GetBridgeIP() const { return m_bridgeIP; }
++   void SetBridgeIP(const std::string& value);
++   const std::string& GetBridgeKey() const { return m_bridgeKey; }
++   void SetBridgeKey(const std::string& value);
++   const std::string& GetBridgeDeviceType() const { return m_bridgeDeviceType; }
++   void SetBridgeDeviceType(const std::string& value);
++
++   void Update() override;
++   void Init(class Cabinet* cabinet) override;
++   void Finish() override;
++
++   tinyxml2::XMLElement* ToXml(tinyxml2::XMLDocument& doc) const override;
++   bool FromXml(const tinyxml2::XMLElement* element) override;
++   std::string GetXmlElementName() const override { return "PhilipsHueController"; }
++
++private:
++   void AddOutputs();
++   void OnOutputValueChanged(class IOutput* output) override;
++
++public:
++   PhilipsHueController();
++   PhilipsHueController(int id);
++   ~PhilipsHueController();
++
++   void ConnectHub();
++
++private:
++   class PhilipsHueControllerUnit
++   {
++   private:
++      static const int MAX_UPDATE_FAIL_COUNT = 5;
++      int m_id;
++      int m_index;
++      LocalHueClient* m_hueClient = nullptr;
++
++      uint8_t m_newValue[150];
++      uint8_t m_currentValue[150];
++      uint8_t m_lastValueSent[150];
++      bool m_lastStateSent[150];
++      bool m_affectedLights[50];
++
++      bool m_updateRequired = true;
++
++      std::mutex m_philipsHueControllerUpdateLocker;
++      std::mutex m_valueChangeLocker;
++
++      std::thread m_philipsHueControllerUpdater;
++      std::atomic<bool> m_keepPhilipsHueControllerUpdaterAlive { false };
++      std::mutex m_philipsHueControllerUpdaterThreadLocker;
++      std::condition_variable m_triggerCondition;
++      std::atomic<bool> m_triggerUpdate { false };
++      std::atomic<bool> m_updaterThreadFinished { false };
++
++      std::string m_bridgeIP = "0.0.0.0";
++      std::string m_bridgeKey = "longsecret";
++      std::string m_bridgeDeviceType = "dof_app#pincab";
++      std::atomic<bool> m_bridgeConnected { false };
++
++      std::atomic<int> m_bridgecommunicationDelay { 300 };
++      int m_bridgecommunicationminimumDelay = 100;
++      double m_bridgecommunicationdelayFactor = 1.2;
++      int m_bridgecommunicationPing = 3000;
++      long long m_bridgecommunicationlastTimestamp;
++      long long m_bridgecommunicationlastpingTimestamp;
++
++      std::thread m_connectionCheck;
++      std::atomic<bool> m_connectionCheckRunning { false };
++
++   public:
++      PhilipsHueControllerUnit(int id);
++      ~PhilipsHueControllerUnit();
++
++      void SetBridgeIP(const std::string& value) { m_bridgeIP = value; }
++      void SetBridgeKey(const std::string& value) { m_bridgeKey = value; }
++      void SetBridgeDeviceType(const std::string& value) { m_bridgeDeviceType = value; }
++
++      void Init(class Cabinet* cabinet);
++      void Finish();
++      void UpdateValue(class IOutput* output);
++      bool IsUpdaterThreadAlive();
++      void StartPhilipsHueControllerUpdaterThread();
++      void TerminatePhilipsHueControllerUpdaterThread();
++      void TriggerPhilipsHueControllerUpdaterThread();
++      void ShutdownLighting();
++      void ConnectUnit();
++      void CheckConnection();
++      void FlushCommands();
++
++   private:
++      void CopyNewToCurrent();
++      void PhilipsHueControllerUpdaterDoIt();
++      void SendPhilipsHueControllerUpdate();
++      void ResetFadeTime();
++      bool IsPresent();
++      void InitUnit();
++      void StartConnectionCheck();
++   };
++
++   static std::map<int, PhilipsHueControllerUnit*> s_philipsHueControllerUnits;
++   static bool s_unitsInitialized;
++   static void InitializeUnits();
++};
++
++}
+-- 
+2.55.0.windows.3
+

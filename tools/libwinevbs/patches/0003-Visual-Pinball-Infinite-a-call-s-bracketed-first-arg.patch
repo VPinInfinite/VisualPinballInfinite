@@ -1,0 +1,83 @@
+From 79a6e4c5abf34e3e60ad8c4f802ad12eda4356b7 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH 3/4] Visual Pinball Infinite: a call's bracketed first
+ argument joins as VBScript joins it
+
+S (2) * 3 + 1, 0 passed 2 * (3 + 1): the rule for a statement call whose first
+argument starts with brackets joined the bracket and the rest of the expression
+with the first operator, whatever the rest's own operators. Operators in the
+rest that bind no tighter now take the bracket and the first operator as their
+left side, as Microsoft's VBScript reads it ((2 * 3) + 1).
+---
+ wine/dlls/vbscript/parser.y | 41 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/wine/dlls/vbscript/parser.y b/wine/dlls/vbscript/parser.y
+index a2bebad..37945d4 100644
+--- a/wine/dlls/vbscript/parser.y
++++ b/wine/dlls/vbscript/parser.y
+@@ -42,6 +42,7 @@ static expression_t *new_long_expression(parser_ctx_t*,expression_type_t,LONG);
+ static expression_t *new_double_expression(parser_ctx_t*,double);
+ static expression_t *new_unary_expression(parser_ctx_t*,expression_type_t,expression_t*);
+ static expression_t *new_binary_expression(parser_ctx_t*,expression_type_t,expression_t*,expression_t*);
++static expression_t *combine_first_arg(parser_ctx_t*,expression_type_t,expression_t*,expression_t*);
+ static expression_t *new_new_expression(parser_ctx_t*,const WCHAR*);
+ 
+ static member_expression_t *new_member_expression(parser_ctx_t*,expression_t*,const WCHAR*);
+@@ -246,7 +247,7 @@ SimpleStatement
+                                               if(!$2) { ctx->error_loc = @3; ctx->hres = MAKE_VBSERROR(VBSE_EXPECTED_END_OF_STATEMENT); YYABORT; }
+                                               first_arg = new_unary_expression(ctx, EXPR_BRACKETS, $2);
+                                               CHECK_ERROR;
+-                                              combined = new_binary_expression(ctx, $3, first_arg, $4);
++                                              combined = combine_first_arg(ctx, $3, first_arg, $4);
+                                               CHECK_ERROR;
+                                               combined->next = $5;
+                                               call_expr = new_call_expression(ctx, $1, combined);
+@@ -905,6 +906,44 @@ static expression_t *new_binary_expression(parser_ctx_t *ctx, expression_type_t
+     return &expr->expr;
+ }
+ 
++/* Visual Pinball Infinite: how tightly a binary operator binds, as VBScript's grammar orders them
++   (exponents tightest, Imp loosest); -100 for anything else. */
++static int binary_precedence(expression_type_t type)
++{
++    switch(type) {
++    case EXPR_EXP: return 10;
++    case EXPR_MUL: case EXPR_DIV: return 9;
++    case EXPR_IDIV: return 8;
++    case EXPR_MOD: return 7;
++    case EXPR_ADD: case EXPR_SUB: return 6;
++    case EXPR_CONCAT: return 5;
++    case EXPR_EQUAL: case EXPR_NEQUAL: case EXPR_LT: case EXPR_GT: case EXPR_LTEQ: case EXPR_GTEQ: case EXPR_IS: return 4;
++    case EXPR_AND: return 2;
++    case EXPR_OR: return 1;
++    case EXPR_XOR: return 0;
++    case EXPR_EQV: return -1;
++    case EXPR_IMP: return -2;
++    default: return -100;
++    }
++}
++
++/* Visual Pinball Infinite: a call's first argument written "(a) op rest" ("S (2) * 3 + 1, 0"),
++   joined as VBScript joins it: an operator in rest that binds no tighter than op takes "(a) op ..."
++   as its left side ((2 * 3) + 1, not 2 * (3 + 1)), operators being left-associative. */
++static expression_t *combine_first_arg(parser_ctx_t *ctx, expression_type_t op, expression_t *left, expression_t *rest)
++{
++    int prec = binary_precedence(rest->type);
++    if(prec > -100 && prec <= binary_precedence(op)) {
++        binary_expression_t *b = (binary_expression_t*)rest;
++        expression_t *l = combine_first_arg(ctx, op, left, b->left);
++        if(!l)
++            return NULL;
++        b->left = l;
++        return rest;
++    }
++    return new_binary_expression(ctx, op, left, rest);
++}
++
+ static member_expression_t *new_member_expression(parser_ctx_t *ctx, expression_t *obj_expr, const WCHAR *identifier)
+ {
+     member_expression_t *expr;
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "helpers",
+  "description": "The Screens page's helper windows: a screen's name shown on it (identify-*), and stand-ins for the player's windows dragged and sized on the real screens (arrange-*). They may move, size and close themselves, and read the screen they're on.",
+  "windows": ["identify-*", "arrange-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-current-monitor",
+    "core:window:allow-close"
+  ]
+}

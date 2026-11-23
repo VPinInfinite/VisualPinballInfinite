@@ -1,0 +1,48 @@
+name: A table doesn't work right
+description: A table won't start, stops with an error, or something the app does for it isn't right.
+labels: ["table"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Your tables play in VPX itself, so how a table plays is VPX's and the table's own. Tell us here when the app gets something wrong around it: starting it, its backglass, score display, packs, media or achievements. The table's page in the app has **Report a problem with it…** in its **…** menu: it makes one file with what the table holds and the logs. Please attach it below.
+  - type: input
+    id: table
+    attributes:
+      label: The table
+      description: Its name, maker and year, who made the table and which version — or its link on the Virtual Pinball Spreadsheet.
+      placeholder: Medieval Madness (Williams 1997), VPW's 1.1 — or https://virtualpinballspreadsheet.github.io/...
+    validations:
+      required: true
+  - type: dropdown
+    id: what
+    attributes:
+      label: What's wrong?
+      multiple: true
+      options:
+        - It won't start, or it stops with an error
+        - Its backglass or score display
+        - Its PinUP pack, AltSound or color DMD
+        - Its achievements don't count
+        - Its media, details or files in the app
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happens
+      description: When it happens, and what you expected instead. A video or screenshot helps.
+    validations:
+      required: true
+  - type: input
+    id: vpx
+    attributes:
+      label: The VPX it played in
+      description: Settings › Library shows it; a table can also be set to VPX 10.8.0 on its own.
+      placeholder: VPX 10.8.1, or VPX 10.8.0
+  - type: textarea
+    id: report
+    attributes:
+      label: The report file
+      description: Drag the zip that Report a problem made into this box.

@@ -1,0 +1,23 @@
+[package]
+name = "vpx-addon"
+version.workspace = true
+description = "Visual Pinball Infinite's add-on for VPX 10.8.1: a table's achievements followed while VPX plays it, from the machine's state and the backglass's calls that VPX's PinMAME and B2S add-ons share with other add-ons, each one earned shown in VPX's own notice."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "vpi_vpx_addon"
+# the add-on VPX loads (plugin-vpi-achievements64.dll, beside its plugin.cfg), and the library its tests use
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+vpi-achievements = { path = "../achievements" }
+serde_json = "1"
+# screenshots written as PNG (the version the workspace has already)
+png = "0.18"
+# a pack's Ogg Vorbis, MP3 or FLAC sound decoded for VPX, which takes PCM from add-ons (the version
+# and formats the player has already)
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm", "adpcm", "opt-simd"] }

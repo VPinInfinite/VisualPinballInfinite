@@ -1,0 +1,13 @@
+[package]
+name = "vpi-settings"
+version.workspace = true
+description = "The settings file's own rules, shared by the player and the app: VPX 5436's ini format as it reads it, its window settings and where they put a window, and changes written back in place."
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# a table's POV file, which VPX imports into its settings (the player's copy of the same)
+roxmltree = "0.21"

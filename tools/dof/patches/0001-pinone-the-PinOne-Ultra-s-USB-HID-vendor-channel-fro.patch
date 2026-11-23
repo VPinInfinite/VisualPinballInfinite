@@ -1,0 +1,547 @@
+From ebc48df6701d563f06a7a56c8cb4fab41b63c697 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH 1/3] pinone: the PinOne Ultra's USB HID vendor channel, from
+ DirectOutput pull request #27
+
+Ported from Cleveland Software Design's change to DirectOutput (pull request
+#27 at c5ae628, MIT) for Visual Pinball Infinite: current PinOne firmware takes
+DOF's output packets on its USB HID vendor channel (VID 0x39F5, PID 0x9208,
+usage page 0xFF00, usage 0x01, report 6, 64-byte reports) instead of a virtual
+COM port. A PinOne configured with ComPort HID writes there. The
+auto-configurator looks for the HID channel first, then for an older board's
+port by its USB IDs (VID 0x0E8F, PID 0x9207) instead of probing every serial
+port, scanning them all only when the port list can't be read, then asks the
+named-pipe server, as the pull request's C# does.
+
+Where hidapi differs from the C#'s Win32 calls: hidapi doesn't hand out
+Windows' error number, so a failed write tries reopening the handle on any
+error, not only on "invalid handle"; the port's USB IDs come from
+libserialport where the C# asks WMI.
+---
+ CMakeLists.txt                                |   1 +
+ src/cab/out/pinone/PinOne.cpp                 |  52 +++++++-
+ src/cab/out/pinone/PinOne.h                   |   4 +
+ src/cab/out/pinone/PinOneAutoConfigurator.cpp | 115 +++++++++++-----
+ src/cab/out/pinone/PinOneAutoConfigurator.h   |  13 +-
+ src/cab/out/pinone/PinOneHidCommunication.cpp | 123 ++++++++++++++++++
+ src/cab/out/pinone/PinOneHidCommunication.h   |  52 ++++++++
+ 7 files changed, 321 insertions(+), 39 deletions(-)
+ create mode 100644 src/cab/out/pinone/PinOneHidCommunication.cpp
+ create mode 100644 src/cab/out/pinone/PinOneHidCommunication.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c587e8e..20a7832 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -272,6 +272,7 @@ if(PLATFORM STREQUAL "win" OR PLATFORM STREQUAL "win-mingw" OR PLATFORM STREQUAL
+       src/cab/out/pinone/PinOne.cpp
+       src/cab/out/pinone/PinOneAutoConfigurator.cpp
+       src/cab/out/pinone/PinOneCommunication.cpp
++      src/cab/out/pinone/PinOneHidCommunication.cpp
+       src/cab/out/ps/Pinscape.cpp
+       src/cab/out/ps/PinscapeAutoConfigurator.cpp
+       src/cab/out/pspico/PinscapePico.cpp
+diff --git a/src/cab/out/pinone/PinOne.cpp b/src/cab/out/pinone/PinOne.cpp
+index fea42a6..42b1350 100644
+--- a/src/cab/out/pinone/PinOne.cpp
++++ b/src/cab/out/pinone/PinOne.cpp
+@@ -1,5 +1,6 @@
+ #include "PinOne.h"
+ #include "PinOneCommunication.h"
++#include "PinOneHidCommunication.h"
+ #include "../../Cabinet.h"
+ #include "../../../general/StringExtensions.h"
+ #include "../../../general/MathExtensions.h"
+@@ -30,6 +31,11 @@ PinOne::~PinOne()
+       delete m_pinOneCommunication;
+       m_pinOneCommunication = nullptr;
+    }
++   if (m_hidDevice)
++   {
++      delete m_hidDevice;
++      m_hidDevice = nullptr;
++   }
+ }
+ 
+ void PinOne::SetNumber(int value)
+@@ -102,6 +108,18 @@ bool PinOne::VerifySettings()
+       return false;
+    }
+ 
++   if (m_comPort == HidSentinel)
++   {
++      PinOneHidDevice* device = PinOneHidCommunication::FindDevice();
++      if (!device)
++      {
++         Log::Warning(StringExtensions::Build("{0} {1} is configured for USB HID, but no PinOne HID device was found.", "PinOne", GetName()));
++         return false;
++      }
++      delete device;
++      return true;
++   }
++
+    return true;
+ }
+ 
+@@ -121,7 +139,12 @@ void PinOne::UpdateOutputs(const std::vector<uint8_t>& newOutputValues)
+             buf[1] = pfx;
+             std::copy(newOutputValues.begin() + i, newOutputValues.begin() + lim, buf.begin() + 2);
+ 
+-            if (m_pinOneCommunication)
++            if (m_comPort == HidSentinel)
++            {
++               if (m_hidDevice)
++                  m_hidDevice->WriteUSB(buf);
++            }
++            else if (m_pinOneCommunication)
+                m_pinOneCommunication->Write(buf);
+ 
+             std::copy(newOutputValues.begin() + i, newOutputValues.begin() + lim, m_oldOutputValues.begin() + i);
+@@ -146,6 +169,23 @@ void PinOne::UpdateDelay()
+ 
+ void PinOne::ConnectToController()
+ {
++   if (m_comPort == HidSentinel)
++   {
++      std::lock_guard<std::recursive_mutex> lock(m_portLocker);
++
++      if (m_hidDevice)
++         DisconnectFromController();
++
++      m_hidDevice = PinOneHidCommunication::FindDevice();
++      if (!m_hidDevice)
++      {
++         std::string msg = StringExtensions::Build("No PinOne HID device found for {0} {1}.", "PinOne", GetName());
++         Log::Warning(msg);
++         throw std::runtime_error(msg);
++      }
++      return;
++   }
++
+    try
+    {
+       std::lock_guard<std::recursive_mutex> lock(m_portLocker);
+@@ -179,6 +219,16 @@ void PinOne::DisconnectFromController()
+ {
+    std::lock_guard<std::recursive_mutex> lock(m_portLocker);
+ 
++   if (m_comPort == HidSentinel)
++   {
++      if (m_hidDevice)
++      {
++         delete m_hidDevice;
++         m_hidDevice = nullptr;
++      }
++      return;
++   }
++
+    if (m_pinOneCommunication)
+    {
+       m_pinOneCommunication->DisconnectFromServer();
+diff --git a/src/cab/out/pinone/PinOne.h b/src/cab/out/pinone/PinOne.h
+index 8f4e3bf..49448a2 100644
+--- a/src/cab/out/pinone/PinOne.h
++++ b/src/cab/out/pinone/PinOne.h
+@@ -12,6 +12,7 @@ namespace DOF
+ 
+ class Cabinet;
+ class PinOneCommunication;
++class PinOneHidDevice;
+ 
+ class PinOne : public OutputControllerFlexCompleteBase
+ {
+@@ -26,6 +27,7 @@ private:
+    bool m_comPortSet = false;
+    std::recursive_mutex m_portLocker;
+    PinOneCommunication* m_pinOneCommunication = nullptr;
++   PinOneHidDevice* m_hidDevice = nullptr;
+ 
+    std::vector<uint8_t> m_oldOutputValues;
+    std::chrono::steady_clock::time_point m_lastUpdate;
+@@ -33,6 +35,8 @@ private:
+    void UpdateDelay();
+ 
+ public:
++   static constexpr const char* HidSentinel = "HID";
++
+    PinOne();
+    PinOne(const std::string& comPort);
+    virtual ~PinOne();
+diff --git a/src/cab/out/pinone/PinOneAutoConfigurator.cpp b/src/cab/out/pinone/PinOneAutoConfigurator.cpp
+index 95a3c65..50480fa 100644
+--- a/src/cab/out/pinone/PinOneAutoConfigurator.cpp
++++ b/src/cab/out/pinone/PinOneAutoConfigurator.cpp
+@@ -1,6 +1,7 @@
+ #include "PinOneAutoConfigurator.h"
+ #include "PinOne.h"
+ #include "PinOneCommunication.h"
++#include "PinOneHidCommunication.h"
+ #include "../../Cabinet.h"
+ #include "../OutputControllerList.h"
+ #include "../../../general/StringExtensions.h"
+@@ -74,19 +75,91 @@ void PinOneAutoConfigurator::AutoConfig(Cabinet* cabinet)
+    }
+ }
+ 
+-std::string PinOneAutoConfigurator::TestSerialPort(const char* portName)
++std::string PinOneAutoConfigurator::GetDevice()
++{
++   PinOneHidDevice* device = PinOneHidCommunication::FindDevice();
++   if (device)
++   {
++      delete device;
++      return PinOne::HidSentinel;
++   }
++
++   bool wmiAvailable;
++   std::string legacyPort = FindLegacyComPort(wmiAvailable);
++   if (legacyPort != "")
++   {
++      if (TryConnect(legacyPort))
++         return legacyPort;
++   }
++   else if (!wmiAvailable)
++   {
++      struct sp_port** portList;
++      if (sp_list_ports(&portList) == SP_OK)
++      {
++         for (int i = 0; portList[i] != nullptr; i++)
++         {
++            char* portName = sp_get_port_name(portList[i]);
++            if (portName && TryConnect(portName))
++            {
++               std::string sp = portName;
++               sp_free_port_list(portList);
++               return sp;
++            }
++         }
++         sp_free_port_list(portList);
++      }
++   }
++
++   std::string comPort = "";
++   PinOneCommunication communication("");
++   if (communication.ConnectToServer())
++      comPort = communication.GetCOMPort();
++
++   return comPort;
++}
++
++std::string PinOneAutoConfigurator::FindLegacyComPort(bool& wmiAvailable)
++{
++   wmiAvailable = true;
++
++   struct sp_port** portList;
++   if (sp_list_ports(&portList) != SP_OK)
++   {
++      Log::Exception("Error searching for legacy PinOne COM port via WMI");
++      wmiAvailable = false;
++      return "";
++   }
++
++   std::string comPort = "";
++   for (int i = 0; portList[i] != nullptr && comPort.empty(); i++)
++   {
++      int vid = 0;
++      int pid = 0;
++      if (sp_get_port_transport(portList[i]) != SP_TRANSPORT_USB || sp_get_port_usb_vid_pid(portList[i], &vid, &pid) != SP_OK)
++         continue;
++
++      char* portName = sp_get_port_name(portList[i]);
++      if (vid == LegacyVendorID && pid == LegacyProductID && portName)
++         comPort = portName;
++   }
++
++   sp_free_port_list(portList);
++   return comPort;
++}
++
++bool PinOneAutoConfigurator::TryConnect(const std::string& sp)
+ {
+    struct sp_port* port = nullptr;
+ 
+    try
+    {
+-      if (sp_get_port_by_name(portName, &port) != SP_OK)
+-         return "";
++      if (sp_get_port_by_name(sp.c_str(), &port) != SP_OK)
++         return false;
+ 
+       if (sp_open(port, SP_MODE_READ_WRITE) != SP_OK)
+       {
+          sp_free_port(port);
+-         return "";
++         return false;
+       }
+ 
+       sp_set_baudrate(port, 2000000);
+@@ -121,7 +194,7 @@ std::string PinOneAutoConfigurator::TestSerialPort(const char* portName)
+          {
+             sp_close(port);
+             sp_free_port(port);
+-            return std::string(portName);
++            return true;
+          }
+       }
+ 
+@@ -153,37 +226,7 @@ std::string PinOneAutoConfigurator::TestSerialPort(const char* portName)
+ 
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+ 
+-   return "";
+-}
+-
+-std::string PinOneAutoConfigurator::GetDevice()
+-{
+-   struct sp_port** portList;
+-   if (sp_list_ports(&portList) != SP_OK)
+-      return "";
+-
+-   for (int i = 0; portList[i] != nullptr; i++)
+-   {
+-      char* portName = sp_get_port_name(portList[i]);
+-      if (!portName)
+-         continue;
+-
+-      std::string result = TestSerialPort(portName);
+-      if (!result.empty())
+-      {
+-         sp_free_port_list(portList);
+-         return result;
+-      }
+-   }
+-
+-   sp_free_port_list(portList);
+-
+-   std::string comPort = "";
+-   PinOneCommunication communication("");
+-   if (communication.ConnectToServer())
+-      comPort = communication.GetCOMPort();
+-
+-   return comPort;
++   return false;
+ }
+ 
+ }
+\ No newline at end of file
+diff --git a/src/cab/out/pinone/PinOneAutoConfigurator.h b/src/cab/out/pinone/PinOneAutoConfigurator.h
+index 03322ac..7a963c5 100644
+--- a/src/cab/out/pinone/PinOneAutoConfigurator.h
++++ b/src/cab/out/pinone/PinOneAutoConfigurator.h
+@@ -2,6 +2,9 @@
+ 
+ #include "../IAutoConfigOutputController.h"
+ 
++#include <cstdint>
++#include <string>
++
+ namespace DOF
+ {
+ 
+@@ -12,7 +15,13 @@ class PinOneAutoConfigurator : public IAutoConfigOutputController
+ public:
+    virtual void AutoConfig(Cabinet* cabinet) override;
+    static std::string GetDevice();
+-   static std::string TestSerialPort(const char* portName);
++
++private:
++   static constexpr uint16_t LegacyVendorID = 0x0E8F;
++   static constexpr uint16_t LegacyProductID = 0x9207;
++
++   static std::string FindLegacyComPort(bool& wmiAvailable);
++   static bool TryConnect(const std::string& sp);
+ };
+ 
+-}
+\ No newline at end of file
++}
+diff --git a/src/cab/out/pinone/PinOneHidCommunication.cpp b/src/cab/out/pinone/PinOneHidCommunication.cpp
+new file mode 100644
+index 0000000..de35efc
+--- /dev/null
++++ b/src/cab/out/pinone/PinOneHidCommunication.cpp
+@@ -0,0 +1,123 @@
++#include "PinOneHidCommunication.h"
++#include "../../../Log.h"
++#include "../../../general/StringExtensions.h"
++
++#include <hidapi/hidapi.h>
++#include <algorithm>
++
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#define NOMINMAX
++#include <windows.h>
++#endif
++
++namespace DOF
++{
++
++PinOneHidDevice::PinOneHidDevice(hid_device* fp, const std::string& path, uint16_t vendorID, uint16_t productID)
++   : m_fp(fp)
++   , m_path(path)
++   , m_vendorID(vendorID)
++   , m_productID(productID)
++{
++}
++
++PinOneHidDevice::~PinOneHidDevice() { Close(); }
++
++void PinOneHidDevice::Close()
++{
++   if (m_fp)
++   {
++      hid_close(m_fp);
++      m_fp = nullptr;
++   }
++}
++
++bool PinOneHidDevice::WriteUSB(const std::vector<uint8_t>& payload)
++{
++   uint8_t buf[PinOneHidCommunication::ReportSize] = {};
++   buf[0] = PinOneHidCommunication::ReportId;
++   std::copy(payload.begin(), payload.begin() + std::min(payload.size(), sizeof(buf) - 1), buf + 1);
++
++   for (int tries = 0; tries < 3; ++tries)
++   {
++      int actual = m_fp ? hid_write(m_fp, buf, sizeof(buf)) : -1;
++      if (actual < 0)
++      {
++         if (TryReopenHandle())
++            continue;
++
++         Log::Error(StringExtensions::Build("PinOne Controller USB error sending request to device: {0}", GetLastWin32ErrMsg()));
++         return false;
++      }
++      else if (actual != static_cast<int>(sizeof(buf)))
++      {
++         Log::Error("PinOne Controller USB error sending request: not all bytes sent");
++         return false;
++      }
++      else
++         return true;
++   }
++
++   return false;
++}
++
++bool PinOneHidDevice::TryReopenHandle()
++{
++   Log::Error("PinOne Controller: invalid handle on write; trying to reopen handle");
++   Close();
++   m_fp = hid_open_path(m_path.c_str());
++   return m_fp != nullptr;
++}
++
++std::string PinOneHidDevice::GetLastWin32ErrMsg()
++{
++   const wchar_t* error = hid_error(m_fp);
++   std::string errorStr = "Unknown error";
++   if (error)
++   {
++#ifdef _WIN32
++      int size = WideCharToMultiByte(CP_UTF8, 0, error, -1, nullptr, 0, nullptr, nullptr);
++      if (size > 0)
++      {
++         errorStr.resize(size - 1);
++         WideCharToMultiByte(CP_UTF8, 0, error, -1, &errorStr[0], size, nullptr, nullptr);
++      }
++#else
++      std::wstring ws(error);
++      errorStr = std::string(ws.begin(), ws.end());
++#endif
++   }
++   return errorStr;
++}
++
++PinOneHidDevice* PinOneHidCommunication::FindDevice()
++{
++   std::vector<PinOneHidDevice*> devices = FindDevices();
++   for (size_t i = 1; i < devices.size(); i++)
++      delete devices[i];
++   return devices.size() > 0 ? devices[0] : nullptr;
++}
++
++std::vector<PinOneHidDevice*> PinOneHidCommunication::FindDevices()
++{
++   std::vector<PinOneHidDevice*> devices;
++
++   struct hid_device_info* devs = hid_enumerate(VendorID, ProductID);
++   for (struct hid_device_info* cur = devs; cur; cur = cur->next)
++   {
++      if (cur->usage_page != UsagePage || cur->usage != Usage || !cur->path)
++         continue;
++
++      hid_device* fp = hid_open_path(cur->path);
++      if (!fp)
++         continue;
++
++      devices.push_back(new PinOneHidDevice(fp, cur->path, cur->vendor_id, cur->product_id));
++   }
++   hid_free_enumeration(devs);
++
++   return devices;
++}
++
++}
+diff --git a/src/cab/out/pinone/PinOneHidCommunication.h b/src/cab/out/pinone/PinOneHidCommunication.h
+new file mode 100644
+index 0000000..b283d9f
+--- /dev/null
++++ b/src/cab/out/pinone/PinOneHidCommunication.h
+@@ -0,0 +1,52 @@
++#pragma once
++
++// Ported from DirectOutput's PinOneHidCommunication.cs by Cleveland Software Design (DirectOutput
++// pull request #27, MIT) for Visual Pinball Infinite.
++
++#include <cstdint>
++#include <string>
++#include <vector>
++
++struct hid_device_;
++typedef struct hid_device_ hid_device;
++
++namespace DOF
++{
++
++class PinOneHidDevice
++{
++public:
++   PinOneHidDevice(hid_device* fp, const std::string& path, uint16_t vendorID, uint16_t productID);
++   ~PinOneHidDevice();
++
++   const std::string& GetPath() const { return m_path; }
++   uint16_t GetVendorID() const { return m_vendorID; }
++   uint16_t GetProductID() const { return m_productID; }
++   void Close();
++   bool WriteUSB(const std::vector<uint8_t>& payload);
++
++private:
++   bool TryReopenHandle();
++   std::string GetLastWin32ErrMsg();
++
++   hid_device* m_fp;
++   std::string m_path;
++   uint16_t m_vendorID;
++   uint16_t m_productID;
++};
++
++class PinOneHidCommunication
++{
++public:
++   static constexpr uint16_t VendorID = 0x39F5;
++   static constexpr uint16_t ProductID = 0x9208;
++   static constexpr uint16_t UsagePage = 0xFF00;
++   static constexpr uint16_t Usage = 0x01;
++   static constexpr uint8_t ReportId = 6;
++   static constexpr int ReportSize = 64;
++
++   static PinOneHidDevice* FindDevice();
++   static std::vector<PinOneHidDevice*> FindDevices();
++};
++
++}
+-- 
+2.55.0.windows.3
+

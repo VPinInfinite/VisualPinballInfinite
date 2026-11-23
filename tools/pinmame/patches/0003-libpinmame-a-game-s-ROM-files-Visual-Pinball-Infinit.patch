@@ -1,0 +1,129 @@
+From 4999808a1cf4463eace6686cb029c75eea64ebd8 Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] libpinmame: a game's ROM files (Visual Pinball Infinite)
+
+PinmameGetGameRoms hands out each of a game's ROM files as PinMAME's own
+audit expects them (AuditRomSet): its name, its length (its chunks totalled),
+its CRC, and whether it's optional, never dumped, a bad dump, or one its parent
+set holds, so a ROM set can be checked file by file before it's installed.
+Only libpinmame's BSD files change.
+---
+ src/libpinmame/libpinmame.cpp | 59 +++++++++++++++++++++++++++++++++++
+ src/libpinmame/libpinmame.h   | 17 ++++++++++
+ 2 files changed, 76 insertions(+)
+
+diff --git a/src/libpinmame/libpinmame.cpp b/src/libpinmame/libpinmame.cpp
+index 747a59a0c..8105783f7 100644
+--- a/src/libpinmame/libpinmame.cpp
++++ b/src/libpinmame/libpinmame.cpp
+@@ -968,6 +968,65 @@ PINMAMEAPI PINMAME_STATUS PinmameGetGames(PinmameGameCallback callback, void* co
+ 	return PINMAME_STATUS_OK;
+ }
+ 
++/******************************************************
++ * PinmameGetGameRoms
++ ******************************************************/
++
++// Visual Pinball Infinite: a game's ROM files as PinMAME's own audit expects them (AuditRomSet):
++// each file's name, length (its chunks totalled), CRC, and whether it's optional, never dumped,
++// a bad dump, or one its parent set holds, so a ROM set can be checked file by file before it's
++// installed
++PINMAMEAPI PINMAME_STATUS PinmameGetGameRoms(const char* const p_name, PinmameRomCallback callback, void* const p_userData)
++{
++	if (!_p_Config)
++		return PINMAME_STATUS_CONFIG_NOT_SET;
++
++	const int gameNum = GetGameNumFromString(p_name);
++
++	if (gameNum < 0)
++		return PINMAME_STATUS_GAME_NOT_FOUND;
++
++	const struct GameDriver* const gamedrv = drivers[gameNum];
++
++	if (!gamedrv->rom)
++		return PINMAME_STATUS_OK;
++
++	for (const struct RomModule* region = rom_first_region(gamedrv); region; region = rom_next_region(region)) {
++		if (!ROMREGION_ISROMDATA(region))
++			continue;
++
++		for (const struct RomModule* rom = rom_first_file(region); rom; rom = rom_next_file(rom)) {
++			PinmameRom entry;
++			memset(&entry, 0, sizeof(PinmameRom));
++
++			entry.name = ROM_GETNAME(rom);
++
++			for (const struct RomModule* chunk = rom_first_chunk(rom); chunk; chunk = rom_next_chunk(chunk))
++				entry.length += ROM_GETLENGTH(chunk);
++
++			const char* const hash = ROM_GETHASHDATA(rom);
++			unsigned char crc[4];
++
++			if (hash_data_extract_binary_checksum(hash, HASH_CRC, crc))
++				entry.crc = ((uint32_t)crc[0] << 24) | ((uint32_t)crc[1] << 16) | ((uint32_t)crc[2] << 8) | crc[3];
++
++			if (ROM_ISOPTIONAL(rom))
++				entry.flags |= PINMAME_ROM_FLAG_OPTIONAL;
++			if (hash_data_has_info(hash, HASH_INFO_NO_DUMP))
++				entry.flags |= PINMAME_ROM_FLAG_NO_DUMP;
++			if (hash_data_has_info(hash, HASH_INFO_BAD_DUMP))
++				entry.flags |= PINMAME_ROM_FLAG_BAD_DUMP;
++			if (gamedrv->clone_of && RomInSet(gamedrv->clone_of, hash))
++				entry.flags |= PINMAME_ROM_FLAG_IN_PARENT;
++
++			if (callback)
++				(*callback)(&entry, p_userData);
++		}
++	}
++
++	return PINMAME_STATUS_OK;
++}
++
+ /******************************************************
+  * PinmameSetConfig
+  ******************************************************/
+diff --git a/src/libpinmame/libpinmame.h b/src/libpinmame/libpinmame.h
+index cdd5ee43f..4cedf5d6e 100644
+--- a/src/libpinmame/libpinmame.h
++++ b/src/libpinmame/libpinmame.h
+@@ -315,6 +315,21 @@ typedef struct {
+ 	int32_t found;
+ } PinmameGame;
+ 
++// Visual Pinball Infinite: a game's ROM files, as PinMAME's own audit expects them
++typedef enum {
++	PINMAME_ROM_FLAG_OPTIONAL = 1,
++	PINMAME_ROM_FLAG_NO_DUMP = 2,
++	PINMAME_ROM_FLAG_BAD_DUMP = 4,
++	PINMAME_ROM_FLAG_IN_PARENT = 8
++} PINMAME_ROM_FLAG;
++
++typedef struct {
++	const char* name;
++	uint32_t length;
++	uint32_t crc;
++	uint32_t flags;
++} PinmameRom;
++
+ typedef struct {
+ 	PINMAME_DISPLAY_TYPE type;
+ 	int32_t top;
+@@ -404,6 +419,7 @@ typedef struct {
+ } PinmameKeyboardInfo;
+ 
+ typedef void (PINMAMECALLBACK *PinmameGameCallback)(PinmameGame* p_game, void* const p_userData);
++typedef void (PINMAMECALLBACK *PinmameRomCallback)(PinmameRom* p_rom, void* const p_userData);
+ typedef void (PINMAMECALLBACK *PinmameOnStateUpdatedCallback)(int state, void* const p_userData);
+ typedef void (PINMAMECALLBACK *PinmameOnDisplayAvailableCallback)(int index, int displayCount, PinmameDisplayLayout* p_displayLayout, void* const p_userData);
+ typedef void (PINMAMECALLBACK *PinmameOnDisplayUpdatedCallback)(int index, void* p_displayData, PinmameDisplayLayout* p_displayLayout, void* const p_userData);
+@@ -437,6 +453,7 @@ typedef struct {
+ 
+ PINMAMEAPI PINMAME_STATUS PinmameGetGame(const char* const p_name, PinmameGameCallback callback, void* const p_userData);
+ PINMAMEAPI PINMAME_STATUS PinmameGetGames(PinmameGameCallback callback, void* const p_userData);
++PINMAMEAPI PINMAME_STATUS PinmameGetGameRoms(const char* const p_name, PinmameRomCallback callback, void* const p_userData);
+ PINMAMEAPI void PinmameSetConfig(const PinmameConfig* const p_config);
+ PINMAMEAPI void PinmameSetPath(const PINMAME_FILE_TYPE fileType, const char* const p_path);
+ PINMAMEAPI int PinmameGetCheat();
+-- 
+2.55.0.windows.3
+

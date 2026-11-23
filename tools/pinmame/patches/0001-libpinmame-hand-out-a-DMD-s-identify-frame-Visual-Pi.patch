@@ -1,0 +1,133 @@
+From c32cdb0a05064a28224502aada10788f4318cc6c Mon Sep 17 00:00:00 2001
+From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
+Subject: [PATCH] libpinmame: hand out a DMD's identify frame (Visual Pinball
+ Infinite)
+
+PinmameGetDisplayIdentifyFrame copies a DMD's latest identify frame, PinMAME's raw shades as
+colorizers and PinUP's frame triggers read them, with the core's own frame number, during the
+display callback, and PinmameGetDisplayIdentifyBits says its bits a dot (2 or 4) as VPX's
+PinMAME plugin gives its identify format. The legacy callback hands either the brightness frame
+or this one, never both. The frame is the core's (core_dmd_update_identify, as the plugin message
+interface takes it), kept in libpinmame's display callback, so only libpinmame's BSD files change.
+---
+ src/libpinmame/libpinmame.cpp | 58 +++++++++++++++++++++++++++++++++++
+ src/libpinmame/libpinmame.h   |  6 ++++
+ 2 files changed, 64 insertions(+)
+
+diff --git a/src/libpinmame/libpinmame.cpp b/src/libpinmame/libpinmame.cpp
+index 6966d77b5..a1b38fd12 100644
+--- a/src/libpinmame/libpinmame.cpp
++++ b/src/libpinmame/libpinmame.cpp
+@@ -60,6 +60,10 @@ typedef struct {
+ 	void* pData;
+ 	int size;
+ 	unsigned int frameId;
++	// Visual Pinball Infinite: the DMD's latest identify frame (one byte a dot) and its number
++	UINT8* pIdData;
++	int idSize;
++	unsigned int idFrameId;
+ } PinmameDisplay;
+ 
+ static std::vector<PinmameDisplay*> _displays;
+@@ -568,6 +572,27 @@ extern "C" int libpinmame_time_to_quit(void)
+ 
+ extern "C" int libpinmame_needs_update_display() { return _p_Config->cb_OnDisplayUpdated != nullptr; }
+ 
++// Visual Pinball Infinite: keeps a DMD's latest identify frame - its raw shades, as PinMAME's core
++// makes them for colorizers (core_dmd_update_identify), with its frame number - for
++// PinmameGetDisplayIdentifyFrame
++static void StoreIdentifyFrame(PinmameDisplay* pDisplay, const struct core_dispLayout* layout)
++{
++	unsigned int frameId = 0;
++	const UINT8* p_raw = core_dmd_update_identify(layout, &frameId);
++	const int size = layout->length * layout->start;
++	if (p_raw == nullptr || size <= 0)
++		return;
++	if (pDisplay->pIdData == nullptr || pDisplay->idSize != size) {
++		free(pDisplay->pIdData);
++		pDisplay->pIdData = (UINT8*)calloc(size, 1);
++		pDisplay->idSize = pDisplay->pIdData ? size : 0;
++	}
++	if (pDisplay->pIdData) {
++		memcpy(pDisplay->pIdData, p_raw, size);
++		pDisplay->idFrameId = frameId;
++	}
++}
++
+ extern "C" void libpinmame_update_display(const struct core_dispLayout* layout, void* p_data)
+ {
+ 	// If layout is null, update the custom DMD generated from alphanumeric segment displays
+@@ -582,6 +607,8 @@ extern "C" void libpinmame_update_display(const struct core_dispLayout* layout,
+ 	}
+ 	else if (_p_Config->cb_OnDisplayUpdated) {
+ 		if ((pDisplay->layout.type & CORE_SEGMASK) == CORE_DMD) {
++			if (layout != nullptr) // Visual Pinball Infinite
++				StoreIdentifyFrame(pDisplay, layout);
+ 			if (memcmp(pDisplay->pData, p_data, pDisplay->size)) {
+ 				memcpy(pDisplay->pData, p_data, pDisplay->size);
+ 				pDisplay->frameId++;
+@@ -1071,6 +1098,35 @@ PINMAMEAPI void PinmameSetDmdMode(const PINMAME_DMD_MODE dmdMode)
+ 	g_fDmdMode = dmdMode;
+ }
+ 
++/******************************************************
++ * PinmameGetDisplayIdentifyFrame (Visual Pinball Infinite)
++ ******************************************************/
++
++PINMAMEAPI int PinmameGetDisplayIdentifyFrame(const int index, uint8_t* const p_buffer, const int bufferSize, unsigned int* const p_frameId)
++{
++	if (index < 0 || index >= (int)_displays.size() || _displays[index] == nullptr || _displays[index]->pIdData == nullptr)
++		return 0;
++	const PinmameDisplay* pDisplay = _displays[index];
++	if (p_buffer == nullptr || bufferSize < pDisplay->idSize)
++		return 0;
++	memcpy(p_buffer, pDisplay->pIdData, pDisplay->idSize);
++	if (p_frameId)
++		*p_frameId = pDisplay->idFrameId;
++	return pDisplay->idSize;
++}
++
++/******************************************************
++ * PinmameGetDisplayIdentifyBits (Visual Pinball Infinite)
++ ******************************************************/
++
++PINMAMEAPI int PinmameGetDisplayIdentifyBits(const int index)
++{
++	if (!_isRunning || index < 0 || index >= (int)_displays.size() || _displays[index] == nullptr)
++		return 0;
++	// as the identify format VPX's PinMAME plugin gives (SetupMsgApiVideoDisplays)
++	return ((core_gameData->gen & (GEN_SAM | GEN_SPA | GEN_ALVG_DMD2)) || (strncasecmp(Machine->gamedrv->name, "smb", 3) == 0) || (strncasecmp(Machine->gamedrv->name, "cueball", 7) == 0)) ? 4 : 2;
++}
++
+ /******************************************************
+  * PinmameGetDmdMode
+  ******************************************************/
+@@ -1182,6 +1238,8 @@ PINMAMEAPI void PinmameStop()
+ 	for (PinmameDisplay* pDisplay : _displays) {
+ 		if (pDisplay && pDisplay->pData)
+ 			free(pDisplay->pData);
++		if (pDisplay && pDisplay->pIdData) // Visual Pinball Infinite
++			free(pDisplay->pIdData);
+ 
+ 		delete pDisplay;
+ 	}
+diff --git a/src/libpinmame/libpinmame.h b/src/libpinmame/libpinmame.h
+index dc604dfdb..98ab05aca 100644
+--- a/src/libpinmame/libpinmame.h
++++ b/src/libpinmame/libpinmame.h
+@@ -447,6 +447,12 @@ PINMAMEAPI int PinmameGetHandleMechanics();
+ PINMAMEAPI void PinmameSetHandleMechanics(const int handleMechanics);
+ PINMAMEAPI PINMAME_DMD_MODE PinmameGetDmdMode();
+ PINMAMEAPI void PinmameSetDmdMode(const PINMAME_DMD_MODE dmdMode);
++// Visual Pinball Infinite: a DMD's latest identify frame (PinMAME's raw shades, one byte a dot, as
++// colorizers and PinUP's frame triggers read them), copied into p_buffer while PinMAME is in the
++// display callback; the dots copied (0 for none, or a buffer too small), its frame number in
++// p_frameId. And the frame's bits a dot (2 or 4), as VPX's PinMAME plugin gives its identify format.
++PINMAMEAPI int PinmameGetDisplayIdentifyFrame(const int index, uint8_t* const p_buffer, const int bufferSize, unsigned int* const p_frameId);
++PINMAMEAPI int PinmameGetDisplayIdentifyBits(const int index);
+ PINMAMEAPI PINMAME_STATUS PinmameRun(const char* const p_name);
+ PINMAMEAPI int PinmameIsRunning();
+ PINMAMEAPI PINMAME_STATUS PinmamePause(const int pause);
+-- 
+2.55.0.windows.3
+

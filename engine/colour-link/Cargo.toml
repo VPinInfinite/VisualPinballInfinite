@@ -1,0 +1,13 @@
+[package]
+name = "colour-link"
+version.workspace = true
+description = "The link between the player and vpi-colour, the program that colours a ROM game's score display: one block of shared memory and a named event."
+edition.workspace = true
+# Not GPL-3.0: vpi-colour runs libserum and libvni, under version 2 of the GPL alone, and uses
+# this crate. BSD code may go into either program.
+license = "BSD-3-Clause"
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
