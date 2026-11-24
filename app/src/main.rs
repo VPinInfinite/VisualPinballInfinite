@@ -4,6 +4,7 @@
 #![windows_subsystem = "windows"]
 
 mod added;
+mod archive_passwords;
 mod addons;
 mod altsound_make;
 mod cabinet;
@@ -45,6 +46,7 @@ mod roms_page;
 mod screens;
 mod script_editor;
 mod screenshots;
+mod scripts_1080;
 mod setup;
 mod shell;
 mod shot;
@@ -1417,6 +1419,12 @@ async fn remove_from_drop(app: AppHandle, index: usize) -> Result<serde_json::Va
     tauri::async_runtime::spawn_blocking(move || drop::take_out(&app, index)).await.map_err(|e| e.to_string())?
 }
 
+/// A download locked with a password opened with the one typed in the drop window.
+#[tauri::command]
+async fn unlock_drop(app: AppHandle, index: usize, password: String) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || drop::unlock(&app, index, password)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn add_drop(app: AppHandle, choices: Vec<drop::Choice>, already: ::library::install::Already, test: bool) -> Result<Vec<drop::Result_>, String> {
     let _task = tasks::begin(&app, "Adding files", 0);
@@ -1718,6 +1726,7 @@ fn main() {
             inspect_drop,
             choose_drop_table,
             remove_from_drop,
+            unlock_drop,
             add_drop,
             forget_drop,
             test_table,
@@ -1785,6 +1794,10 @@ fn main() {
             if let Err(e) = hardcore::put_back() {
                 eprintln!("{e}");
             }
+            // and VPX 10.8.0's shared scripts, where they were lent for a game
+            scripts_1080::take_back();
+            // the passwords that opened locked downloads, tried on the next ones
+            archive_passwords::load();
             library::start(app.handle().clone());
             Ok(())
         })

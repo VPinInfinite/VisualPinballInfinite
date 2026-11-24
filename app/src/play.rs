@@ -2,7 +2,8 @@
 //! 10.8.0 beside it (`library::vpx::to_play`) — as a front end starts it (`-Play <table>`), which
 //! quits when the game ends; never in our player, which the app keeps as a tool. VPX 10.8.0 takes
 //! no add-ons, so a game there is counted for achievements once it's over, from what it left; its
-//! own settings file is the one a game's changes are made on. VPX's own settings play it, but where a screen preset is chosen (the table's
+//! own settings file is the one a game's changes are made on, the game controller 10.8.1's settings
+//! map among them where its own map none. VPX's own settings play it, but where a screen preset is chosen (the table's
 //! own, `[VPI]` `ScreenPreset`, or cabinet mode's) or its score display is recorded for colouring:
 //! then a copy of VPX's settings with those over them, for that game alone (`-Ini`), and a
 //! recording made by VPX's DMDUtil add-on in a folder of its own, VPX started there. A PinUP pack's
@@ -290,12 +291,14 @@ fn now_ms() -> i64 {
 /// What VPX's settings are to be changed by for one game: the screens a preset gives — cabinet
 /// mode's, else the one the table's own settings choose — and, recording for colouring, VPX's
 /// DMDUtil add-on writing the display's frames down (its displays left unlooked for, where it
-/// isn't on already). Presets hold VPX 10.8.1's windows, which 10.8.0 has none of: none for it.
+/// isn't on already). Presets hold VPX 10.8.1's windows, which 10.8.0 has none of: for 10.8.0, the
+/// game controller 10.8.1's settings map, where its own settings map none
+/// (`library::controller_1080`).
 fn run_changes(vpx: &::library::vpx::Vpx, table: &Path, preset: Option<&str>, recording: bool) -> Vec<Change> {
     let main = vpi_settings::read_all();
     let mut changes = Vec::new();
     if !vpx.has_addons() {
-        return changes;
+        return ::library::controller_1080::changes(&main, &vpi_settings::parse_ini(&::library::vpx::settings_text(vpx)));
     }
     let preset_text = match preset.filter(|p| !p.trim().is_empty()) {
         Some(name) => vpi_settings::preset_path(name).and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()),
@@ -529,6 +532,8 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                 _ => (None, None, None),
             };
             let since = now_ms();
+            // VPX 10.8.0: the shared scripts it was released with, beside the table for the game
+            crate::scripts_1080::lend_for(&vpx, &path);
             let mut command = ::library::vpx::play_command(&vpx, &path, prefs.as_deref());
             if let Some(ini) = &ini {
                 command.arg("-Ini").arg(ini);
@@ -571,6 +576,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                 Ok(c) => c,
                 Err(problem) => {
                     crate::pause_menu::end(&app);
+                    crate::scripts_1080::take_back();
                     if let Err(e) = crate::pup_packs::put_back() {
                         eprintln!("{e}");
                     }
@@ -608,6 +614,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
             }
             let code = child.wait().ok().and_then(|s| s.code());
             ended.store(true, std::sync::atomic::Ordering::Relaxed);
+            crate::scripts_1080::take_back();
             crate::pause_menu::end(&app);
             if let Err(e) = crate::pup_packs::put_back() {
                 eprintln!("{e}");

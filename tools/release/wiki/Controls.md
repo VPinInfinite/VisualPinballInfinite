@@ -52,6 +52,8 @@ Any gamepad Windows knows works as soon as it's connected, in VPX's layout for g
 
 **X** and the gamepad's own **Start** do nothing until you give them an action. A gamepad rumbles where VPX's gamepads rumble.
 
+**In VPX 10.8.0**, which keeps controller settings of its own, an Xbox-style controller works as set up here too, but for its flippers: 10.8.0 can't flip with the triggers, so there they're on the shoulder buttons, and the magna-saves on the sticks' clicks. Where VPX 10.8.0's own settings already map a controller, it plays with those.
+
 ## The pause menu
 
 **The pause menu**, on Settings › Controls, chooses what VPX's menu key opens (**F12**, or a controller's **Back**) in a game started from the app:

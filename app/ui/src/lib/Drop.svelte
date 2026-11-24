@@ -7,7 +7,7 @@
   import Icon from './Icon.svelte';
   import VpsFiles from './VpsFiles.svelte';
   import DropMedia from './DropMedia.svelte';
-  import { app, drop, addDrop, closeDrop, chooseDropTable, removeFromDrop, openTable, savePrefs, openLink, tableById, isPack } from './store.svelte.js';
+  import { app, drop, addDrop, closeDrop, chooseDropTable, removeFromDrop, unlockDrop, openTable, savePrefs, openLink, tableById, isPack } from './store.svelte.js';
 
   const tables = $derived([...app.tables].sort((a, b) => a.name.localeCompare(b.name)));
   // the tables being added in the drop, not in the library yet: files can be for them too
@@ -141,6 +141,20 @@
     if (seeing?.source === d.source) seeing = { source: d.source, view, failed: !view, mine };
   }
 
+  // a locked download's password as it's typed, and what was wrong with the last one, by download
+  let typed = $state({});
+  let wrongPassword = $state({});
+
+  async function unlock(i, d) {
+    const said = await unlockDrop(i, typed[d.source] || '');
+    if (said === true) {
+      delete typed[d.source];
+      delete wrongPassword[d.source];
+    } else {
+      wrongPassword[d.source] = said;
+    }
+  }
+
   const pct = $derived(drop.progress && drop.progress.total ? Math.round((drop.progress.done / drop.progress.total) * 100) : 0);
 
   function close() {
@@ -218,7 +232,18 @@
               <!-- out of this drop only: the file itself stays where it is -->
               <button type="button" class="btn icon ghost small out" aria-label="Take {d.name} out of this drop" title="Take it out of this drop (the file stays where it is)" disabled={drop.busy} onclick={() => { if (seeing?.source === d.source) seeing = null; removeFromDrop(i); }}><Icon name="x" size={16} /></button>
             </div>
-            {#if d.error}
+            {#if d.error && d.locked}
+              <!-- locked with a password: typed here, kept by the app once it opens it -->
+              <form class="unlock" onsubmit={(e) => { e.preventDefault(); unlock(i, d); }}>
+                <p class="problem">It’s locked with a password. Type it to open it: its maker gives it with the download.</p>
+                <div class="unlock-row">
+                  <input class="select keyin" type="password" autocomplete="off" spellcheck="false" placeholder="Its password" aria-label="{d.name}’s password" bind:value={typed[d.source]} disabled={drop.busy} />
+                  <button type="submit" class="btn small" disabled={drop.busy || !typed[d.source]}>Open it</button>
+                  {#if wrongPassword[d.source]}<span class="bad">{wrongPassword[d.source]}</span>{/if}
+                </div>
+                <p class="soft small">The app keeps a password that opens a download, to try on the next one locked.</p>
+              </form>
+            {:else if d.error}
               <p class="problem">{d.error}</p>
             {:else}
               {#if d.table}
@@ -438,6 +463,11 @@
   .body { overflow: auto; padding: 16px 24px; display: flex; flex-direction: column; gap: 14px; min-height: 120px; }
   .soft { color: var(--faint); }
   .problem { margin: 0; padding: 10px 14px; border-radius: 10px; background: #2a1820; border: 1px solid #5a2a3a; }
+  .unlock { display: flex; flex-direction: column; gap: 8px; }
+  .unlock-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .unlock-row input { width: 260px; }
+  .unlock-row .bad { color: var(--bad, #ff6b81); }
+  .unlock .small { margin: 0; font-size: 12px; }
   .dl { border: 1px solid var(--card-line); background: var(--card); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
   .dl-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
   .dl-head b { font-size: 15px; }

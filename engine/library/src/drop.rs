@@ -298,6 +298,8 @@ pub struct Download {
     pub readme: Option<String>,
     /// Why it couldn't be read.
     pub error: Option<String>,
+    /// It's locked with a password none at hand opens: one to be typed for it.
+    pub locked: bool,
     #[serde(skip)]
     pub listing: Option<Listing>,
     #[serde(skip)]
@@ -968,6 +970,7 @@ pub fn inspect(paths: &[PathBuf], db: &Database, known: &[Known], layout: &Layou
                 notes: Vec::new(),
                 rows: Vec::new(),
                 readme: None,
+                locked: crate::archive::is_locked(&e),
                 error: Some(e),
                 listing: None,
                 steps: Vec::new(),
@@ -1182,6 +1185,7 @@ fn sorted(name: String, source: PathBuf, listing: Listing, mut contents: Content
             rows,
             readme,
             error: None,
+            locked: false,
             listing: None,
             steps,
             table_dir,
@@ -1842,7 +1846,7 @@ mod tests {
             colour("tz_92.cRZ", Colouring::Serum),
             Step { from: "altsound/tz_94h/altsound.csv".into(), kind: Kind::AltSound, size: 1, to: None, note: None },
         ];
-        let contents = Contents { files: Vec::new(), pup_root: None, altsound_folder: Some("altsound/tz_94h".into()), dmd_folder: None, music_folder: None, readme: None, rom_set: None };
+        let contents = Contents { files: Vec::new(), pup_root: None, pup_name: None, altsound_folder: Some("altsound/tz_94h".into()), dmd_folder: None, music_folder: None, readme: None, rom_set: None };
         let family = ["tz_92".to_string(), "tz_94h".to_string()];
         let known = |set: &str| ["tz_92", "tz_94h", "afm_113b"].contains(&set.to_lowercase().as_str());
         let left_out = fitted_to_its_rom(&mut steps, &contents, "tz_92", &family, &known, &layout);
@@ -1918,6 +1922,7 @@ mod tests {
             rows: Vec::new(),
             readme: None,
             error: None,
+            locked: false,
             listing: None,
             steps: Vec::new(),
             table_dir: None,

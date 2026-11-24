@@ -6,7 +6,10 @@
 //! repository's build of it (`tools\libarchive\setup.ps1`). Only its RAR
 //! readers are switched on: its other readers would take a zip packed inside a
 //! RAR archive for the archive itself. Its functions declared from its own
-//! headers (`archive.h`, `archive_entry.h`, 3.8.10; the same in 3.8.11). Ours.
+//! headers (`archive.h`, `archive_entry.h`, 3.8.10; the same in 3.8.11). An
+//! archive locked with a password, which libarchive can't open, handed to it
+//! unlocked as it reads (`rar_unlock`), through its read, skip and seek
+//! callbacks. Ours.
 
 #![allow(non_camel_case_types)]
 
@@ -24,6 +27,14 @@ type archive_entry = c_void;
 const ARCHIVE_EOF: c_int = 1;
 const ARCHIVE_OK: c_int = 0;
 const ARCHIVE_WARN: c_int = -20;
+const ARCHIVE_FATAL: i64 = -30;
+
+/// libarchive's callbacks for an archive it's handed (`archive_read_callback`, `archive_skip_callback`,
+/// `archive_seek_callback`, `archive_open_callback` and `archive_close_callback`).
+type ReadCallback = unsafe extern "C" fn(*mut archive, *mut c_void, *mut *const c_void) -> isize;
+type SkipCallback = unsafe extern "C" fn(*mut archive, *mut c_void, i64) -> i64;
+type SeekCallback = unsafe extern "C" fn(*mut archive, *mut c_void, i64, c_int) -> i64;
+type OpenCallback = unsafe extern "C" fn(*mut archive, *mut c_void) -> c_int;
 /// `AE_IFMT` and `AE_IFREG`: an entry's kind, and a file's.
 const AE_IFMT: u16 = 0o170000;
 const AE_IFREG: u16 = 0o100000;
@@ -51,6 +62,8 @@ struct Lib {
     entry_filetype: unsafe extern "C" fn(*mut archive_entry) -> u16,
     entry_mtime: unsafe extern "C" fn(*mut archive_entry) -> i64,
     entry_is_encrypted: unsafe extern "C" fn(*mut archive_entry) -> c_int,
+    read_open2: unsafe extern "C" fn(*mut archive, *mut c_void, Option<OpenCallback>, Option<ReadCallback>, Option<SkipCallback>, Option<OpenCallback>) -> c_int,
+    set_seek_callback: unsafe extern "C" fn(*mut archive, Option<SeekCallback>) -> c_int,
 }
 
 // SAFETY: plain function pointers into a library loaded for the program's life
@@ -71,12 +84,15 @@ fn places() -> Vec<PathBuf> {
     if let Some(p) = std::env::var_os("VPI_LIBARCHIVE") {
         out.push(PathBuf::from(p));
     }
-    // the repository's build, the program being in target\<profile> (development builds: a release
-    // build, compiled with VPI_RELEASE_BUILD set, looks beside the program alone)
-    if option_env!("VPI_RELEASE_BUILD").is_none()
-        && let Some(repo) = exe.as_deref().and_then(|e| e.ancestors().nth(3))
-    {
-        out.push(repo.join(r"vpx-build\libarchive\vpi-build\bin\Release\archive.dll"));
+    // the repository's build, the program being in target\<profile> or a test in its `deps`
+    // (development builds: a release build, compiled with VPI_RELEASE_BUILD set, looks beside the
+    // program alone)
+    if option_env!("VPI_RELEASE_BUILD").is_none() {
+        for up in [3, 4] {
+            if let Some(repo) = exe.as_deref().and_then(|e| e.ancestors().nth(up)) {
+                out.push(repo.join(r"vpx-build\libarchive\vpi-build\bin\Release\archive.dll"));
+            }
+        }
     }
     out
 }
@@ -112,7 +128,59 @@ fn load() -> Result<Lib, String> {
             entry_filetype: std::mem::transmute::<*const c_void, unsafe extern "C" fn(*mut archive_entry) -> u16>(symbol(b"archive_entry_filetype\0")?),
             entry_mtime: std::mem::transmute::<*const c_void, unsafe extern "C" fn(*mut archive_entry) -> i64>(symbol(b"archive_entry_mtime\0")?),
             entry_is_encrypted: std::mem::transmute::<*const c_void, unsafe extern "C" fn(*mut archive_entry) -> c_int>(symbol(b"archive_entry_is_encrypted\0")?),
+            read_open2: std::mem::transmute::<
+                *const c_void,
+                unsafe extern "C" fn(*mut archive, *mut c_void, Option<OpenCallback>, Option<ReadCallback>, Option<SkipCallback>, Option<OpenCallback>) -> c_int,
+            >(symbol(b"archive_read_open2\0")?),
+            set_seek_callback: std::mem::transmute::<*const c_void, unsafe extern "C" fn(*mut archive, Option<SeekCallback>) -> c_int>(symbol(b"archive_read_set_seek_callback\0")?),
         })
+    }
+}
+
+/// An unlocked archive as libarchive reads it, through the callbacks below: the bytes of its last
+/// read kept until the next.
+struct Stream {
+    unlocked: crate::rar_unlock::Unlocked,
+    buf: Vec<u8>,
+}
+
+unsafe extern "C" fn stream_read(_a: *mut archive, data: *mut c_void, out: *mut *const c_void) -> isize {
+    // SAFETY: `data` is the reader's Stream, alive until the reader is freed
+    let s = unsafe { &mut *data.cast::<Stream>() };
+    let Stream { unlocked, buf } = s;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unlocked.read_into(buf))) {
+        Ok(Ok(n)) => {
+            // SAFETY: libarchive's place for the buffer, which stays alive until the next read
+            unsafe { *out = buf.as_ptr().cast() };
+            n as isize
+        }
+        _ => -1,
+    }
+}
+
+unsafe extern "C" fn stream_skip(_a: *mut archive, data: *mut c_void, request: i64) -> i64 {
+    // SAFETY: as in `stream_read`
+    let s = unsafe { &mut *data.cast::<Stream>() };
+    let from = s.unlocked.position();
+    s.unlocked.seek_to(from.saturating_add(request.max(0) as u64));
+    (s.unlocked.position() - from) as i64
+}
+
+unsafe extern "C" fn stream_seek(_a: *mut archive, data: *mut c_void, offset: i64, whence: c_int) -> i64 {
+    // SAFETY: as in `stream_read`
+    let s = unsafe { &mut *data.cast::<Stream>() };
+    let base = match whence {
+        0 => 0,
+        1 => s.unlocked.position() as i64,
+        2 => s.unlocked.len() as i64,
+        _ => return ARCHIVE_FATAL,
+    };
+    match base.checked_add(offset) {
+        Some(to) if to >= 0 => {
+            s.unlocked.seek_to(to as u64);
+            s.unlocked.position() as i64
+        }
+        _ => ARCHIVE_FATAL,
     }
 }
 
@@ -131,11 +199,13 @@ struct Header {
     encrypted: bool,
 }
 
-/// libarchive's reader for one archive, its parts given in order; freed when dropped.
+/// libarchive's reader for one archive, its parts given in order, or an archive unlocked; freed when
+/// dropped, its stream after it.
 struct Reader {
     lib: &'static Lib,
     a: *mut archive,
     name: String,
+    stream: Option<Box<Stream>>,
 }
 
 impl Reader {
@@ -147,7 +217,7 @@ impl Reader {
         if a.is_null() {
             return Err(format!("{name}: libarchive could not start"));
         }
-        let r = Reader { lib, a, name };
+        let r = Reader { lib, a, name, stream: None };
         let names: Vec<Vec<u16>> = parts.iter().map(|p| wide(p)).collect();
         let mut list: Vec<*const u16> = names.iter().map(|n| n.as_ptr()).collect();
         list.push(std::ptr::null());
@@ -158,6 +228,47 @@ impl Reader {
             return Err(r.error("not a RAR archive it can read"));
         }
         Ok(r)
+    }
+
+    /// An archive unlocked (`rar_unlock`), read through it.
+    fn open_unlocked(unlocked: crate::rar_unlock::Unlocked, name: &str) -> Result<Reader, String> {
+        let lib = lib()?;
+        // SAFETY: libarchive's own constructor; freed in Drop
+        let a = unsafe { (lib.read_new)() };
+        if a.is_null() {
+            return Err(format!("{name}: libarchive could not start"));
+        }
+        let mut stream = Box::new(Stream { unlocked, buf: vec![0u8; 1 << 20] });
+        let data = (&mut *stream as *mut Stream).cast::<c_void>();
+        let r = Reader { lib, a, name: name.to_string(), stream: Some(stream) };
+        // SAFETY: a live reader; `data` the boxed Stream, which the reader keeps until after it's freed
+        let ok = unsafe {
+            (lib.support_rar)(a) == ARCHIVE_OK
+                && (lib.support_rar5)(a) == ARCHIVE_OK
+                && (lib.set_seek_callback)(a, Some(stream_seek)) == ARCHIVE_OK
+                && (lib.read_open2)(a, data, None, Some(stream_read), Some(stream_skip), None) == ARCHIVE_OK
+        };
+        if !ok {
+            return Err(r.error("not a RAR archive it can read, unlocked"));
+        }
+        Ok(r)
+    }
+
+    /// The checksums to check on the files' data as it comes out, which libarchive can't.
+    fn checks(&self) -> std::sync::Arc<Vec<crate::rar_unlock::Check>> {
+        self.stream.as_ref().map(|s| s.unlocked.checks.clone()).unwrap_or_default()
+    }
+
+    /// The current entry's contents into `out` (at most `limit` bytes), checked against `check` where
+    /// the archive keeps its checksum as a MAC.
+    fn checked_data(&mut self, out: &mut dyn Write, limit: u64, check: Option<&crate::rar_unlock::Check>, path: &str) -> Result<(), String> {
+        let Some(check) = check else { return self.data(out, limit) };
+        let mut hashed = Hashed { out, crc: crc32fast::Hasher::new() };
+        self.data(&mut hashed, limit)?;
+        if limit == u64::MAX && !check.matches(hashed.crc.finalize()) {
+            return Err(format!("{}: {path} didn't come out whole (its checksum differs): the password may not be its own", self.name));
+        }
+        Ok(())
     }
 
     fn error(&self, fallback: &str) -> String {
@@ -227,18 +338,40 @@ impl Drop for Reader {
     }
 }
 
-/// A RAR archive's files (its parts given in order), each path with `/` between folders; an archive
-/// with a password refused, which libarchive can't open.
-pub fn list(parts: &[PathBuf]) -> Result<Vec<Entry>, String> {
-    let mut r = Reader::open(parts)?;
-    let password = |name: &str| format!("{name} has a password, which ours can't open: unpack it first with the program it was made for");
+/// A writer handing on what it's given, its CRC32 worked out as it goes.
+struct Hashed<'a> {
+    out: &'a mut dyn Write,
+    crc: crc32fast::Hasher,
+}
+
+impl Write for Hashed<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.out.write(buf)?;
+        self.crc.update(&buf[..n]);
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.out.flush()
+    }
+}
+
+/// How the plain reading of an archive ended, where it didn't list it.
+enum Plainly {
+    Locked,
+    Failed(String),
+}
+
+/// A RAR archive's files read as it is: locked ones told apart.
+fn list_plain(parts: &[PathBuf]) -> Result<Vec<Entry>, Plainly> {
+    let mut r = Reader::open(parts).map_err(Plainly::Failed)?;
     let mut entries = Vec::new();
     loop {
         // an archive whose list of files is itself locked fails here
-        let next = r.next().map_err(|e| if e.contains("ncrypt") { password(&r.name) } else { e })?;
+        let next = r.next().map_err(|e| if e.contains("ncrypt") { Plainly::Locked } else { Plainly::Failed(e) })?;
         let Some(h) = next else { break };
         if h.encrypted {
-            return Err(password(&r.name));
+            return Err(Plainly::Locked);
         }
         if h.file {
             entries.push(Entry { path: h.path, size: h.size, modified: Some(h.modified) });
@@ -247,28 +380,108 @@ pub fn list(parts: &[PathBuf]) -> Result<Vec<Entry>, String> {
     Ok(entries)
 }
 
-/// One file of a RAR archive into `out`, at most `limit` bytes.
+/// `parts[0]` unlocked with `passwords`, said in words where it can't be.
+fn unlocked(parts: &[PathBuf], passwords: &[String]) -> Result<crate::rar_unlock::Unlocked, String> {
+    let name = parts[0].display().to_string();
+    match crate::rar_unlock::unlock(&parts[0], passwords) {
+        Ok(u) => Ok(u),
+        Err(crate::rar_unlock::Fail::Locked) => Err(crate::archive::locked_message(&parts[0])),
+        Err(crate::rar_unlock::Fail::Cannot(e)) => Err(format!("{name}: {e}")),
+    }
+}
+
+/// The reader for an archive: as it is, or unlocked with `passwords` where it's locked.
+fn reader(parts: &[PathBuf], passwords: &[String]) -> Result<Reader, String> {
+    if passwords.is_empty() {
+        return Reader::open(parts);
+    }
+    let name = parts[0].display().to_string();
+    Reader::open_unlocked(unlocked(parts, passwords)?, &name)
+}
+
+/// Whether the `n`th file of an archive unlocked comes out whole: a password RAR 2.9 to 4 keep
+/// nothing to check against checked by reading the first file it opens.
+fn reads(unlocked: &crate::rar_unlock::Unlocked, n: usize, name: &str) -> bool {
+    let Ok(again) = unlocked.again() else { return false };
+    let Ok(mut r) = Reader::open_unlocked(again, name) else { return false };
+    let checks = r.checks();
+    let mut index = 0;
+    while let Ok(Some(h)) = r.next() {
+        if index == n {
+            let check = checks.iter().find(|c| c.file == index);
+            return r.checked_data(&mut std::io::sink(), u64::MAX, check, &h.path).is_ok();
+        }
+        index += 1;
+    }
+    false
+}
+
+/// A RAR archive's files (its parts given in order), each path with `/` between folders, and the
+/// passwords it's opened with where it's locked: every one of `passwords` at once (RAR 5 checks each
+/// file's against the value it keeps), then each by itself. One locked in parts isn't opened.
+pub fn list(parts: &[PathBuf], passwords: &[String]) -> Result<(Vec<Entry>, Vec<String>), String> {
+    match list_plain(parts) {
+        Ok(entries) => return Ok((entries, Vec::new())),
+        Err(Plainly::Failed(e)) => return Err(e),
+        Err(Plainly::Locked) => {}
+    }
+    let name = parts[0].display().to_string();
+    if parts.len() > 1 {
+        return Err(format!("{name} is locked with a password and split into parts, which ours can't open yet: unpack it first with the program it was made for"));
+    }
+    let attempts = std::iter::once(passwords.to_vec()).chain(passwords.iter().map(|p| vec![p.clone()])).filter(|a| !a.is_empty());
+    for attempt in attempts {
+        let unlocked = match crate::rar_unlock::unlock(&parts[0], &attempt) {
+            Ok(u) => u,
+            Err(crate::rar_unlock::Fail::Locked) => continue,
+            Err(crate::rar_unlock::Fail::Cannot(e)) => return Err(format!("{name}: {e}")),
+        };
+        if let Some(n) = unlocked.unchecked
+            && !reads(&unlocked, n, &name)
+        {
+            continue;
+        }
+        let mut r = Reader::open_unlocked(unlocked, &name)?;
+        let mut entries = Vec::new();
+        while let Some(h) = r.next()? {
+            if h.file {
+                entries.push(Entry { path: h.path, size: h.size, modified: Some(h.modified) });
+            }
+        }
+        return Ok((entries, attempt));
+    }
+    Err(crate::archive::locked_message(&parts[0]))
+}
+
 /// Many of an archive's files out, read through once: each into the writer `open` gives for its
-/// path (None: passed over, libarchive skipping its data).
-pub fn extract(parts: &[PathBuf], open: &mut crate::archive::Opener) -> Result<(), String> {
-    let mut r = Reader::open(parts)?;
+/// path (None: passed over, libarchive skipping its data); a locked archive unlocked with `passwords`.
+pub fn extract(parts: &[PathBuf], passwords: &[String], open: &mut crate::archive::Opener) -> Result<(), String> {
+    let mut r = reader(parts, passwords)?;
+    let checks = r.checks();
+    let mut index = 0;
     while let Some(h) = r.next()? {
         if h.file
             && let Some(mut out) = open(&h.path)?
         {
-            r.data(&mut out, u64::MAX)?;
+            r.checked_data(&mut out, u64::MAX, checks.iter().find(|c| c.file == index), &h.path)?;
             out.flush().map_err(|e| format!("{}: {e}", h.path))?;
         }
+        index += 1;
     }
     Ok(())
 }
 
-pub fn copy_out(parts: &[PathBuf], entry: &str, out: &mut dyn Write, limit: u64) -> Result<(), String> {
-    let mut r = Reader::open(parts)?;
+/// One file of a RAR archive into `out`, at most `limit` bytes; a locked archive unlocked with
+/// `passwords`.
+pub fn copy_out(parts: &[PathBuf], passwords: &[String], entry: &str, out: &mut dyn Write, limit: u64) -> Result<(), String> {
+    let mut r = reader(parts, passwords)?;
+    let checks = r.checks();
+    let mut index = 0;
     while let Some(h) = r.next()? {
         if h.file && h.path == entry {
-            return r.data(out, limit);
+            return r.checked_data(out, limit, checks.iter().find(|c| c.file == index), entry);
         }
+        index += 1;
     }
     Err(format!("{}: no {entry} in it", r.name))
 }

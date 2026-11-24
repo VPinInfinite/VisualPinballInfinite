@@ -326,7 +326,11 @@ pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Opti
             Kind::Rom => (Some(layout.vpinmame.join("roms").join(named(p))), None),
             Kind::PupPack => {
                 let root = contents.pup_root.as_deref().unwrap_or("");
-                let pack = root.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string();
+                // its folder's name; the drop's where the drop is the pack itself
+                let pack = match root.trim_end_matches('/').rsplit('/').next().unwrap_or("") {
+                    "" => contents.pup_name.clone().unwrap_or_default(),
+                    folder => folder.to_string(),
+                };
                 let name = pup.map(str::to_string).unwrap_or_else(|| rom_or(&pack));
                 let note = (!pack.is_empty() && !pack.eq_ignore_ascii_case(&name)).then(|| match pup {
                     Some(_) => format!("the pack's folder `{pack}` named `{name}`, as its table's script asks PinUP for it"),

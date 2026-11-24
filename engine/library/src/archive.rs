@@ -3,10 +3,73 @@
 //! from its header (`sevenz-rust2`, Apache-2.0), a RAR archive's, in however
 //! many parts, through libarchive (`rar.rs`) — or the one file dropped; and a
 //! file of it read out when needed: a read-me, a table to read its info from.
-//! Ours.
+//! An archive locked with a password is opened with the first password at hand
+//! that opens it (`passwords`): those typed, and those the app keeps. Ours.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+/// A password, never written out where the drop is (`{:?}` shows none).
+#[derive(Clone, PartialEq, Eq)]
+pub struct Secret(String);
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<password>")
+    }
+}
+
+impl Secret {
+    pub fn new(text: &str) -> Secret {
+        Secret(text.to_string())
+    }
+
+    pub fn text(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The passwords tried on a locked archive, the latest first: those typed while the program runs,
+/// and those it was given as it started (the app's own, kept).
+static PASSWORDS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// A password tried first from now on.
+pub fn remember_password(password: &str) {
+    if password.is_empty() {
+        return;
+    }
+    let mut list = PASSWORDS.lock().unwrap_or_else(|e| e.into_inner());
+    list.retain(|p| p != password);
+    list.insert(0, password.to_string());
+}
+
+/// A password tried no more.
+pub fn forget_password(password: &str) {
+    PASSWORDS.lock().unwrap_or_else(|e| e.into_inner()).retain(|p| p != password);
+}
+
+/// The passwords to try, as kept: replacing those at hand.
+pub fn set_passwords(list: Vec<String>) {
+    *PASSWORDS.lock().unwrap_or_else(|e| e.into_inner()) = list.into_iter().filter(|p| !p.is_empty()).collect();
+}
+
+/// The passwords to try, the latest first.
+pub fn passwords() -> Vec<String> {
+    PASSWORDS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// How an archive no password at hand opens is said: the screens show a box for its password by it.
+pub const LOCKED: &str = " is locked with a password";
+
+/// Whether `error` says an archive is locked, a password to be typed for it.
+pub fn is_locked(error: &str) -> bool {
+    error.ends_with(LOCKED)
+}
+
+pub fn locked_message(path: &Path) -> String {
+    format!("{}{LOCKED}", path.display())
+}
 
 /// One file in a drop, its path relative to the drop's top with `/` between folders.
 #[derive(Clone, Debug, PartialEq)]
@@ -45,17 +108,28 @@ impl Format {
     }
 }
 
-/// An archive dropped: its kind and its file, or files for a RAR archive in parts, in order.
+/// An archive dropped: its kind and its file, or files for a RAR archive in parts, in order; the
+/// passwords that open it where it's locked.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Archive {
     pub format: Format,
     pub parts: Vec<PathBuf>,
+    pub passwords: Vec<Secret>,
 }
 
 impl Archive {
     /// Its file, the first of its parts.
     pub fn path(&self) -> &Path {
         &self.parts[0]
+    }
+
+    fn password_texts(&self) -> Vec<String> {
+        self.passwords.iter().map(|s| s.text().to_string()).collect()
+    }
+
+    /// The first password, as the zip and 7-Zip readers take one.
+    fn password(&self) -> Option<&str> {
+        self.passwords.first().map(Secret::text)
     }
 
     /// Its name without the kind of archive, or the part (`name.part1.rar` is `name`).
@@ -109,21 +183,47 @@ pub fn list(path: &Path) -> Result<Listing, String> {
         Some(Format::Zip) => {
             let mut zip = zip::ZipArchive::new(std::fs::File::open(path).map_err(|e| fail(&e))?).map_err(|e| fail(&e))?;
             let mut entries = Vec::new();
+            // its smallest locked file, read to try a password on
+            let mut probe: Option<(usize, u64)> = None;
             for i in 0..zip.len() {
                 let f = zip.by_index_raw(i).map_err(|e| fail(&e))?;
                 if f.is_dir() {
                     continue;
                 }
+                if f.encrypted() && probe.is_none_or(|(_, size)| f.size() < size) {
+                    probe = Some((i, f.size()));
+                }
                 let modified = f.last_modified().map(|t| civil_ms(t.year().into(), t.month().into(), t.day().into(), t.hour().into(), t.minute().into(), t.second().into()));
                 entries.push(Entry { path: f.name().replace('\\', "/"), size: f.size(), modified });
             }
-            (Archive { format: Format::Zip, parts: vec![path.to_path_buf()] }, entries)
+            let passwords = match probe {
+                None => Vec::new(),
+                Some((i, _)) => {
+                    // a wrong password fails its check or its file's checksum
+                    let opens = |zip: &mut zip::ZipArchive<std::fs::File>, p: &str| zip.by_index_decrypt(i, p.as_bytes()).is_ok_and(|mut f| std::io::copy(&mut f, &mut std::io::sink()).is_ok());
+                    let found = passwords().into_iter().find(|p| opens(&mut zip, p)).ok_or_else(|| locked_message(path))?;
+                    vec![Secret::new(&found)]
+                }
+            };
+            (Archive { format: Format::Zip, parts: vec![path.to_path_buf()], passwords }, entries)
         }
         Some(Format::SevenZip) => {
-            let a = sevenz_rust2::Archive::open(path).map_err(|e| seven_zip_error(path, e))?;
-            // its contents locked with a password, the list of its files not
-            if a.blocks.iter().flat_map(|b| &b.coders).any(|c| c.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256) {
-                return Err(seven_zip_error(path, sevenz_rust2::Error::PasswordRequired));
+            let candidates = passwords();
+            // its list of files locked: opened with the first password that reads it
+            let (a, mut used) = match sevenz_rust2::Archive::open(path) {
+                Ok(a) => (a, None),
+                Err(sevenz_rust2::Error::PasswordRequired) => candidates
+                    .iter()
+                    .find_map(|p| sevenz_rust2::Archive::open_with_password(path, &sevenz_rust2::Password::from(p.as_str())).ok().map(|a| (a, Some(p.clone()))))
+                    .ok_or_else(|| locked_message(path))?,
+                Err(e) => return Err(seven_zip_error(path, e)),
+            };
+            // its files locked, its list not: the first password that reads its first locked block
+            let is_aes = |c: &sevenz_rust2::Coder| c.encoder_method_id() == sevenz_rust2::EncoderMethod::ID_AES256_SHA256;
+            if used.is_none()
+                && let Some(block) = (0..a.blocks.len()).find(|&b| a.blocks[b].coders.iter().any(is_aes))
+            {
+                used = Some(candidates.into_iter().find(|p| seven_zip_block_opens(path, &a, block, p)).ok_or_else(|| locked_message(path))?);
             }
             let entries = a
                 .files
@@ -131,12 +231,12 @@ pub fn list(path: &Path) -> Result<Listing, String> {
                 .filter(|f| !f.is_directory())
                 .map(|f| Entry { path: f.name().replace('\\', "/"), size: f.size(), modified: unix_ms(std::time::SystemTime::from(f.last_modified_date())) })
                 .collect();
-            (Archive { format: Format::SevenZip, parts: vec![path.to_path_buf()] }, entries)
+            (Archive { format: Format::SevenZip, parts: vec![path.to_path_buf()], passwords: used.iter().map(|p| Secret::new(p)).collect() }, entries)
         }
         Some(Format::Rar) => {
             let parts = crate::rar::parts_of(path);
-            let entries = crate::rar::list(&parts)?;
-            (Archive { format: Format::Rar, parts }, entries)
+            let (entries, used) = crate::rar::list(&parts, &passwords())?;
+            (Archive { format: Format::Rar, parts, passwords: used.iter().map(|p| Secret::new(p)).collect() }, entries)
         }
         None => {
             let meta = std::fs::metadata(path).map_err(|e| fail(&e))?;
@@ -165,28 +265,47 @@ fn walk(top: &Path, dir: &Path, out: &mut Vec<Entry>) -> Result<(), String> {
     Ok(())
 }
 
-/// A 7-Zip archive's error said plainly: one with a password ours can't open.
+/// A 7-Zip archive's error said plainly: one locked with a password none at hand opens.
 fn seven_zip_error(path: &Path, e: sevenz_rust2::Error) -> String {
     match e {
-        // with no AES in ours, a locked archive's method is unknown to it
-        sevenz_rust2::Error::PasswordRequired => format!("{} has a password, which ours can't open: unpack it first with the program it was made for", path.display()),
-        sevenz_rust2::Error::UnsupportedCompressionMethod(m) if m.to_uppercase().contains("AES") => {
-            format!("{} has a password, which ours can't open: unpack it first with the program it was made for", path.display())
-        }
+        sevenz_rust2::Error::PasswordRequired | sevenz_rust2::Error::MaybeBadPassword(_) => locked_message(path),
         e => format!("{}: {e}", path.display()),
     }
 }
 
+/// A 7-Zip archive's password as its reader takes it: none where it isn't locked.
+fn seven_zip_password(password: Option<&str>) -> sevenz_rust2::Password {
+    password.map_or_else(sevenz_rust2::Password::empty, sevenz_rust2::Password::from)
+}
+
+fn seven_zip_open(path: &Path, password: Option<&str>) -> Result<sevenz_rust2::Archive, String> {
+    sevenz_rust2::Archive::open_with_password(path, &seven_zip_password(password)).map_err(|e| seven_zip_error(path, e))
+}
+
+/// Whether `password` reads a 7-Zip archive's `block` through: a wrong one fails its decompression
+/// or its files' checksums.
+fn seven_zip_block_opens(path: &Path, archive: &sevenz_rust2::Archive, block: usize, password: &str) -> bool {
+    let Ok(mut source) = std::fs::File::open(path) else { return false };
+    let password = sevenz_rust2::Password::from(password);
+    let decoder = sevenz_rust2::BlockDecoder::new(1, block, archive, &password, &mut source);
+    decoder
+        .for_each_entries(&mut |_, reader| {
+            std::io::copy(reader, &mut std::io::sink())?;
+            Ok(true)
+        })
+        .is_ok()
+}
+
 /// One file of a 7-Zip archive into `out`, at most `limit` bytes: its block alone decoded, the files
 /// before it in that block read through (a solid archive's files follow one another in one stream).
-fn seven_zip_copy(path: &Path, entry: &str, out: &mut dyn Write, limit: u64) -> Result<(), String> {
-    let archive = sevenz_rust2::Archive::open(path).map_err(|e| seven_zip_error(path, e))?;
+fn seven_zip_copy(path: &Path, password: Option<&str>, entry: &str, out: &mut dyn Write, limit: u64) -> Result<(), String> {
+    let archive = seven_zip_open(path, password)?;
     let index = archive.files.iter().position(|f| f.name().replace('\\', "/") == entry).ok_or_else(|| format!("{}: no {entry} in it", path.display()))?;
     let Some(block) = archive.stream_map.file_block_index[index] else {
         return Ok(()); // an empty file
     };
     let mut source = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let password = sevenz_rust2::Password::empty();
+    let password = seven_zip_password(password);
     let decoder = sevenz_rust2::BlockDecoder::new(1, block, &archive, &password, &mut source);
     let wanted = &archive.files[index];
     decoder
@@ -208,8 +327,8 @@ fn seven_zip_copy(path: &Path, entry: &str, out: &mut dyn Write, limit: u64) -> 
 pub type Opener<'a> = dyn FnMut(&str) -> Result<Option<Box<dyn Write>>, String> + 'a;
 
 /// A 7-Zip archive's files out, block by block, each block decoded once.
-fn seven_zip_extract(path: &Path, open: &mut Opener) -> Result<(), String> {
-    let archive = sevenz_rust2::Archive::open(path).map_err(|e| seven_zip_error(path, e))?;
+fn seven_zip_extract(path: &Path, password: Option<&str>, open: &mut Opener) -> Result<(), String> {
+    let archive = seven_zip_open(path, password)?;
     // its empty files, which no block holds
     for (i, f) in archive.files.iter().enumerate() {
         if !f.is_directory()
@@ -220,7 +339,7 @@ fn seven_zip_extract(path: &Path, open: &mut Opener) -> Result<(), String> {
         }
     }
     let mut source = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let password = sevenz_rust2::Password::empty();
+    let password = seven_zip_password(password);
     for block in 0..archive.blocks.len() {
         let decoder = sevenz_rust2::BlockDecoder::new(1, block, &archive, &password, &mut source);
         let mut failed: Option<String> = None;
@@ -264,11 +383,15 @@ impl Listing {
             Source::Archive(a) => match a.format {
                 Format::Zip => {
                     let mut zip = zip::ZipArchive::new(open(a.path())?).map_err(|e| format!("{}: {e}", a.path().display()))?;
-                    let mut f = zip.by_name(entry).map_err(|e| format!("{} ({entry}): {e}", a.path().display()))?;
+                    let found = match a.password() {
+                        Some(p) => zip.by_name_decrypt(entry, p.as_bytes()),
+                        None => zip.by_name(entry),
+                    };
+                    let mut f = found.map_err(|e| format!("{} ({entry}): {e}", a.path().display()))?;
                     copy(&mut f, out)
                 }
-                Format::SevenZip => seven_zip_copy(a.path(), entry, out, limit),
-                Format::Rar => crate::rar::copy_out(&a.parts, entry, out, limit),
+                Format::SevenZip => seven_zip_copy(a.path(), a.password(), entry, out, limit),
+                Format::Rar => crate::rar::copy_out(&a.parts, &a.password_texts(), entry, out, limit),
             },
         }
     }
@@ -301,7 +424,11 @@ impl Listing {
                 Format::Zip => {
                     let mut zip = zip::ZipArchive::new(open_file(a.path())?).map_err(|e| format!("{}: {e}", a.path().display()))?;
                     for i in 0..zip.len() {
-                        let mut f = zip.by_index(i).map_err(|e| format!("{}: {e}", a.path().display()))?;
+                        let found = match a.password() {
+                            Some(p) => zip.by_index_decrypt(i, p.as_bytes()),
+                            None => zip.by_index(i),
+                        };
+                        let mut f = found.map_err(|e| format!("{}: {e}", a.path().display()))?;
                         if f.is_dir() {
                             continue;
                         }
@@ -313,8 +440,8 @@ impl Listing {
                     }
                     Ok(())
                 }
-                Format::SevenZip => seven_zip_extract(a.path(), open),
-                Format::Rar => crate::rar::extract(&a.parts, open),
+                Format::SevenZip => seven_zip_extract(a.path(), a.password(), open),
+                Format::Rar => crate::rar::extract(&a.parts, &a.password_texts(), open),
             },
         }
     }
@@ -362,6 +489,79 @@ mod tests {
         assert_eq!(format_of(Path::new("a.part2.rar")), Some(Format::Rar));
         assert_eq!(format_of(Path::new("a.r07")), Some(Format::Rar));
         assert_eq!(format_of(Path::new("a.vpx")), None);
+    }
+
+    /// Every locked archive kept for the tests (`testdata/locked`, its README says what each holds),
+    /// opened with its password alone, one test as the passwords at hand are the program's.
+    #[test]
+    fn locked_archives_open_with_their_password() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata").join("locked");
+        let text = |l: &Listing, name: &str| {
+            let mut bytes = Vec::new();
+            match l.copy_out(name, &mut bytes, 1024) {
+                Ok(()) => Some(String::from_utf8_lossy(&bytes).into_owned()),
+                Err(e) => {
+                    eprintln!("{name}: {e}");
+                    None
+                }
+            }
+        };
+        let all = |l: &Listing| l.entries.iter().map(|e| e.path.clone()).collect::<Vec<_>>();
+        let whole = ["zipcrypto.zip", "aes.zip", "data.7z", "headers.7z"];
+        let rars_all_locked = ["rar4_encrypted_filenames.rar", "rar4_solid_encrypted.rar", "rar4_solid_encrypted_filenames.rar", "rar5_encrypted_filenames.rar", "rar5_solid_encrypted.rar", "rar5_solid_encrypted_filenames.rar"];
+        // no password, or a wrong one: locked, said so
+        for pw in [vec![], vec!["wrong".to_string()]] {
+            set_passwords(pw);
+            for f in whole.iter().chain(&rars_all_locked).chain(&["rar4_encrypted.rar", "rar5_encrypted.rar"]) {
+                let e = list(&dir.join(f)).map(|_| ()).unwrap_err();
+                assert!(is_locked(&e), "{f}: {e}");
+            }
+        }
+        // its password: listed, every file read out as it was, by one file or all at once
+        set_passwords(vec!["wrong".into(), "password".into()]);
+        for f in whole {
+            let l = list(&dir.join(f)).unwrap_or_else(|e| panic!("{f}: {e}"));
+            assert_eq!(all(&l), ["a.txt", "b.txt"], "{f}");
+            assert_eq!(text(&l, "b.txt").as_deref(), Some("This is from b.txt"), "{f}");
+            let mut got = Vec::new();
+            l.extract(&mut |name| {
+                got.push(name.to_string());
+                Ok(Some(Box::new(std::io::sink()) as Box<dyn Write>))
+            })
+            .unwrap_or_else(|e| panic!("{f}: {e}"));
+            assert_eq!(got, ["a.txt", "b.txt"], "{f}");
+            // the password kept with it, never shown
+            assert!(format!("{l:?}").contains("<password>") && !format!("{l:?}").contains("\"password\""), "{f}");
+        }
+        for f in rars_all_locked {
+            // libarchive reads no solid RAR 4 archive, locked or not ("RAR solid archive support
+            // unavailable", at its second file)
+            if f.starts_with("rar4_solid") {
+                let e = list(&dir.join(f)).map(|_| ()).unwrap_err();
+                assert!(e.contains("solid"), "{f}: {e}");
+                continue;
+            }
+            let l = list(&dir.join(f)).unwrap_or_else(|e| panic!("{f}: {e}"));
+            assert_eq!(all(&l), ["a.txt", "b.txt", "c.txt", "d.txt"], "{f}");
+            for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+                assert_eq!(text(&l, name), Some(format!("This is from {name}")), "{f} {name}");
+            }
+        }
+        // b.txt locked with `password`, d.txt with `password2`: RAR 5 checks each file's password, so
+        // both open where both are at hand; RAR 4 keeps nothing to check by, the first that opens one
+        // opening them all
+        let l = list(&dir.join("rar5_encrypted.rar")).map(|_| ()).unwrap_err();
+        assert!(is_locked(&l), "{l}");
+        set_passwords(vec!["password".into(), "password2".into()]);
+        let l = list(&dir.join("rar5_encrypted.rar")).unwrap();
+        for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+            assert_eq!(text(&l, name), Some(format!("This is from {name}")), "rar5 {name}");
+        }
+        let l = list(&dir.join("rar4_encrypted.rar")).unwrap();
+        assert_eq!(text(&l, "b.txt").as_deref(), Some("This is from b.txt"));
+        assert_eq!(text(&l, "c.txt").as_deref(), Some("This is from c.txt"));
+        assert_eq!(text(&l, "d.txt"), None);
+        set_passwords(Vec::new());
     }
 
     #[test]

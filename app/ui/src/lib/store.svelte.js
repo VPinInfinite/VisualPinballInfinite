@@ -387,6 +387,20 @@ export async function chooseDropTable(index, tableId) {
   drop.busy = false;
 }
 
+/** A download locked with a password opened with the one typed, and sorted out again: true where it
+ * opened it, else what was wrong (the password kept only where it opened it). */
+export async function unlockDrop(index, password) {
+  drop.busy = true;
+  try {
+    setDownloads(await invoke('unlock_drop', { index, password }), index);
+    return true;
+  } catch (e) {
+    return String(e);
+  } finally {
+    drop.busy = false;
+  }
+}
+
 /** One download taken out of the drop before Add (the file itself left where it is); the
  * window closed when none is left. */
 export async function removeFromDrop(index) {

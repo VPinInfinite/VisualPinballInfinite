@@ -112,8 +112,11 @@ impl Kind {
 #[derive(Clone, Debug)]
 pub struct Contents {
     pub files: Vec<(Entry, Kind)>,
-    /// The PinUP pack's top folder (with its `/`), and its name: the ROM or game it's for.
+    /// The PinUP pack's top folder (with its `/`), and its name: the ROM or game it's for. Empty
+    /// where the drop is the pack itself, its files at the archive's or folder's top (`pup_name`).
     pub pup_root: Option<String>,
+    /// The name of a PinUP pack that's the drop itself: the archive's, or the folder's (ours).
+    pub pup_name: Option<String>,
     pub altsound_folder: Option<String>,
     pub dmd_folder: Option<String>,
     pub music_folder: Option<String>,
@@ -179,6 +182,27 @@ fn below(folder: &str, path: &str) -> bool {
     !f.is_empty() && path.len() > f.len() && path.starts_with(f) && path.as_bytes()[f.len()] == b'/'
 }
 
+/// `path` is one of the PinUP pack's files: under its top folder, or anywhere where the drop is the
+/// pack itself (its top folder empty).
+fn in_pack(root: &str, path: &str) -> bool {
+    root.is_empty() || below(root, path)
+}
+
+/// One of a PinUP pack's own files, which tell a pack (VPin Studio's): its screens, one of its
+/// layouts' batch files or its editor's, a script-only pack's note.
+fn pup_marker(n: &str) -> bool {
+    let lower = n.to_lowercase();
+    n.contains("screens.pup")
+        || (lower.contains("option") && lower.ends_with(".bat"))
+        || n.contains("EditThisPuPPack.bat")
+        || (lower.contains("screen") && lower.ends_with(".bat"))
+        || n.contains("scriptonly.txt")
+}
+
+/// The folder a pack keeps its layouts in, each a folder of its `.pup` files the layout's batch
+/// file copies into the pack (`PuP-Pack_Options/<layout>/screens.pup`).
+const PUP_OPTIONS: &str = "pup-pack_options/";
+
 /// Sorts out a drop's files (VPin Studio's `UploaderAnalysis`).
 /// Sound files loose in a drop for a table already in the library — dropped on it, or found its by
 /// their names — are its music, as beside a table file (ours: found adding Tom and Jerry's songs
@@ -205,6 +229,12 @@ pub fn analyse(listing: &Listing) -> Contents {
         f
     };
     let pup_root = pup_root(&names, &folders);
+    // a pack that's the drop itself goes by the drop's name, the folder it was zipped from
+    let pup_name = match (&listing.source, pup_root.as_deref()) {
+        (crate::archive::Source::Archive(a), Some("")) => Some(a.name()),
+        (crate::archive::Source::Folder(d), Some("")) => d.file_name().map(|n| n.to_string_lossy().into_owned()),
+        _ => None,
+    };
     let altsound_folder = names.iter().find(|n| n.contains("altsound.csv") || n.contains("g-sound.csv")).and_then(|n| folder(n)).map(str::to_string);
     let dmd_folder = dmd_folder(&folders, pup_root.as_deref());
     let music_folder = if altsound_folder.is_some() { None } else { music_folder(&names, pup_root.as_deref(), dmd_folder.as_deref()) };
@@ -233,7 +263,7 @@ pub fn analyse(listing: &Listing) -> Contents {
         let p = e.path.as_str();
         let x = ext(p);
         let lower = p.to_lowercase();
-        let kind = if pup_root.as_deref().is_some_and(|r| below(r, p)) {
+        let kind = if pup_root.as_deref().is_some_and(|r| in_pack(r, p)) {
             Kind::PupPack
         } else if altsound_folder.as_deref().is_some_and(|f| below(f, p)) {
             Kind::AltSound
@@ -292,26 +322,34 @@ pub fn analyse(listing: &Listing) -> Contents {
         crate::archive::Source::File(f) if rom_set => f.file_stem().map(|n| n.to_string_lossy().into_owned()).filter(|n| looks_like_rom_set(n)),
         _ => None,
     };
-    Contents { files, pup_root, altsound_folder, dmd_folder, music_folder, readme, rom_set }
+    Contents { files, pup_root, pup_name, altsound_folder, dmd_folder, music_folder, readme, rom_set }
 }
 
 /// A PinUP pack's top folder (VPin Studio's `getPupPackRootDirectory`): the shortest folder
 /// holding one of a pack's own files, unless its name has a space; else, VPin Studio's fallback, a
-/// folder of many folders full of videos.
+/// folder of many folders full of videos. Ours on top: a layout kept among the pack's options
+/// tells the folder holding them (`PuP-Pack_Options`), and a pack's own files at the drop's top,
+/// with no table or backglass there, tell a pack zipped from inside its folder — the drop itself
+/// the pack, its top folder empty.
 fn pup_root(names: &[&str], folders: &[&str]) -> Option<String> {
+    let whole_drop_may_be = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s"));
     let mut best: Option<String> = None;
     for n in names {
+        if !pup_marker(n) {
+            continue;
+        }
         let lower = n.to_lowercase();
-        let marker = n.contains("screens.pup")
-            || (lower.contains("option") && lower.ends_with(".bat"))
-            || n.contains("EditThisPuPPack.bat")
-            || (lower.contains("screen") && lower.ends_with(".bat"))
-            || n.contains("scriptonly.txt");
-        if marker && let Some(d) = folder(n) {
-            let path = format!("{d}/");
-            if best.as_ref().is_none_or(|b| b.len() > path.len()) {
-                best = Some(path);
-            }
+        let options = lower.match_indices(PUP_OPTIONS).map(|(at, _)| at).find(|&at| at == 0 || lower.as_bytes()[at - 1] == b'/');
+        let path = match (options, folder(n)) {
+            (Some(at), _) => n[..at].to_string(),
+            (None, Some(d)) => format!("{d}/"),
+            (None, None) => String::new(),
+        };
+        if path.is_empty() && !whole_drop_may_be {
+            continue;
+        }
+        if best.as_ref().is_none_or(|b| b.len() > path.len()) {
+            best = Some(path);
         }
     }
     if let Some(b) = &best {
@@ -344,7 +382,7 @@ fn pup_root(names: &[&str], folders: &[&str]) -> Option<String> {
 /// An UltraDMD or FlexDMD folder (VPin Studio's `getDMDPath`).
 fn dmd_folder(folders: &[&str], pup_root: Option<&str>) -> Option<String> {
     for f in folders {
-        if pup_root.is_some_and(|r| below(r, f)) {
+        if pup_root.is_some_and(|r| in_pack(r, f)) {
             continue;
         }
         for segment in f.split('/') {
@@ -368,7 +406,7 @@ fn dmd_folder(folders: &[&str], pup_root: Option<&str>) -> Option<String> {
 /// outside a PinUP pack and a DMD folder, unless videos lie there too.
 fn music_folder(names: &[&str], pup_root: Option<&str>, dmd: Option<&str>) -> Option<String> {
     let found = names.iter().find(|n| {
-        MUSIC_SUFFIXES.contains(&ext(n).as_str()) && !pup_root.is_some_and(|r| below(r, n)) && !dmd.is_some_and(|d| n.contains(d)) && n.contains('/')
+        MUSIC_SUFFIXES.contains(&ext(n).as_str()) && !pup_root.is_some_and(|r| in_pack(r, n)) && !dmd.is_some_and(|d| n.contains(d)) && n.contains('/')
     })?;
     let path = folder(found)?.to_string();
     let videos = names.iter().any(|n| VIDEO_SUFFIXES.contains(&ext(n).as_str()) && below(&path, n));
@@ -405,6 +443,9 @@ impl Contents {
         }
         if let Some(r) = &self.pup_root {
             add(r.trim_end_matches('/').rsplit('/').next().unwrap_or("").to_string());
+        }
+        if let Some(n) = &self.pup_name {
+            add(n.clone());
         }
         if let Some(a) = &self.altsound_folder {
             add(a.rsplit('/').next().unwrap_or("").to_string());
@@ -465,6 +506,38 @@ mod tests {
         assert_eq!(kind("__MACOSX/._x"), None);
         assert_eq!(c.pup_root.as_deref(), Some("afm_113b/"));
         assert_eq!(c.rom_hints(), ["afm_113b"]);
+    }
+
+    #[test]
+    fn a_pack_zipped_from_inside_its_folder_is_the_drop_itself() {
+        // its files at the zip's top, its layouts only among its options, none chosen
+        let pack = [
+            "EditThisPuPPack.bat",
+            "Option 2 - DMD on BG.bat",
+            "Option2.jpg",
+            "PuP-Pack_Options/Option 2 - DMD on BG/screens.pup",
+            "PuP-Pack_Options/Option 2 - DMD on BG/triggers.pup",
+            "BackGlass/Backglass.mp4",
+            "BallLaunch/BallLaunch.mp4",
+            "PuPCapture/ExactColorMatch.txt",
+        ];
+        let zipped = Listing {
+            source: Source::Archive(crate::archive::Archive { format: crate::archive::Format::Zip, parts: vec!["C:/Downloads/Hook_500.zip".into()], passwords: Vec::new() }),
+            entries: pack.iter().map(|p| Entry { path: p.to_string(), size: 1, modified: None }).collect(),
+        };
+        let c = analyse(&zipped);
+        assert_eq!(c.pup_root.as_deref(), Some(""));
+        assert_eq!(c.pup_name.as_deref(), Some("Hook_500"));
+        assert!(c.files.iter().all(|(_, k)| *k == Kind::PupPack), "{:?}", c.files);
+        assert_eq!(c.rom_hints(), ["Hook_500"]);
+        // in a folder, the folder holding its options is the pack
+        let in_folder: Vec<String> = pack.iter().map(|p| format!("hook_500/{p}")).collect();
+        let refs: Vec<&str> = in_folder.iter().map(String::as_str).collect();
+        assert_eq!(analyse(&listing(&refs)).pup_root.as_deref(), Some("hook_500/"));
+        // a table's download with a layout's batch file beside it isn't a pack
+        let c = analyse(&listing(&["Hook.vpx", "Option 2 - DMD on BG.bat", "Hook.directb2s"]));
+        assert_eq!(c.pup_root, None);
+        assert_eq!(c.files.iter().find(|(e, _)| e.path == "Hook.vpx").map(|(_, k)| *k), Some(Kind::Table));
     }
 
     #[test]

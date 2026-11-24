@@ -12,19 +12,25 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # a table's info and script, without its pictures
 vpin = "0.38"
-# a download's archive, listed from its central directory
-zip = { version = "8", default-features = false, features = ["deflate"] }
+# a download's archive, listed from its central directory; one locked with a password opened with it
+# (ZipCrypto, AES)
+zip = { version = "8", default-features = false, features = ["deflate", "aes-crypto"] }
 # a ROM file's CRC, for checking a set that isn't a zip (zips keep their files' own)
 crc32fast = "1.5"
-# a download in a 7-Zip archive: reading alone, its methods in Rust (bzip2's port included)
-sevenz-rust2 = { version = "0.24", default-features = false, features = ["bzip2", "deflate", "ppmd"] }
+# a download in a 7-Zip archive: reading alone, its methods in Rust (bzip2's port included), and
+# one locked with a password (AES-256)
+sevenz-rust2 = { version = "0.24", default-features = false, features = ["bzip2", "deflate", "ppmd", "aes256"] }
 # a ROM machine's high scores from its memory (`.nv`), through the Pinball Memory Maps it carries
 # (MIT; the maps ODbL, credited in CREDITS.md)
 pinmame-nvram = "=0.4.18"
 # VPX's saved values (`VPReg.stg`, a compound file), as vpin reads table files
 cfb = "0.15"
-# VPX's download checked against the checksum GitHub keeps of it
-sha2 = "0.10"
+# VPX's download checked against the checksum GitHub keeps of it; a locked RAR 5 archive's keys
+sha2 = "0.11"
+# a RAR archive locked with a password opened with it (`rar_unlock.rs`): AES, and HMAC-SHA256 for RAR
+# 5's keys (its PBKDF2) and checksums; RAR 3's own SHA-1 is ours, as RAR's differs from the standard
+aes = "0.9"
+hmac = "0.13"
 # our player's saved values (`VPReg.ini`), read by the settings' own rules
 vpi-settings = { path = "../settings" }
 # PinballX's and PinballY's game lists (XML), and their older lists in Windows' Western encoding

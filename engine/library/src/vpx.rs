@@ -12,8 +12,10 @@ use std::process::Command;
 use crate::plan::Layout;
 
 /// The programs VPX comes as, a renderer each (10.8.1's BGFX, OpenGL and Direct3D 9; 10.8.0's
-/// OpenGL and Direct3D 9): among programs of the same version, the first named here is started.
-pub const PROGRAMS: [&str; 3] = ["VPinballX_BGFX64.exe", "VPinballX_GL64.exe", "VPinballX64.exe"];
+/// OpenGL and Direct3D 9): among programs of the same version, the first named here is started —
+/// each version's main one, BGFX from 10.8.1, Direct3D 9 before it (10.8.0's own, the one front ends
+/// start), its OpenGL build last.
+pub const PROGRAMS: [&str; 3] = ["VPinballX_BGFX64.exe", "VPinballX64.exe", "VPinballX_GL64.exe"];
 
 /// The first version the app plays tables in: VPX 10.8.0, VPX's release before 10.8.1, started
 /// minimized so it quits when the game ends (`play_command`).
@@ -915,11 +917,15 @@ mod tests {
             std::fs::write(vpx.join(name), b"").unwrap();
         }
         let found = find(&Layout { tables: tables.clone(), ..Layout::under(&root) });
+        // 10.8.0's two programs alone: its Direct3D 9 one, as front ends start it, not its OpenGL one
+        std::fs::remove_file(vpx.join("VPinballX_BGFX64.exe")).unwrap();
+        let older = find(&Layout { tables: tables.clone(), ..Layout::under(&root) });
         let none = newest_in(&[root.join("nothing")]);
         let _ = std::fs::remove_dir_all(&root);
         // carrying no version: the order of PROGRAMS alone, and never played in
         let found = found.unwrap();
         assert_eq!(found.program.file_name().unwrap(), "VPinballX_BGFX64.exe");
+        assert_eq!(older.unwrap().program.file_name().unwrap(), "VPinballX64.exe");
         assert!(!found.plays());
         assert!(none.is_none());
         let (new, old) = (Vpx { program: PathBuf::from("BGFX"), version: [10, 8, 1, 5436] }, Vpx { program: PathBuf::from("DX9"), version: [10, 8, 0, 2058] });

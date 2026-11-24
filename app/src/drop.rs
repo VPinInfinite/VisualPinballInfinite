@@ -272,6 +272,58 @@ pub fn choose_table(app: &AppHandle, index: usize, table_id: String) -> Result<s
     Ok(views(&st, &w.downloads))
 }
 
+/// A download locked with a password opened with the one typed: the password tried first from then
+/// on, the download sorted out again as when it was dropped — for the table the window was opened
+/// for, else found by what it is — and the passwords kept once it opens it whole. Where it doesn't
+/// open, the password is tried no more (unless it was kept before) and that's said.
+pub fn unlock(app: &AppHandle, index: usize, password: String) -> Result<serde_json::Value, String> {
+    // a password is as typed, spaces and all, but for the line's end a paste may bring
+    let password = password.trim_end_matches(['\r', '\n']).to_string();
+    if password.is_empty() {
+        return Err("Type its password first.".into());
+    }
+    let (db, layout, known) = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        let db = st.db.clone().ok_or("VPS's database isn't read yet: try again in a moment.")?;
+        (db, st.layout.clone().unwrap_or_else(library::plan::Layout::reference), known(&st))
+    };
+    let (source, before, window_table) = {
+        let dropped = app.state::<Dropped>();
+        let w = dropped.0.lock().unwrap();
+        let d = w.downloads.get(index).ok_or("That download isn't in the drop any more.")?;
+        (d.source.clone(), brought(&w.downloads), w.for_table.clone())
+    };
+    let kept_before = library::archive::passwords().contains(&password);
+    library::archive::remember_password(&password);
+    let table = window_table.as_deref().and_then(|id| known.iter().find(|(k, _)| k == id).map(|(_, k)| k.clone()));
+    let tie = match &table {
+        Some(k) => Tie::On(k),
+        None => Tie::Found,
+    };
+    let known: Vec<Known> = known.into_iter().map(|(_, k)| k).collect();
+    let fresh = library::drop::inspect(std::slice::from_ref(&source), &db, &known, &layout, tie, &before);
+    let opened = !fresh.is_empty() && fresh.iter().all(|d| d.error.is_none());
+    if !opened && !kept_before {
+        library::archive::forget_password(&password);
+    }
+    if fresh.is_empty() || fresh.iter().any(|d| d.locked) {
+        return Err("That password didn't open it.".into());
+    }
+    if opened && let Err(e) = crate::archive_passwords::save() {
+        eprintln!("the passwords of locked downloads couldn't be kept: {e}");
+    }
+    let shared = app.state::<Shared>();
+    let st = shared.0.lock().unwrap();
+    let dropped = app.state::<Dropped>();
+    let mut w = dropped.0.lock().unwrap();
+    let at = w.downloads.iter().position(|d| d.source == source).ok_or("That download isn't in the drop any more.")?;
+    w.downloads.splice(at..=at, fresh);
+    settle(&mut w.downloads, &layout);
+    liken(&st, &mut w.downloads);
+    Ok(views(&st, &w.downloads))
+}
+
 /// A download taken out of the drop, its files left where they are: those tied to the table it
 /// brought — when nothing else brings that table and the library has none of its name — sorted
 /// again without it.
