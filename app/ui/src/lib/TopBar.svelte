@@ -4,8 +4,9 @@
   // background's bar beside Add tables: pointed at, each task and how far —
   // those waiting their turn too, and each one's steps, done, under way or to come.
   import Icon from './Icon.svelte';
+  import Inbox from './Inbox.svelte';
   import { invoke } from '@tauri-apps/api/core';
-  import { app, vps, drop, goLibrary, openTable, toggleFullscreen, leaving } from './store.svelte.js';
+  import { app, vps, drop, goLibrary, openTable, toggleFullscreen, leaving, unreadReplies } from './store.svelte.js';
 
   // a page left from the achievements editor with changes not saved asks first
   const go = (page) => () => leaving(() => (app.page = page));
@@ -15,9 +16,21 @@
   let box = $state();
 
   const inBrowser = $derived(app.page === 'browser');
+  // the team's replies to reports sent from here not opened yet, counted on the bug button
+  const replies = $derived(unreadReplies());
 
   // how far the tasks under way have come, each that can tell, together; null: no telling
   const going = $derived(app.tasks.filter((t) => !t.waiting));
+  // the tasks' list showing, pointed at or focused: the panel's page out of its way
+  let tasksHover = $state(false);
+  let tasksFocus = $state(false);
+  $effect(() => {
+    if (!app.tasks.length) tasksHover = tasksFocus = false;
+  });
+  $effect(() => {
+    vps.tasksOpen = app.tasks.length > 0 && (tasksHover || tasksFocus);
+    return () => (vps.tasksOpen = false);
+  });
   const waiting = $derived(app.tasks.length - going.length);
   const sure = $derived(going.filter((t) => t.of > 0));
   const overall = $derived(sure.length === going.length && sure.length ? sure.reduce((n, t) => n + t.done / t.of, 0) / sure.length : null);
@@ -70,17 +83,20 @@
     return groups;
   });
 
+  // a search's group or matches: the library shown from its top, not where a table left was
   function showGroup(by, name) {
     app.prefs.groupBy = by;
     app.pick = `g:${name}`;
     app.query = '';
     goLibrary();
+    app.backTo = null;
   }
 
   function filterBy(text) {
     app.query = text;
     app.pick = 'all';
     goLibrary();
+    app.backTo = null;
   }
 
   function pickFirst() {
@@ -94,6 +110,7 @@
     if (first && found[0].label === 'Tables' && found[0].items.length === 1) first.go();
     open = false;
     goLibrary();
+    app.backTo = null;
   }
 
   function clickAway(e) {
@@ -163,8 +180,10 @@
     {/if}
   </div>
   <div class="actions">
+    <!-- what's downloaded in the VPS browser, waiting to be imported, on every screen -->
+    {#if vps.inbox.some((w) => !w.downloading)}<Inbox />{/if}
     {#if app.tasks.length}
-      <div class="tasks" role="status" tabindex="0" aria-label="In the background: {app.tasks.map((t) => t.label).join(', ')}">
+      <div class="tasks" role="status" tabindex="0" aria-label="In the background: {app.tasks.map((t) => t.label).join(', ')}" onmouseenter={() => (tasksHover = true)} onmouseleave={() => (tasksHover = false)} onfocusin={() => (tasksFocus = true)} onfocusout={() => (tasksFocus = false)}>
         <span class="tname">{barName}</span>
         <span class="tbar" class:unsure={overall === null}><span style="width: {overall === null ? 40 : Math.max(4, overall * 100)}%"></span></span>
         <div class="pop">
@@ -203,7 +222,7 @@
     {:else}
       <button type="button" class="btn icon" aria-label="Full screen" title="Full screen (F11)" onclick={toggleFullscreen}><Icon name="expand" size={19} /></button>
     {/if}
-    <button type="button" class="btn icon" aria-label="Report a problem" title="Report a problem" onclick={() => (app.report = { table: null })}><Icon name="bug" size={19} /></button>
+    <button type="button" class="btn icon bug" aria-label={replies ? `Report a problem: ${replies === 1 ? 'a new reply' : `${replies} new replies`} from the team` : 'Report a problem'} title={replies ? `The team replied to your ${replies === 1 ? 'report' : 'reports'}` : 'Report a problem'} onclick={() => (app.report = { table: null, list: replies > 0 })}><Icon name="bug" size={19} />{#if replies}<span class="count" aria-hidden="true">{replies > 9 ? '9+' : replies}</span>{/if}</button>
     <button type="button" class="btn icon" aria-label="Settings" class:on={app.page === 'settings'} onclick={go('settings')}><Icon name="sliders" size={19} /></button>
     {#if app.fullscreen}<button type="button" class="btn icon" aria-label="Close the app" title="Close the app" onclick={() => leaving(() => invoke('quit'), { closing: true })}><Icon name="x" size={19} /></button>{/if}
   </div>
@@ -264,4 +283,10 @@
   .steps .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: beat 1.2s ease-in-out infinite; }
   @keyframes beat { 50% { opacity: 0.35; } }
   @media (prefers-reduced-motion: reduce) { .steps .dot { animation: none; } }
+  .bug { position: relative; }
+  .bug .count {
+    position: absolute; top: 4px; right: 4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+    background: var(--accent); color: #061521; font-size: 11px; font-weight: 700; line-height: 17px; text-align: center;
+    box-shadow: 0 0 0 2px var(--bar); pointer-events: none;
+  }
 </style>

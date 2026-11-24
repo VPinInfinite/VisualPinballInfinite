@@ -4,7 +4,7 @@ A table that recreates a real machine runs that machine's own program, its ROM, 
 
 ## Getting a ROM in
 
-Drop the ROM's `.zip` onto the app, with its table or onto the table's page. It goes into VPinMAME's `roms` folder, where both PinMAMEs look (or into the table's own `pinmame\roms`, for a table kept in a folder of its own that has one), checked file by file against what PinMAME expects for it. Keep ROMs zipped, named as the table asks: the drop window does both, and makes a zip of a set that comes in another kind of archive or as loose files. A download's read-me shows in the drop window (**Its read-me**). A zip named for a ROM that holds only a coloring's files isn't a ROM: the drop window says so, leaves it out and keeps your ROM (see [Score displays](Score-displays#color-dmds)).
+Drop the ROM's `.zip` onto the app, with its table or onto the table's page. It goes into VPinMAME's `roms` folder, where both PinMAMEs look (or into the table's own `pinmame\roms`, for a table kept in a folder of its own that has one), checked file by file against what PinMAME expects for it. Keep ROMs zipped, named as the table asks: the drop window does both, and makes a zip of a set that comes in another kind of archive or as loose files. A zip under a name PinMAME doesn't know is recognised by its files and named for its set (`sopranos-usa.zip` is `sopranos`), and one a file short says which file it lacks. A download's read-me shows in the drop window (**Its read-me**). A zip named for a ROM that holds only a coloring's files isn't a ROM: the drop window says so, leaves it out and keeps your ROM (see [Score displays](Score-displays#color-dmds)).
 
 ## When a ROM isn't right
 
@@ -14,6 +14,8 @@ The app checks every table's ROM in the background, file by file, and a table's 
 - **Its ROM is missing files:** the zip you have is probably another version of the set; get the right one.
 - **It also needs another zip, the version it's based on** (its parent): get that one too.
 - **PinMAME doesn't know the ROM:** the table's script may name it wrongly. **Change** on its ROM row picks one PinMAME knows.
+
+Where the ROM a table's script asks for isn't there but another version of its machine's is, the table is set to play that one, as it's added or as PLAY starts, and a notice says so. [Change the ROM](#change-the-rom) takes it back to its own once you have it.
 
 ## Every ROM: Tools › ROMs
 

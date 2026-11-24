@@ -183,6 +183,20 @@
       setTimeout(() => app.glow === id && (app.glow = null), 4200);
     });
   });
+  // back from a table's page: the library shown where that table is, its tile or row in the middle
+  // of the screen and holding the focus for the keys and a game controller (a build's, its table's)
+  $effect(() => {
+    const id = app.backTo;
+    if (!id) return;
+    app.backTo = null;
+    const entry = T.find((t) => t.id === id || buildsOf(t).some((b) => b.id === id));
+    if (!entry || !shown.some((t) => t.id === entry.id)) return;
+    tick().then(() => {
+      const el = document.querySelector(`[data-table="${entry.id}"]`);
+      el?.scrollIntoView({ block: 'center' });
+      el?.querySelector('button.open, button.name')?.focus({ preventScroll: true });
+    });
+  });
   // Needs attention, by kind: each kind with tables, in its own part of the screen
   const attentionShown = $derived(app.pick === 'attention' ? attention.map((g) => ({ ...g, shown: arrange(g.list, false) })).filter((g) => g.shown.length) : []);
 

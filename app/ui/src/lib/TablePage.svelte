@@ -27,11 +27,12 @@
   import Reader from './Reader.svelte';
   import EditDetails from './EditDetails.svelte';
   import Stars from './Stars.svelte';
-  import { tick, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
   import MediaStack from './MediaStack.svelte';
   import ScreensPage from './Screens.svelte';
-  import { app, savePrefs, tableById, goLibrary, openTable, play, setFavourite, setRating, showFile, openLink, notice, problems, chooseVps, testTable, renamePacks, togglePlaylist, newPlaylist, inspect, combined, isFavourite, ratingOf, inPlaylist } from './store.svelte.js';
+  import { app, savePrefs, tableById, goLibrary, openTable, play, setFavourite, setRating, showFile, openLink, notice, problems, chooseVps, testTable, renamePacks, togglePlaylist, newPlaylist, inspect, combined, isFavourite, ratingOf, inPlaylist, openWeb, closeWeb, vps as browser } from './store.svelte.js';
   import Builds from './Builds.svelte';
+  import WebPanel from './WebPanel.svelte';
 
   // its achievement packs, for What it holds' Achievements row: each with how many of its
   // achievements are earned, and a bin that deletes it for good, asked first
@@ -212,6 +213,15 @@
   function dropNote(n) {
     const left = app.lastNotes.notes.filter((x) => x !== n);
     app.lastNotes = left.length ? { ...app.lastNotes, notes: left } : null;
+  }
+  async function vrOff(n) {
+    try {
+      await invoke('vr_off');
+      dropNote(n);
+      notice('VR is off in VPX’s settings: tables play on your screens from the next game. Its own setting, Enable VR, is on the Advanced page.', { kind: 'done' });
+    } catch (e) {
+      notice(String(e), { kind: 'problem' });
+    }
   }
   async function supersamplingOff(n) {
     try {
@@ -764,6 +774,13 @@
     : ['check', `Found on VPS ${t.onVps.found}`, 'good'],
   );
 
+  // a file's page shown beside the page (`WebPanel`), about half the window, closed with the page
+  let innerWidth = $state(1600);
+  const drawer = $derived(Math.round(Math.min(760, Math.max(420, innerWidth * 0.45))));
+  onDestroy(() => {
+    if (browser.web?.from === 'table') closeWeb();
+  });
+
   const date = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
   function clickAway(e) {
@@ -787,7 +804,7 @@
   </span>
 {/snippet}
 
-<svelte:window onkeydown={(e) => (menu && e.key === 'Escape' ? (menu = null) : keys(e))} onclick={clickAway} />
+<svelte:window bind:innerWidth onkeydown={(e) => (menu && e.key === 'Escape' ? (menu = null) : keys(e))} onclick={clickAway} />
 
 {#if t}
   <div class="subbar">
@@ -1013,6 +1030,18 @@
                     </span>
                   </div>
                 </div>
+              {:else if n.kind === 'vr'}
+                <div class="note warnbox">
+                  <Icon name="alert" size={18} />
+                  <div class="note-body">
+                    <b>VPX tried to play it in VR, and couldn’t</b>
+                    <span>VPX’s Enable VR setting is on{n.runtime ? `, and it found ${n.runtime} on this PC` : ''}, so it started the table for a VR headset. That didn’t work, so the table never played. Not playing in VR? Turn VR off and tables play on your screens.</span>
+                    <span class="note-buttons">
+                      <button type="button" class="btn small" onclick={() => vrOff(n)}>Turn VR off</button>
+                      <button type="button" class="btn small ghost" onclick={() => { dropNote(n); app.report = { table: t }; }}>Report it</button>
+                    </span>
+                  </div>
+                </div>
               {:else if n.kind === 'screen'}
                 <div class="note" class:goodbox={n.fixed} class:warnbox={!n.fixed}>
                   <Icon name={n.fixed ? 'check' : 'tv'} size={18} />
@@ -1210,12 +1239,18 @@
           {:else if !vps.length}
             <p class="quiet">VPS lists nothing more for it.</p>
           {:else}
-            <VpsFiles kinds={vps} bind:open={openKinds} />
+            <VpsFiles kinds={vps} bind:open={openKinds} onget={(url) => openWeb(url, t.onVps?.game, 'table')} />
           {/if}
         </section>
       </div>
     </div>
   </main>
+  <!-- a file's page from its More on VPS, beside the page, its downloads remembered as its machine's -->
+  {#if browser.web?.from === 'table'}
+    <aside class="webdrawer" style="width: {drawer}px" aria-label="A file’s page">
+      <WebPanel back="Close" onback={closeWeb} edge={drawer} />
+    </aside>
+  {/if}
 {:else}
   <main><p class="quiet">That table isn’t in the library any more.</p><button type="button" class="btn" onclick={goLibrary}>Back to the library</button></main>
 {/if}
@@ -1308,6 +1343,10 @@
   </div>
 {/if}
 <style>
+  .webdrawer {
+    position: fixed; right: 0; top: 61px; bottom: 0; z-index: 30; display: flex;
+    background: var(--side); border-left: 1px solid var(--line); box-shadow: -12px 0 30px rgba(0, 0, 0, 0.45);
+  }
   .subbar {
     position: sticky; top: 61px; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
     padding: 10px 28px; background: rgba(13, 16, 22, 0.94); border-bottom: 1px solid var(--line-soft); backdrop-filter: blur(6px);

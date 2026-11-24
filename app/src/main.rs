@@ -27,15 +27,18 @@ mod builds;
 mod alt_pictures;
 mod pause_menu;
 mod machines;
+mod main_window;
 mod media_facts;
 mod own_pictures;
 mod own_screens;
 mod physics;
 mod pick;
 mod pictures;
+mod placement;
 mod play;
 mod popper_media;
 mod pup_packs;
+mod replies;
 mod report;
 mod rom_checks;
 mod roms_page;
@@ -51,6 +54,7 @@ mod tasks;
 mod tunes;
 mod updates;
 mod vpx_setup;
+mod web_view;
 
 use serde::Serialize;
 use tauri::webview::Color;
@@ -236,6 +240,18 @@ async fn pup_pack(app: AppHandle, path: String) -> Result<pup_packs::Pack, Strin
 #[tauri::command]
 async fn pup_use_layout(app: AppHandle, path: String, file: String) -> Result<pup_packs::Used, String> {
     tauri::async_runtime::spawn_blocking(move || pup_packs::use_layout(&app, &path, &file)).await.map_err(|e| e.to_string())?
+}
+
+/// What fitting every PinUP pack to the screens would change, asked about first.
+#[tauri::command]
+async fn pup_fit_plan(app: AppHandle) -> Result<pup_packs::FitPlan, String> {
+    tauri::async_runtime::spawn_blocking(move || pup_packs::fit_plan(&app)).await.map_err(|e| e.to_string())
+}
+
+/// The PinUP packs the user ticked fitted to the screens.
+#[tauri::command]
+async fn pup_fit_apply(app: AppHandle, paths: Vec<String>) -> Result<Vec<pup_packs::Used>, String> {
+    tauri::async_runtime::spawn_blocking(move || pup_packs::fit_apply(&app, paths)).await.map_err(|e| e.to_string())?
 }
 
 /// A table started with one of its PinUP pack's layouts tried, the pack left as it is.
@@ -886,10 +902,50 @@ fn report_can_send() -> bool {
     report::can_send()
 }
 
-/// A report made here sent to the team, on the user's word (Report a problem's Send).
+/// A report made here sent to the team, on the user's word (Report a problem's Send), and kept for
+/// the team's replies; the reports sent, the newest first.
 #[tauri::command]
-async fn send_report(path: String, note: String, table: Option<String>) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || report::send(std::path::Path::new(&path), &note, table.as_deref())).await.map_err(|e| e.to_string())?
+async fn send_report(path: String, note: String, table: Option<String>) -> Result<Vec<replies::Sent>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let sent = report::send(std::path::Path::new(&path), &note, table.as_deref())?;
+        // sent whether or not it's kept: a failure here is the app's alone
+        if let Err(e) = replies::remember(sent) {
+            eprintln!("A sent report couldn't be kept for its replies: {e}");
+        }
+        Ok(replies::list())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The reports sent from here, the newest first, as kept (Report a problem's Your reports).
+#[tauri::command]
+fn reports_list() -> Vec<replies::Sent> {
+    replies::list()
+}
+
+/// The team's replies asked for and taken in; the reports sent, the newest first.
+#[tauri::command]
+async fn reports_check() -> Result<Vec<replies::Sent>, String> {
+    tauri::async_runtime::spawn_blocking(replies::check).await.map_err(|e| e.to_string())?
+}
+
+/// The user's own reply to a report, passed on into its post; the report as it stands.
+#[tauri::command]
+async fn report_reply(key: String, text: String) -> Result<replies::Sent, String> {
+    tauri::async_runtime::spawn_blocking(move || replies::reply(&key, &text)).await.map_err(|e| e.to_string())?
+}
+
+/// A report's replies opened; the reports sent.
+#[tauri::command]
+fn report_read(key: String) -> Result<Vec<replies::Sent>, String> {
+    replies::mark_read(&key)
+}
+
+/// The notices to everyone this app hasn't shown yet, kept as shown.
+#[tauri::command]
+async fn notices_new() -> Result<Vec<replies::Notice>, String> {
+    tauri::async_runtime::spawn_blocking(replies::new_notices).await.map_err(|e| e.to_string())?
 }
 
 /// A newer version on the releases, if there is one (the one-click updater).
@@ -924,7 +980,7 @@ async fn setup_look(folder: String) -> Result<setup::Folders, String> {
 
 /// A folder chosen in Windows' own folder picker over the app's window; none when cancelled.
 #[tauri::command]
-async fn pick_folder(window: tauri::WebviewWindow, title: String, start: Option<String>) -> Result<Option<String>, String> {
+async fn pick_folder(window: tauri::Window, title: String, start: Option<String>) -> Result<Option<String>, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     let picked = tauri::async_runtime::spawn_blocking(move || pick::folder(owner, &title, start.as_deref().map(std::path::Path::new))).await.map_err(|e| e.to_string())??;
     Ok(picked.map(|p| p.display().to_string()))
@@ -941,7 +997,7 @@ fn dof_found() -> dof_config::Where {
 /// picked in Windows' file picker over the app — the DOF Config Tool's download, or a file of a
 /// set. None when the picker's cancelled, else how many files came in.
 #[tauri::command]
-async fn import_dof(window: tauri::WebviewWindow, from: Option<String>) -> Result<Option<usize>, String> {
+async fn import_dof(window: tauri::Window, from: Option<String>) -> Result<Option<usize>, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<usize>, String> {
         let picked = match from {
@@ -962,13 +1018,13 @@ async fn import_dof(window: tauri::WebviewWindow, from: Option<String>) -> Resul
 
 /// The app's window full screen, or not (F11, the top bar's button).
 #[tauri::command]
-fn set_fullscreen(window: tauri::WebviewWindow, on: bool) -> Result<(), String> {
+fn set_fullscreen(window: tauri::Window, on: bool) -> Result<(), String> {
     window.set_fullscreen(on).map_err(|e| e.to_string())
 }
 
 /// Whether the app's window is full screen, as Windows has it.
 #[tauri::command]
-fn is_fullscreen(window: tauri::WebviewWindow) -> bool {
+fn is_fullscreen(window: tauri::Window) -> bool {
     window.is_fullscreen().unwrap_or(false)
 }
 
@@ -1468,6 +1524,8 @@ fn main() {
             pup_packs,
             pup_pack,
             pup_use_layout,
+            pup_fit_plan,
+            pup_fit_apply,
             pup_pack_remove,
             pup_pack_show,
             pup_pack_rename,
@@ -1504,6 +1562,11 @@ fn main() {
             update_check,
             report_can_send,
             send_report,
+            reports_list,
+            reports_check,
+            report_reply,
+            report_read,
+            notices_new,
             update_install,
             setup_keep,
             setup_look,
@@ -1524,6 +1587,7 @@ fn main() {
             dmd_place_save,
             physics::physics_view,
             roms_page::rom_list,
+            roms_page::rom_names,
             high_scores_all,
             achievements::achievements_for,
             addons::addons,
@@ -1546,6 +1610,15 @@ fn main() {
             pause_menu::pause_menu_do,
             pause_menu::pause_menu_guide,
             pause_menu::pause_menu_guide_show,
+            web_view::web_show,
+            web_view::web_place,
+            web_view::web_hide,
+            web_view::web_go,
+            web_view::web_outside,
+            web_view::web_sign_out,
+            web_view::inbox_list,
+            web_view::inbox_remove,
+            web_view::inbox_show,
             pause_menu::pause_menu_guide_scroll,
             pause_menu::pause_menu_guide_hide,
             pause_menu::pause_menu_guide_browse,
@@ -1553,6 +1626,7 @@ fn main() {
             own_screens::own_screens_use_mine,
             own_screens::own_screens_keep,
             game_notes::supersampling_off,
+            game_notes::vr_off,
             achievements::play_mode,
             achievements::achievements_all,
             achievements::achievements_add,
@@ -1665,24 +1739,39 @@ fn main() {
                 api.prevent_close();
                 let _ = window.emit("close-asked", ());
             }
+            // where the user leaves it, followed for the next start
+            if window.label() == "main" {
+                placement::follow(window, event);
+            }
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                placement::keep();
                 // the Controls page's input test with it
                 controls::stop(window.app_handle());
                 window.app_handle().exit(0);
             }
         })
         .setup(move |app| {
-            let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let mut window = WebviewWindowBuilder::new(app, main_window::LABEL, WebviewUrl::App("index.html".into()))
                 .title("Visual Pinball Infinite")
                 .min_inner_size(1024.0, 640.0)
                 .background_color(Color(13, 16, 22, 255));
             window = match &shot {
                 // off every screen, out of the taskbar and the user's way
-                Some(s) => window.inner_size(s.size.0, s.size.1).position(-30000.0, -30000.0).focused(false).skip_taskbar(true),
-                // full screen when it was left so
-                None => window.inner_size(1600.0, 1000.0).center().fullscreen(library::starts_fullscreen()),
+                Some(s) => {
+                    placement::off();
+                    window.inner_size(s.size.0, s.size.1).position(-30000.0, -30000.0).focused(false).skip_taskbar(true)
+                }
+                // made out of sight, then put where it was left, full screen when it was left so
+                None => window.inner_size(1600.0, 1000.0).center().visible(false),
             };
-            window.build()?;
+            let made = window.build()?;
+            if shot.is_none() {
+                placement::put_back(&made);
+                if library::starts_fullscreen() {
+                    let _ = made.set_fullscreen(true);
+                }
+                let _ = made.show();
+            }
             // a PinUP pack's own files put back, where a layout tried was in its place when the app
             // last stopped
             if let Err(e) = pup_packs::put_back() {

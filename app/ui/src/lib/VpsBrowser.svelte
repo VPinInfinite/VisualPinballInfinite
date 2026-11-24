@@ -3,11 +3,17 @@
   // catalog's filters — maker, era, machine type, table format, a sort, only machines not in the
   // library — and "VPS has" chips, the cards' and the side panel's sizes adjustable; the machine chosen
   // beside the cards with every file VPS lists for it, so there's no need to visit VPS's site. Its
-  // search is the top bar's while it shows, apart from the library's.
+  // search is the top bar's while it shows, apart from the library's. Beside every machine, what's to
+  // get for the user's own tables (`VpsYours`) and machines picked for them (`VpsPicks`). A file's Get
+  // shows its page in the panel itself (`web_view.rs`), signed in as the user signs in there; what's
+  // downloaded there waits in a folder of its own, imported through the drop window.
   import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
   import VpsFiles from './VpsFiles.svelte';
-  import { app, vps, loadVps, savePrefs, openTable, openLink } from './store.svelte.js';
+  import VpsYours from './VpsYours.svelte';
+  import VpsPicks from './VpsPicks.svelte';
+  import WebPanel from './WebPanel.svelte';
+  import { app, vps, loadVps, savePrefs, openTable, openLink, openWeb, closeWeb } from './store.svelte.js';
 
   // read again as the library changes: which machines are in it
   $effect(() => {
@@ -94,11 +100,28 @@
     return () => seen.disconnect();
   });
 
-  // the machine beside the cards: the one chosen, else the first shown
-  const selId = $derived(vps.sel && vps.machines.some((m) => m.id === vps.sel) ? vps.sel : shown[0]?.id);
+  // the machine beside the cards: the one chosen, else the first shown of every machine
+  const selId = $derived(vps.sel && vps.machines.some((m) => m.id === vps.sel) ? vps.sel : vps.view === 'all' ? shown[0]?.id : null);
   const sel = $derived(vps.machines.find((m) => m.id === selId));
   let game = $state(null);
   let openKinds = $state({ tables: true });
+
+  /** A machine chosen in For your tables or Recommended: shown beside them, `kind`'s files open. */
+  function choose(id, kind = 'tables') {
+    vps.sel = id;
+    closeWeb();
+    openKinds = { [kind]: true };
+  }
+
+  // a file's page shown in the panel, where the machine was (`WebPanel`), its downloads remembered
+  // as that machine's
+  const webHere = $derived(vps.web?.from === 'browser');
+  const getFile = (url) => openWeb(url, sel?.id ?? null, 'browser');
+  // a card's machine shown in the panel, the page it showed left
+  function selectCard(id) {
+    vps.sel = id;
+    closeWeb();
+  }
   $effect(() => {
     const id = selId;
     game = null;
@@ -117,6 +140,9 @@
     app.prefs[name] = value;
     savePrefs();
   }
+
+  // the "VPS has" menu, closed by a click anywhere else
+  let hasOpen = $state(false);
 
   function toggleHas(k) {
     vps.has = vps.has.includes(k) ? vps.has.filter((x) => x !== k) : [...vps.has, k];
@@ -142,72 +168,91 @@
   }
 </script>
 
+<svelte:window onclick={(e) => hasOpen && !e.target.closest?.('.hasmenu') && (hasOpen = false)} />
+
 <div class="browser">
   <main>
     <div class="head">
       <div class="titles">
         <h1 class="display">VPS browser</h1>
         <div class="sub">
-          {#if vps.machines.length}
-            {shown.length === vps.machines.length ? `${vps.machines.length.toLocaleString()} machines` : `${shown.length.toLocaleString()} of ${vps.machines.length.toLocaleString()} machines`} on the Virtual Pinball Spreadsheet{vps.query ? ` matching “${vps.query}”` : ''}{vps.refreshed ? ` · its list fetched ${date(vps.refreshed)}` : ''}
-          {:else if !app.loaded}
+          {#if !vps.machines.length && !app.loaded}
             Reading VPS’s list…
-          {:else}
+          {:else if !vps.machines.length}
             VPS’s list couldn’t be read: it’s fetched once a day, when the app opens.
+          {:else if vps.view === 'all'}
+            {shown.length === vps.machines.length ? `${vps.machines.length.toLocaleString()} machines` : `${shown.length.toLocaleString()} of ${vps.machines.length.toLocaleString()} machines`} on the Virtual Pinball Spreadsheet{vps.query ? ` matching “${vps.query}”` : ''}{vps.refreshed ? ` · its list fetched ${date(vps.refreshed)}` : ''}
+          {:else}
+            {vps.machines.length.toLocaleString()} machines on the Virtual Pinball Spreadsheet{vps.refreshed ? ` · its list fetched ${date(vps.refreshed)}` : ''}
           {/if}
         </div>
       </div>
       <div class="controls">
-        <label class="labelled size">Size
-          <input type="range" min="140" max="320" step="10" value={tile} oninput={(e) => setPref('vpsTile', Number(e.currentTarget.value))} aria-label="Card size" />
-        </label>
+        {#if vps.view !== 'yours'}
+          <label class="labelled size">Size
+            <input type="range" min="140" max="320" step="10" value={tile} oninput={(e) => setPref('vpsTile', Number(e.currentTarget.value))} aria-label="Card size" />
+          </label>
+        {/if}
       </div>
     </div>
 
-    <div class="filters">
-      <label class="toggle"><input type="checkbox" bind:checked={vps.notMine} />Only machines I don’t have</label>
-      <label class="labelled">Maker
-        <select class="select" bind:value={vps.maker}>
-          <option value="all">All makers</option>
-          {#each makers as [m, n] (m)}<option value={m}>{m} ({n})</option>{/each}
-        </select>
-      </label>
-      <label class="labelled">Era
-        <select class="select" bind:value={vps.era}>
-          {#each ERAS as [v, l] (v)}<option value={v}>{l}</option>{/each}
-        </select>
-      </label>
-      <label class="labelled">Machine type
-        <select class="select" bind:value={vps.type}>
-          {#each TYPES as [v, l] (v)}<option value={v}>{l}</option>{/each}
-        </select>
-      </label>
-      <label class="labelled">Table format
-        <select class="select" bind:value={vps.format}>
-          <option value="VPX">Visual Pinball X</option>
-          <option value="any">Any format</option>
-        </select>
-      </label>
-      <label class="labelled">Sort by
-        <select class="select" bind:value={vps.sort}>
-          <option value="newest">Newest release</option>
-          <option value="name">Name</option>
-          <option value="year">Year</option>
-          <option value="releases">Most releases</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="chips">
-      <span class="has">VPS has</span>
-      {#each CHIPS as [k, label, icon] (k)}
-        <button type="button" class="chip" aria-pressed={vps.has.includes(k)} onclick={() => toggleHas(k)}><Icon name={icon} size={14} />{label}</button>
+    <div class="views" role="tablist" aria-label="What the browser shows">
+      {#each [['all', 'All machines'], ['yours', 'For your tables'], ['picks', 'Recommended']] as [v, label] (v)}
+        <button type="button" role="tab" class="view" aria-selected={vps.view === v} onclick={() => (vps.view = v)}>{label}</button>
       {/each}
     </div>
 
+    {#if vps.view === 'yours'}
+      <VpsYours onpick={choose} />
+    {:else if vps.view === 'picks'}
+      <VpsPicks onpick={(id) => choose(id)} {tile} />
+    {:else}
+    <!-- one row of filters, each saying what it is chosen as; what VPS must have chosen from a menu,
+         those chosen shown as chips to take off -->
+    <div class="filters">
+      <button type="button" class="chip" aria-pressed={vps.notMine} onclick={() => (vps.notMine = !vps.notMine)} title="Only machines you don’t have">Not in my library</button>
+      <select class="select" bind:value={vps.maker} aria-label="Maker" title="Maker">
+        <option value="all">All makers</option>
+        {#each makers as [m, n] (m)}<option value={m}>{m} ({n})</option>{/each}
+      </select>
+      <select class="select" bind:value={vps.era} aria-label="Era" title="Era">
+        {#each ERAS as [v, l] (v)}<option value={v}>{l}</option>{/each}
+      </select>
+      <select class="select" bind:value={vps.type} aria-label="Machine type" title="Machine type">
+        {#each TYPES as [v, l] (v)}<option value={v}>{l}</option>{/each}
+      </select>
+      <select class="select" bind:value={vps.format} aria-label="Table format" title="Table format">
+        <option value="VPX">VPX tables</option>
+        <option value="any">Any format</option>
+      </select>
+      <select class="select" bind:value={vps.sort} aria-label="Sort by" title="Sort by">
+        <option value="newest">Newest release first</option>
+        <option value="name">By name</option>
+        <option value="year">By year</option>
+        <option value="releases">Most releases first</option>
+      </select>
+      <div class="hasmenu">
+        <button type="button" class="chip" aria-expanded={hasOpen} aria-pressed={vps.has.length > 0} onclick={() => (hasOpen = !hasOpen)}>VPS has{vps.has.length ? ` · ${vps.has.length}` : ''}<Icon name="chevD" size={13} /></button>
+        {#if hasOpen}
+          <div class="haspop" role="menu" aria-label="What VPS has for it">
+            {#each CHIPS as [k, label, icon] (k)}
+              <label class="hasrow"><input type="checkbox" checked={vps.has.includes(k)} onchange={() => toggleHas(k)} /><Icon name={icon} size={14} />{label}</label>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+    {#if vps.has.length}
+      <div class="chips">
+        {#each CHIPS.filter(([k]) => vps.has.includes(k)) as [k, label, icon] (k)}
+          <button type="button" class="chip" aria-pressed="true" title="Take it off" onclick={() => toggleHas(k)}><Icon name={icon} size={14} />{label}<Icon name="x" size={12} /></button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="grid" style="--tile: {tile}px">
       {#each shown.slice(0, limit) as m (m.id)}
-        <button type="button" class="card" class:on={m.id === selId} onclick={() => (vps.sel = m.id)} aria-label="{m.name}, {sub(m)}" aria-pressed={m.id === selId}>
+        <button type="button" class="card" class:on={m.id === selId} onclick={() => selectCard(m.id)} aria-label="{m.name}, {sub(m)}" aria-pressed={m.id === selId}>
           <div class="picture">
             {#if m.picture && !failed[m.picture]}
               <img src={m.picture} alt="" loading="lazy" decoding="async" onerror={() => (failed = { ...failed, [m.picture]: true })} />
@@ -231,9 +276,16 @@
     {#if vps.machines.length && !shown.length}
       <div class="empty">No machine here matches. <button type="button" class="btn small" onclick={clearAll}>Clear the filters</button></div>
     {/if}
+    {/if}
   </main>
 
-  {#if sel}
+  {#if webHere}
+    <aside class="panel" style="width: {panelWidth}px" aria-label="A file’s page">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="grip" title="Drag to size the panel" onpointerdown={startDrag} onpointermove={drag} onpointerup={endDrag} onpointercancel={endDrag}></div>
+      <WebPanel back={sel?.name || 'The machine'} onback={closeWeb} edge={panelWidth} />
+    </aside>
+  {:else if sel}
     <aside class="panel" style="width: {panelWidth}px" aria-label={sel.name}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="grip" title="Drag to size the panel" onpointerdown={startDrag} onpointermove={drag} onpointerup={endDrag} onpointercancel={endDrag}></div>
@@ -260,7 +312,8 @@
           {#if game?.link}<button type="button" class="btn small ghost" onclick={() => openLink(game.link)}><Icon name="ext" size={14} />On VPS’s site</button>{/if}
         </div>
         {#if game}
-          <VpsFiles kinds={game.kinds} bind:open={openKinds} />
+          <p class="hint">Get shows a file’s page here: sign in on the site, and what you download waits for import.</p>
+          <VpsFiles kinds={game.kinds} bind:open={openKinds} onget={getFile} />
         {:else}
           <p class="quiet">Looking…</p>
         {/if}
@@ -279,11 +332,9 @@
   .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
   .labelled { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
   .size input { width: 110px; accent-color: var(--accent); }
-  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
-  .filters .select { max-width: 220px; }
-  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-soft); }
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .filters .select { width: auto; max-width: 165px; }
   .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .has { color: var(--faint); font-size: 13px; margin-right: 2px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile), 1fr)); gap: 18px; }
   .card {
     display: flex; flex-direction: column; padding: 0; text-align: left; color: var(--fg);
@@ -327,4 +378,19 @@
   .facts { color: var(--fg-soft); font-size: 13px; line-height: 1.6; }
   .pbuttons { display: flex; flex-wrap: wrap; gap: 8px; }
   .quiet { color: var(--muted); margin: 0; }
+  .hint { margin: 0; color: var(--faint); font-size: 12px; }
+  /* what the browser shows */
+  .views { display: flex; gap: 4px; padding: 3px; align-self: flex-start; background: var(--card); border: 1px solid var(--card-line); border-radius: 10px; }
+  .view { padding: 7px 14px; border: 0; border-radius: 8px; background: transparent; color: var(--fg-soft); font-weight: 600; font-size: 13.5px; }
+  .view:hover { background: var(--hover); }
+  .view[aria-selected='true'] { background: var(--accent); color: #07121c; }
+  /* what VPS must have: a menu of ticks */
+  .hasmenu { position: relative; }
+  .haspop {
+    position: absolute; left: 0; top: calc(100% + 6px); z-index: 40; min-width: 200px;
+    display: flex; flex-direction: column; gap: 2px; padding: 8px;
+    background: #182031; border: 1px solid #2a3550; border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+  .hasrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--fg-soft); }
+  .hasrow:hover { background: var(--hover); }
 </style>

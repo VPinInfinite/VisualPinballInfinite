@@ -3,7 +3,7 @@
   import { onMount, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { app, vps, drop, dropFiles, addDrop, start, notice, dismiss, dropToast, openTable, testTable, makePictures, remember, goBack, goForward, lookForUpdate, toggleFullscreen, guard, leaving } from './lib/store.svelte.js';
+  import { app, vps, drop, dropFiles, addDrop, start, notice, dismiss, dropToast, openTable, testTable, makePictures, remember, goBack, goForward, lookForUpdate, loadReports, checkReports, lookForNotices, toggleFullscreen, guard, leaving } from './lib/store.svelte.js';
   import { listen } from '@tauri-apps/api/event';
   import { startPad } from './lib/gamepad.js';
 
@@ -103,9 +103,16 @@
   // everything on it has loaded
   async function testMode() {
     const shot = await invoke('test_mode');
+    // the reports sent from here, for the top bar's count of the team's new replies
+    await loadReports();
     if (!shot) {
       // a new version looked for, quietly, once the library is read (never in the test mode)
       lookForUpdate();
+      // the team's replies to reports sent from here, as the app starts and every hour while it
+      // runs, and a notice to everyone the team has put up
+      checkReports();
+      setInterval(() => checkReports(), 60 * 60 * 1000);
+      lookForNotices();
       // tables play in VPX 10.8.1, or 10.8.0: said once the library's read, where the library has neither
       until(() => app.loaded, 180000)
         .then(() => invoke('vpx_status'))
@@ -155,6 +162,10 @@
     } else if (shot.page === 'setup') {
       // first setup, as when asked for again
       app.setupAgain = true;
+    } else if (shot.page.startsWith('browser/')) {
+      // the VPS browser's other views: browser/yours, browser/picks
+      app.page = 'browser';
+      vps.view = shot.page.slice('browser/'.length);
     } else if (shot.page.startsWith('tools/')) {
       // one of the managers: tools/roms and the like
       app.page = 'tools';
@@ -286,6 +297,8 @@
     // a page still asking the engine side for what it shows (the Screens page asks the player)
     await until(() => !document.querySelector('[data-loading]'), 30000);
     await sleep(600);
+    // a web page in the panel, given time to load (`--wait`)
+    if (shot.wait) await sleep(shot.wait);
     await invoke('settled');
   }
 </script>
@@ -312,7 +325,7 @@
     {/if}
   </div>
   {#if drop.open}<Drop />{/if}
-  {#if app.report}<ReportProblem table={app.report.table} onclose={() => (app.report = null)} />{/if}
+  {#if app.report}<ReportProblem table={app.report.table} open={app.report.open ?? null} list={!!app.report.list} onclose={() => (app.report = null)} />{/if}
   {#if app.removing}<RemoveTable t={app.removing} onclose={() => (app.removing = null)} />{/if}
   {#if app.askRatings}<RatingsAsk />{/if}
   {#if guard.ask}<UnsavedAsk />{/if}
@@ -359,7 +372,8 @@
   .window { min-height: 100%; display: flex; flex-direction: column; }
   .screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .notices {
-    position: fixed; right: 20px; bottom: 20px; z-index: 50;
+    /* clear of a web page drawn over the VPS browser's panel */
+    position: fixed; right: var(--web-edge, 20px); bottom: 20px; z-index: 50;
     display: flex; flex-direction: column; gap: 10px; max-width: min(520px, calc(100vw - 40px));
   }
   .notice {
@@ -367,7 +381,7 @@
     border-radius: 12px; background: #182031; border: 1px solid #2a3550; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
   }
   .toasts {
-    position: fixed; top: 74px; right: 20px; z-index: 60;
+    position: fixed; top: 74px; right: var(--web-edge, 20px); z-index: 60;
     display: flex; flex-direction: column; gap: 10px; width: min(420px, calc(100vw - 40px));
   }
   .toast {

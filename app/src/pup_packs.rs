@@ -251,9 +251,10 @@ pub fn use_layout(app: &AppHandle, path: &str, file: &str) -> Result<Used, Strin
         let shared = app.state::<Shared>();
         let mut st = shared.0.lock().unwrap();
         let k = library::key(&pack);
-        // the choice kept, for telling apart two layouts whose files are the same
+        // the choice kept, for telling apart two layouts whose files are the same, as the user's own
         if let Some(l) = after.layouts.iter().find(|l| l.file.eq_ignore_ascii_case(file)) {
             st.user.pup_layouts.insert(k.clone(), l.file.clone());
+            st.user.pup_fitted.remove(&k);
             if let Err(e) = st.user.save() {
                 eprintln!("the layout chosen wasn't kept: {e}");
             }
@@ -272,6 +273,150 @@ pub fn use_layout(app: &AppHandle, path: &str, file: &str) -> Result<Used, Strin
     }
     said.push_str(&format!(" But {}", done.problems.join("; ")));
     Ok(Used { said, look: "problem" })
+}
+
+/// The windows packs' layouts are fitted to, as the preferences' `pupLayouts` says: the screens VPX's
+/// settings give it (`fit`, the default), a number of screens the user gives (`desktop`, `2`, `3`,
+/// `4`: the playfield and as many windows, the shapes still the settings'), or none (`leave`: packs'
+/// layouts left as they come).
+pub fn wanted(st: &State) -> Option<::library::pup_pack::Windows> {
+    let mode = st.user.prefs.get("pupLayouts").and_then(|v| v.as_str()).unwrap_or("fit");
+    let mine = ::library::pup_pack::windows_in(&vpi_settings::vpx_settings_text());
+    let screens = |backglass, score, topper| ::library::pup_pack::Windows { backglass, score, topper, ..mine };
+    match mode {
+        "leave" => None,
+        "desktop" => Some(screens(false, false, false)),
+        "2" => Some(screens(true, false, false)),
+        "3" => Some(screens(true, true, false)),
+        "4" => Some(screens(true, true, true)),
+        _ => Some(mine),
+    }
+}
+
+/// A pack whose layout would change to fit the windows, for the list asked about first.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitRow {
+    pub path: String,
+    pub name: String,
+    /// The tables it plays for, by name.
+    pub tables: Vec<String>,
+    /// The layout in place, by name.
+    pub current: Option<String>,
+    pub fit: ::library::pup_pack::Fit,
+    /// Its layout is the one the user chose: left unless they tick it.
+    pub by_hand: bool,
+}
+
+/// What fitting every pack to the windows would change: the windows, and each pack whose layout
+/// would change (none where the preferences leave packs as they come).
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitPlan {
+    pub windows: Option<::library::pup_pack::Windows>,
+    pub rows: Vec<FitRow>,
+}
+
+pub fn fit_plan(app: &AppHandle) -> FitPlan {
+    let (packs, windows) = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        let packs: Vec<(PathBuf, Option<String>, bool, Vec<String>)> = folders(&st)
+            .into_iter()
+            .filter(|p| !p.file_name().is_some_and(|n| n.eq_ignore_ascii_case("PinUpMenu")))
+            .map(|p| {
+                let k = library::key(&p);
+                let chosen = st.user.pup_layouts.get(&k).cloned();
+                let by_hand = chosen.is_some() && !st.user.pup_fitted.contains(&k);
+                let tables = st.tables.iter().filter(|t| t.holds.pup_pack.as_ref().is_some_and(|x| library::key(x) == k)).map(|t| library::view(&st, t).name).collect();
+                (p, chosen, by_hand, tables)
+            })
+            .collect();
+        (packs, wanted(&st))
+    };
+    let Some(w) = windows else { return FitPlan { windows: None, rows: Vec::new() } };
+    let mut rows: Vec<FitRow> = packs
+        .into_iter()
+        .filter_map(|(p, chosen, by_hand, tables)| {
+            let all = ::library::pup_pack::layouts_with(&p, chosen.as_deref());
+            let fit = ::library::pup_pack::fitting(&p, &all, w)?;
+            let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            (!fit.in_place).then(|| FitRow { path: p.display().to_string(), name, tables, current: all.in_place().map(|l| l.name.clone()), fit, by_hand })
+        })
+        .collect();
+    rows.sort_by_key(|r| (r.by_hand, r.tables.first().cloned().unwrap_or_else(|| r.name.clone()).to_lowercase()));
+    FitPlan { windows: Some(w), rows }
+}
+
+/// Each pack named fitted to the windows: its layout that fits applied (`use_layout`'s way), kept as
+/// the app's choice, not the user's. What each came to, in words.
+pub fn fit_apply(app: &AppHandle, paths: Vec<String>) -> Result<Vec<Used>, String> {
+    let w = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        wanted(&st)
+    }
+    .ok_or("Packs' layouts are set to be left as they come.")?;
+    let out = paths.iter().filter_map(|p| fit_one(app, p, w, false).unwrap_or_else(|e| Some(Used { said: e, look: "problem" }))).collect();
+    let _ = app.emit("library-changed", ());
+    Ok(out)
+}
+
+/// One pack fitted, unless its layout fits already — or, where `respect_hand`, it's the user's own.
+fn fit_one(app: &AppHandle, path: &str, w: ::library::pup_pack::Windows, respect_hand: bool) -> Result<Option<Used>, String> {
+    let (pack, chosen, by_hand) = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        let pack = known(&st, path)?;
+        let k = library::key(&pack);
+        let chosen = st.user.pup_layouts.get(&k).cloned();
+        let by_hand = chosen.is_some() && !st.user.pup_fitted.contains(&k);
+        (pack, chosen, by_hand)
+    };
+    if respect_hand && by_hand {
+        return Ok(None);
+    }
+    let all = ::library::pup_pack::layouts_with(&pack, chosen.as_deref());
+    let Some(fit) = ::library::pup_pack::fitting(&pack, &all, w).filter(|f| !f.in_place) else { return Ok(None) };
+    let done = ::library::pup_pack::apply(&pack, &fit.file, &::library::install::to_recycle_bin)?;
+    let after = ::library::pup_pack::layouts_with(&pack, Some(&fit.file));
+    {
+        let shared = app.state::<Shared>();
+        let mut st = shared.0.lock().unwrap();
+        let k = library::key(&pack);
+        st.user.pup_layouts.insert(k.clone(), fit.file.clone());
+        st.user.pup_fitted.insert(k.clone());
+        if let Err(e) = st.user.save() {
+            eprintln!("the layout chosen wasn't kept: {e}");
+        }
+        if st.pup_checks.contains_key(&k) {
+            st.pup_checks.insert(k, facts_of(&pack, &after));
+        }
+    }
+    let name = pack.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut said = format!("{name} now uses “{}”, to fit your screens.", fit.name);
+    if done.recycled > 0 {
+        said.push_str(&format!(" {} {} it replaced went to the Recycle Bin.", done.recycled, if done.recycled == 1 { "file of yours" } else { "files of yours" }));
+    }
+    if done.problems.is_empty() {
+        return Ok(Some(Used { said, look: "done" }));
+    }
+    said.push_str(&format!(" But {}", done.problems.join("; ")));
+    Ok(Some(Used { said, look: "problem" }))
+}
+
+/// A pack the drop window just put in place fitted to the windows, as the preferences say — never
+/// one whose layout the user chose before. What was done, in words.
+pub fn fit_new(app: &AppHandle, pack: &Path) -> Option<String> {
+    let w = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        wanted(&st)
+    }?;
+    match fit_one(app, &pack.display().to_string(), w, true) {
+        Ok(done) => done.map(|u| u.said),
+        Err(e) => Some(format!("Its PinUP pack's layout wasn't set to fit your screens: {e}")),
+    }
 }
 
 /// A layout of the pack written down for the player to try without applying it: the pack's folder,

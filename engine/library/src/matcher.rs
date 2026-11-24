@@ -13,14 +13,19 @@
 //!
 //! Ours on top (`match_table`), each measured on the test library's tables,
 //! whose VPS files are known: a game further than VPin Studio's
-//! confirming distance is looked for again by the table info's name, then by
-//! the ROM its script names, and left a guess to confirm when neither finds
-//! it; the file name's version picks the table file when only one has it
-//! (dots aside: 1.13 is 1.1.3); the file name's authors (VPW, Bigus) count
-//! beside the table info's, which a mod often keeps from the table it
-//! changed; authors match with spaces and digits aside (ClarkKent, Javier15);
-//! and VPS's comments are compared with the table's name only for what's left
-//! of each once the game's own name, maker and year are taken out.
+//! confirming distance is looked for again by the table info's name (where
+//! the file name, or else the script's own name for its game, speaks of the
+//! game), then by the ROM its script names — of several games VPS lists that
+//! ROM for (an original made on another machine's ROM lists it too), the one
+//! whose table file fits the table best, then the nearest by name — and left
+//! a guess to confirm when neither finds it; the file name's version picks the table file
+//! when only one has it (dots aside: 1.13 is 1.1.3); the file name's authors
+//! (VPW, Bigus) count beside the table info's, which a mod often keeps from
+//! the table it changed; authors match with spaces and digits aside
+//! (ClarkKent, Javier15), and the table info's are also taken word by word,
+//! for a list with nothing between its names ("marty 32assassin"); and VPS's
+//! comments are compared with the table's name only for what's left of each
+//! once the game's own name, maker and year are taken out.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -507,6 +512,13 @@ pub fn table_file_scores<'a>(game: &'a Game, formats: &[&str], q: &FileQuery) ->
     let version = clean_version(q.version.as_deref().unwrap_or(""));
     let name = residue(&q.name, game);
     let from_info = q.info_authors.as_deref().map(split_authors).filter(|a| !a.is_empty());
+    // ours: the table info's authors word by word too, where its list has nothing between the names
+    // ("marty 32assassin"); a name of two words ("Clark Kent") still found whole
+    let info_words = from_info
+        .as_ref()
+        .filter(|a| a.iter().any(|x| x.contains(char::is_whitespace)))
+        .map(|a| a.iter().flat_map(|x| x.split_whitespace()).filter(|w| *w != "and").map(str::to_string).collect::<Vec<_>>())
+        .filter(|a| !a.is_empty());
     let mut from_name = q.name_authors.to_lowercase();
     for w in EXCLUDED_WORDS {
         from_name = from_name.split(' ').filter(|x| *x != w).collect::<Vec<_>>().join(" ");
@@ -533,14 +545,17 @@ pub fn table_file_scores<'a>(game: &'a Game, formats: &[&str], q: &FileQuery) ->
                 d_version = if plain_version(v) == plain_version(&version) { 0.0 } else { version_distance(v, &version) };
             }
             if !t.authors.is_empty() {
-                // the table info's authors as VPin Studio weighs them, the file name's at half (they may not
-                // be authors at all), the nearer counting
+                // the table info's authors as VPin Studio weighs them, or word by word, the file name's at
+                // half (they may not be authors at all), the nearest counting
                 let weigh = |ours: &[String]| {
                     let whole = (ours.len() * t.authors.len()) as f64;
                     let mut theirs = t.authors.clone();
                     author_distance(ours, 0, &mut theirs, t.authors.len()) / whole
                 };
-                let d = [from_info.as_deref().map(weigh), from_name.as_deref().map(|a| weigh(a) / 2.0)].into_iter().flatten().fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))));
+                let d = [from_info.as_deref().map(weigh), info_words.as_deref().map(weigh), from_name.as_deref().map(|a| weigh(a) / 2.0)]
+                    .into_iter()
+                    .flatten()
+                    .fold(None, |m: Option<f64>, d| Some(m.map_or(d, |m| m.min(d))));
                 if let Some(d) = d {
                     d_author = d;
                     if d_author == 0.0 {
@@ -632,6 +647,16 @@ pub fn relates(file_name: &str, game: &Game) -> bool {
     first.is_some_and(|w| file.contains(w.as_str())) || initials.len() >= 3 && file.contains(&initials) || initials.len() == 2 && file.starts_with(&initials)
 }
 
+/// The script's own name for its game holds the game's whole name, letters only, and is no ROM VPS
+/// lists (ours): an original table's name for itself, as `it_pinball_madnesspw` names It Pinball
+/// Madness, never a machine's ROM, which a table built on that machine keeps.
+fn named_by_script(db: &Database, script_game: &str, game: &Game) -> bool {
+    let letters = |s: &str| s.chars().filter(char::is_ascii_alphabetic).collect::<String>().to_lowercase();
+    let name = letters(&game.name);
+    let rom = rom_key(script_game);
+    name.len() >= 6 && letters(script_game).contains(&name) && !db.games.iter().any(|g| g.rom_files.iter().any(|f| f.version.as_deref().is_some_and(|v| rom_key(v) == rom)))
+}
+
 /// The game nearest a file's name alone, with its distance (VPin Studio's `findClosest`), for a
 /// table's companion files: a backglass, its views, its settings.
 pub fn game_by_file_name<'a>(db: &'a Database, file_name: &str) -> Option<(&'a Game, f64)> {
@@ -664,23 +689,30 @@ pub fn match_table<'a>(db: &'a Database, clues: &Clues) -> Match<'a> {
         Some((g, d)) if d <= THRESHOLD_CONFIRM => (Some(g), Found::ByFileName, d),
         _ => {
             // the table info's name, with the file name's maker and year when it gives none; a game
-            // the file name says nothing of is left out (a table built on another's keeps its name)
+            // the file name says nothing of is left out (a table built on another's keeps its name),
+            // unless the script names it too
             let by_info = clues.info_name.as_deref().filter(|n| !PLACEHOLDER_NAMES.contains(&n.trim().to_lowercase().as_str())).and_then(|n| {
                 let mut p = parse_filename(n);
                 if p.manufacturer.is_none() && p.year < 0 {
                     (p.manufacturer, p.year) = (parts.manufacturer.clone(), parts.year);
                 }
-                closest_games(&FORMATS, &p, &db.games).first().copied().filter(|(g, _)| relates(&clues.file_name, g))
+                closest_games(&FORMATS, &p, &db.games).first().copied().filter(|(g, _)| relates(&clues.file_name, g) || clues.rom.as_deref().is_some_and(|r| named_by_script(db, r, g)))
             });
-            // the games VPS lists the script's ROM for that the file name speaks of, the nearest by name
+            // the games VPS lists the script's ROM for that the file name speaks of: the one whose table
+            // file fits the table best (an original made on another machine's ROM lists that ROM too),
+            // then the nearest by name
             let by_rom = clues.rom.as_deref().map(rom_key).and_then(|rom| {
                 let clean_name = parts.table_name.as_deref().filter(|n| !n.is_empty()).map(clean_table);
                 db.games
                     .iter()
                     .filter(|g| applies(&FORMATS, g) && g.rom_files.iter().any(|f| f.version.as_deref().is_some_and(|v| rom_key(v) == rom)))
                     .filter(|g| relates(&clues.file_name, g))
-                    .map(|g| (g, game_distance(g, &parts.display_name, clean_name.as_deref(), parts.manufacturer.as_deref(), parts.year)))
-                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|g| {
+                        let fit = table_file_scores(g, &FORMATS, &file_query(g, &parts, clues)).iter().map(|s| s.total).fold(f64::INFINITY, f64::min);
+                        (g, fit, game_distance(g, &parts.display_name, clean_name.as_deref(), parts.manufacturer.as_deref(), parts.year))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)))
+                    .map(|(g, _, d)| (g, d))
             });
             match (by_name, by_info, by_rom) {
                 (_, Some((g, d)), _) if d <= THRESHOLD_CONFIRM => (Some(g), Found::ByTableInfo, d),
@@ -693,42 +725,40 @@ pub fn match_table<'a>(db: &'a Database, clues: &Clues) -> Match<'a> {
         }
     };
     let mut version = parts.version.clone();
-    let version_from_name = version.is_some();
     let mut table_file = None;
     let mut asked = None;
     if let Some(game) = game {
-        let extra = match parts.extra.take() {
-            None => remove_ci(parts.table_name.as_deref().unwrap_or(""), &game.name).trim().to_string(),
-            Some(e) => clean_chars(&e),
-        };
-        parts.extra = Some(extra.clone());
-        let name = clues.info_name.clone().unwrap_or_else(|| extra.clone());
-        if version.is_none()
-            && let Some(v) = clues.info_version.as_deref().filter(|v| !v.is_empty() && !contains_ci(v, "VP"))
-        {
-            version = extract_version(v);
-        }
-        if let Some(v) = version.take() {
-            let mut v = v.replace('_', ".").to_lowercase().trim().to_string();
-            for start in ["v", "r", "."] {
-                if let Some(rest) = v.strip_prefix(start) {
-                    v = rest.to_string();
-                }
-            }
-            version = Some(v);
-        }
-        let q = FileQuery {
-            name,
-            info_authors: clues.info_authors.clone().filter(|a| !a.trim().is_empty()),
-            name_authors: extra,
-            version: version.clone(),
-            version_from_name,
-            made: clues.made,
-        };
+        let q = file_query(game, &parts, clues);
+        parts.extra = Some(q.name_authors.clone());
+        version = q.version.clone();
         table_file = closest_table_file(game, &FORMATS, &q);
         asked = Some(q);
     }
     Match { game, found, distance, table_file, version, parts, asked }
+}
+
+/// What a game's table files are weighed against for a table (VPin Studio's
+/// `VpsAutomatcher.autoMatch`): the table info's name, else what's left of the file name once the
+/// game's name is out; the authors; the file name's version, else the table info's, cleaned; the
+/// day the file was made.
+fn file_query(game: &Game, parts: &NameParts, clues: &Clues) -> FileQuery {
+    let extra = match parts.extra.as_deref() {
+        None => remove_ci(parts.table_name.as_deref().unwrap_or(""), &game.name).trim().to_string(),
+        Some(e) => clean_chars(e),
+    };
+    let name = clues.info_name.clone().unwrap_or_else(|| extra.clone());
+    let version_from_name = parts.version.is_some();
+    let version = parts.version.clone().or_else(|| clues.info_version.as_deref().filter(|v| !v.is_empty() && !contains_ci(v, "VP")).and_then(extract_version));
+    let version = version.map(|v| {
+        let mut v = v.replace('_', ".").to_lowercase().trim().to_string();
+        for start in ["v", "r", "."] {
+            if let Some(rest) = v.strip_prefix(start) {
+                v = rest.to_string();
+            }
+        }
+        v
+    });
+    FileQuery { name, info_authors: clues.info_authors.clone().filter(|a| !a.trim().is_empty()), name_authors: extra, version, version_from_name, made: clues.made }
 }
 
 #[cfg(test)]
@@ -800,5 +830,65 @@ mod tests {
         assert!(relates("TimeLord-4.1a", &game("Time Lord", "Original", 2022)));
         assert!(relates("tz_94h", &game("Twilight Zone", "Bally", 1993)));
         assert!(!relates("JP's Arcade Physics v3.01 Rubber objects", &game("Count-Down", "Gottlieb", 1979)));
+    }
+
+    #[test]
+    fn a_rom_several_games_share_goes_to_the_one_whose_table_file_fits() {
+        let file = |id: &str, version: &str, authors: &[&str], comment: Option<&str>| TableFile {
+            id: id.into(),
+            version: Some(version.into()),
+            authors: authors.iter().map(|a| a.to_string()).collect(),
+            comment: comment.map(str::to_string),
+            table_format: Some("VPX".into()),
+            ..Default::default()
+        };
+        let rom = vec![crate::vps::Asset { version: Some("eatpm_l4".into()), ..Default::default() }];
+        let machine = Game { id: "machine".into(), table_files: vec![file("m1", "2.3", &["32assassin", "HauntFreaks"], None)], rom_files: rom.clone(), ..game("Elvira and the Party Monsters", "Bally", 1989) };
+        let remix = Game {
+            id: "remix".into(),
+            table_files: vec![
+                file("r1", "2.0.0", &["HauntFreaks", "Marty02", "32assassin"], None),
+                file("r2", "1.1", &["Marty02", "32assassin"], Some("Remix of 32assassin's Elvira and the Party Monsters (Bally 1989) & Elvira's House of Horrors (Stern 2019) - Limited Edition")),
+            ],
+            rom_files: rom,
+            ..game("Elvira's House of Horrors Remix", "Original", 2021)
+        };
+        let db = Database { games: vec![machine, remix] };
+        // an original made on the machine's ROM: its version and its authors, listed with nothing
+        // between them, are the original's table file's
+        let clues = Clues {
+            file_name: "Elvira limited edition".into(),
+            info_name: Some("Elvira Bally VS Stern".into()),
+            info_authors: Some("marty 32assassin".into()),
+            info_version: Some("1.1".into()),
+            rom: Some("eatpm_l4".into()),
+            ..Default::default()
+        };
+        let m = match_table(&db, &clues);
+        assert_eq!((m.found, m.game.map(|g| g.id.as_str()), m.table_file.map(|t| t.id.as_str())), (Found::ByRom, Some("remix"), Some("r2")));
+        // the machine's own table on the same ROM stays the machine's
+        let clues = Clues { file_name: "Elvira 32assassin 2.3".into(), rom: Some("eatpm_l4".into()), ..Default::default() };
+        let m = match_table(&db, &clues);
+        assert_eq!((m.found, m.game.map(|g| g.id.as_str()), m.table_file.map(|t| t.id.as_str())), (Found::ByRom, Some("machine"), Some("m1")));
+    }
+
+    #[test]
+    fn a_table_info_name_the_script_names_too() {
+        let vpx = || vec![TableFile { id: "f".into(), version: Some("1.0".into()), table_format: Some("VPX".into()), ..Default::default() }];
+        let original = Game { id: "original".into(), table_files: vpx(), ..game("It Pinball Madness", "Original", 2022) };
+        let machine = Game {
+            id: "machine".into(),
+            table_files: vpx(),
+            rom_files: vec![crate::vps::Asset { version: Some("godzilla".into()), ..Default::default() }],
+            ..game("Godzilla", "Sega", 1998)
+        };
+        let db = Database { games: vec![original, machine, Game { id: "other".into(), table_files: vpx(), ..game("Super Spin", "Gottlieb", 1977) }] };
+        // a file name that says nothing of the game, the script's own name for its game holding it
+        let clues = Clues { file_name: "Pennywise (Pup)".into(), info_name: Some("IT - Pinball Madness".into()), rom: Some("it_pinball_madnesspw".into()), ..Default::default() };
+        let m = match_table(&db, &clues);
+        assert_eq!((m.found, m.game.map(|g| g.id.as_str())), (Found::ByTableInfo, Some("original")));
+        // a machine's ROM named for it says nothing: a table built on the machine keeps both
+        let clues = Clues { file_name: "Kong".into(), info_name: Some("Godzilla (Sega 1998)".into()), rom: Some("godzilla".into()), ..Default::default() };
+        assert_ne!(match_table(&db, &clues).found, Found::ByTableInfo);
     }
 }

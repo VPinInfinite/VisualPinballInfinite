@@ -8,11 +8,15 @@ Drop the pack's download onto the app, with its table or onto its page. It goes 
 
 ## Choosing its layout
 
-Packs come with a few layouts for different setups (two screens, three with a full DMD, four with a topper), as option files their authors made. Until one is chosen, many packs show nothing.
+Packs come with a few layouts for different setups (two screens, three with a full DMD, four with a topper), as option files their authors made. Until one is chosen, many packs show nothing. The app fits one to your screens by itself (see [Fitted to your screens](#fitted-to-your-screens)); to choose one yourself:
 
 1. **Layout…** on the table's page, or on the pack's row in Tools › PinUP packs, lists its layouts by their authors' names, with the one **In place** marked.
 2. **Try it** starts the table in VPX with that layout on your screens, without changing the pack: close the table to come back. It isn't counted as a play.
 3. Choose one and **Use this layout**: the app makes the copies its option files describe, inside the pack's folder. It never runs the files themselves; anything an option file asks for beyond copying inside the pack is shown, for you to do by hand if you want it. A file of yours it replaces goes to the Recycle Bin.
+
+## Fitted to your screens
+
+The app reads what each of a pack's layouts shows on which screen and picks the one that fits the screens your VPX has (the backglass, the score display, the topper): as a pack comes in through the drop window, or for every pack at once with **Fit all packs…** in Tools › PinUP packs, which lists each change first. **Layouts fitted to**, beside it, says what they're fitted to: **Your screens** (recommended), **Desktop** (the playfield alone), **2**, **3** or **4 screens**, or **None**, which leaves layouts as packs come. A layout you choose yourself stays yours. When you save Settings › Screens, its notice offers **Fit PinUP packs to them…**
 
 ## Every pack: Tools › PinUP packs
 

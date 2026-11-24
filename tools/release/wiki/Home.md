@@ -12,7 +12,7 @@ You bring the tables and their ROMs. If VPX isn't on your PC, the app gets VPX 1
 
 ## Using the app
 
-- [Your library](Your-library): tiles and lists, groups and playlists, ratings, search, tables with more than one table file, the VPS browser, Tools, the table editor, the Player hub, a folder for each game, and removing a table.
+- [Your library](Your-library): tiles and lists, groups and playlists, ratings, search, tables with more than one table file, the VPS browser (what your tables are missing, recommended tables, a file's page inside the app), Tools, the table editor, the Player hub, a folder for each game, and removing a table.
 - [A table's page](Table-page): PLAY, Hardcore or Softcore, its builds, its pictures and videos, its rating, what it holds, its achievements and high scores, its own settings and screens, its script, its physics, and Test it.
 - [Media](Media): the pictures and videos front ends show, where they come from, and making your own.
 - [Settings](Settings): every settings page, and where VPX's settings and the app's are kept.
@@ -28,7 +28,7 @@ You bring the tables and their ROMs. If VPX isn't on your PC, the app gets VPX 1
 - [ROM machines](ROM-machines): ROMs, their checks, every ROM set in one list, changing a table's ROM, and a machine's settings and memory.
 - [AltSound](AltSound): replacement sound packs, their checks, and making one from a table's ROM.
 - [Score displays](Score-displays): DMDs and segment displays, the score display over a backglass, color files and coloring your own, real DMD panels, FlexDMD.
-- [PinUP packs](PinUP-packs): choosing a pack's layout, trying it, and every pack in one list.
+- [PinUP packs](PinUP-packs): a pack's layout fitted to your screens or chosen by you, trying it, and every pack in one list.
 - [Achievements](Achievements): achievement packs, followed as you play in VPX, Hardcore and Softcore, and making your own.
 - [Sample achievement packs](Sample-achievement-packs): ten packs for well-known tables, and what each of their achievements counts.
 

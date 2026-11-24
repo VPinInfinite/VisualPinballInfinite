@@ -121,6 +121,13 @@ fn resolve(st: &State, path: &str) -> Option<Source> {
 }
 
 pub fn handle<R: Runtime>(ctx: UriSchemeContext<'_, R>, request: Request<Vec<u8>>, responder: UriSchemeResponder) {
+    // the app's own pages alone: a view showing another site's page (a file's page in the VPS
+    // browser's panel, the pause menu's guide) gets nothing, so no site can read or probe the
+    // pictures, sounds and read-mes of the user's tables
+    if crate::web_view::shows_other_sites(ctx.webview_label()) {
+        responder.respond(status(StatusCode::FORBIDDEN));
+        return;
+    }
     let path = request.uri().path().trim_start_matches('/').to_string();
     let range = request.headers().get(header::RANGE).and_then(|v| v.to_str().ok()).map(str::to_string);
     // a picture, video or sound of the drop window's media cards, by download and step

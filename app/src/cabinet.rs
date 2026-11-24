@@ -27,7 +27,7 @@ pub fn open(app: &AppHandle, preset: Option<&str>) -> Result<Vec<&'static str>, 
     if let Some(p) = preset.filter(|p| !p.trim().is_empty()) {
         view.settings.windows = crate::screens::load_preset(p)?.windows;
     }
-    let main = app.get_webview_window("main").ok_or("The app's window isn't there.")?;
+    let main = crate::main_window::window(app).ok_or("The app's window isn't there.")?;
     {
         let state = app.state::<Before>();
         let mut before = state.0.lock().unwrap();
@@ -43,7 +43,7 @@ pub fn open(app: &AppHandle, preset: Option<&str>) -> Result<Vec<&'static str>, 
         let _ = main.set_position(PhysicalPosition::new(s.x, s.y));
     }
     let _ = main.set_fullscreen(true);
-    focus(&main);
+    crate::main_window::focus(app);
     let mut opened = Vec::new();
     for (id, label) in SCREENS {
         if let Some(old) = app.get_webview_window(label) {
@@ -67,7 +67,7 @@ pub fn open(app: &AppHandle, preset: Option<&str>) -> Result<Vec<&'static str>, 
         opened.push(id);
     }
     // the keyboard the main window's, the others up
-    focus(&main);
+    crate::main_window::focus(app);
     Ok(opened)
 }
 
@@ -87,7 +87,7 @@ pub fn close(app: &AppHandle) -> bool {
             let _ = w.close();
         }
     }
-    let Some(main) = app.get_webview_window("main") else { return false };
+    let Some(main) = crate::main_window::window(app) else { return false };
     let _ = main.set_fullscreen(false);
     if let Some((pos, size, full, max)) = app.state::<Before>().0.lock().unwrap().take() {
         let _ = main.set_position(pos);
@@ -123,8 +123,8 @@ pub fn screens_shown(app: &AppHandle, shown: bool) {
         }
     }
     // back from a game: the keyboard the main window's again
-    if shown && let Some(main) = app.get_webview_window("main") {
-        focus(&main);
+    if shown {
+        crate::main_window::focus(app);
     }
 }
 

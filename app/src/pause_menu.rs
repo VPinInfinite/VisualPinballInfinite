@@ -28,7 +28,7 @@ use crate::library::Shared;
 const WINDOW: &str = "pause-menu";
 
 /// The guide view's window label: a guide page as Pinball Primer draws it, over the menu's Guide page.
-const GUIDE: &str = "pause-guide";
+pub const GUIDE: &str = "pause-guide";
 
 /// The guide view: whether the menu's Guide page wants it shown, the page asked for, whether that
 /// page has loaded, and where it goes (desktop pixels: `x`, `y`, width, height).

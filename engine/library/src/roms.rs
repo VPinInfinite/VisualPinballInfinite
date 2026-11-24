@@ -194,6 +194,22 @@ pub fn all_rom_files() -> Result<Vec<Set>, String> {
     Ok(all)
 }
 
+static FILE_NAMES: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
+
+/// A file PinMAME names in one of its sets, by its name whatever its ending (`sw0211.u17`,
+/// `swsedspa.400`, `hc_pgm`): for telling a drop of a set's files from other files. False where
+/// PinMAME can't be asked.
+pub fn known_file_name(name: &str) -> bool {
+    let mut names = FILE_NAMES.lock().unwrap();
+    if names.is_none() {
+        match all_rom_files() {
+            Ok(all) => *names = Some(all.iter().flat_map(|s| s.files.iter().map(|f| f.name.to_lowercase())).collect()),
+            Err(_) => return false,
+        }
+    }
+    names.as_ref().is_some_and(|n| n.contains(&name.to_lowercase()))
+}
+
 /// One of the games PinMAME knows, as `vpi-pinmame --sets` lists them.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -299,6 +315,14 @@ pub fn verdict(c: &Check, parent_there: bool, of: Of) -> (&'static str, String) 
             n => format!(", and {n} more aren't the ones PinMAME expects"),
         };
         let (m, n) = (c.missing.len(), c.needed);
+        // the rest all there and right: a set a file or two short (a board's program left out), said by name
+        if c.wrong.is_empty() && c.good > 0 && m <= 3 {
+            let names = c.missing.join(", ");
+            return ("bad", match of {
+                Of::Table => format!("Its ROM ({set}) lacks {names}, which PinMAME needs, so the game won't start. The rest of its files are right: a complete {set} from the table's VPS page has it."),
+                Of::Drop => format!("This zip lacks {names}, which {set} needs, so the game won't start. The rest of its files are right: a complete {set} from the table's VPS page has it."),
+            });
+        }
         return ("bad", match of {
             Of::Table => format!("Its ROM ({set}) is missing {m} of its {n} files{wrong}, so the game won't start. The zip you have is probably a different version: get {set} from the table's VPS page."),
             Of::Drop => format!("This zip is missing {m} of the {n} files {set} needs{wrong}, so the game won't start. It's probably a different version: get {set} from the table's VPS page."),

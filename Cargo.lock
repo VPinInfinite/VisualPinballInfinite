@@ -79,9 +79,10 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "flate2",
+ "getrandom 0.3.4",
  "image",
  "library",
  "regex",
@@ -543,7 +544,7 @@ checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
 name = "colour-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "colour-link",
  "flate2",
@@ -551,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "colour-link"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "combine"
@@ -963,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "dmd-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cc",
  "dmd-link",
@@ -972,18 +973,18 @@ dependencies = [
 
 [[package]]
 name = "dmd-link"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "dmddevice-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dmd-link",
 ]
 
 [[package]]
 name = "dof-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cc",
  "dof-link",
@@ -991,7 +992,7 @@ dependencies = [
 
 [[package]]
 name = "dof-link"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "dom_query"
@@ -1705,7 +1706,7 @@ dependencies = [
 
 [[package]]
 name = "headless"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "image",
  "physics-compat",
@@ -1985,7 +1986,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "idl-gen"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "idna"
@@ -2334,7 +2335,7 @@ dependencies = [
 
 [[package]]
 name = "kicker-pictures"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "image",
  "player",
@@ -2425,7 +2426,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "library"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cfb 0.15.0",
  "crc32fast",
@@ -3152,7 +3153,7 @@ dependencies = [
 
 [[package]]
 name = "physics-compat"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "pin-project-lite"
@@ -3162,7 +3163,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pinmame-host"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cc",
  "pinmame-link",
@@ -3170,7 +3171,7 @@ dependencies = [
 
 [[package]]
 name = "pinmame-link"
-version = "0.2.0"
+version = "0.2.1"
 
 [[package]]
 name = "pinmame-nvram"
@@ -3192,7 +3193,7 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "player"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "cc",
@@ -4622,7 +4623,7 @@ dependencies = [
 
 [[package]]
 name = "table-physics"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "physics-compat",
  "roxmltree",
@@ -5434,7 +5435,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vpi-achievements"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -5442,7 +5443,7 @@ dependencies = [
 
 [[package]]
 name = "vpi-settings"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "roxmltree",
 ]
@@ -5478,7 +5479,7 @@ dependencies = [
 
 [[package]]
 name = "vpx-addon"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "png 0.18.1",
  "serde_json",

@@ -142,6 +142,9 @@ pub struct User {
     /// The layout last chosen for each PinUP pack, by its folder (lower case): its option file,
     /// told apart where two layouts' files are the same.
     pub pup_layouts: BTreeMap<String, String>,
+    /// The PinUP packs whose layout the app chose to fit the user's screens, by folder (lower
+    /// case): any other in `pup_layouts` the user chose, never changed without their word.
+    pub pup_fitted: BTreeSet<String>,
     /// The PinUP packs renamed here for a table to play them, by their folders now (lower case):
     /// each one's name before, to put back.
     pub pup_renames: BTreeMap<String, String>,
@@ -592,6 +595,8 @@ fn load(app: &AppHandle) -> Result<(), String> {
         }
     }
     note_popper_copies(app);
+    // tables just added whose ROM isn't here set to play one of their game that is
+    fit_roms(app);
     set_status(app, |_| {});
     let _ = app.emit("library-changed", ());
     // every table's ROM checked, those checked before shown at once
@@ -1517,10 +1522,14 @@ pub fn browser(st: &State) -> Browser {
     let Some(db) = st.db.as_deref() else { return Browser { machines: Vec::new(), refreshed: st.status.vps_fetched } };
     let base = pictures::base();
     let picture = |id: &str| st.vps_pictures.contains_key(id).then(|| format!("{base}v/{id}"));
+    // the library's table of a machine, where one's matched to it
+    let mine = |g: &Game| st.tables.iter().find(|t| t.on_vps.sure && t.on_vps.game.as_deref() == Some(g.id.as_str())).map(|t| t.id.clone());
     let mut machines: Vec<Machine> = db
         .games
         .iter()
-        .filter(|g| g.broken != Some(true) && !g.name.trim().is_empty())
+        // a machine VPS marks broken (its links don't work) left out, unless a table of the
+        // library's is matched to it
+        .filter(|g| !g.name.trim().is_empty() && (g.broken != Some(true) || mine(g).is_some()))
         .map(|g| {
             let (badge, kind) = kind_of(g);
             let mut formats: Vec<String> = Vec::new();
@@ -1553,7 +1562,7 @@ pub fn browser(st: &State) -> Browser {
                 releases: g.table_files.len(),
                 newest: g.table_files.iter().filter_map(|f| f.created_at.or(f.updated_at)).max(),
                 picture: tables.iter().find_map(|f| picture(&f.id)).or_else(|| g.b2s_files.iter().find_map(|b| picture(&b.id))).or_else(|| picture(&g.id)),
-                mine: st.tables.iter().find(|t| t.on_vps.sure && t.on_vps.game.as_deref() == Some(g.id.as_str())).map(|t| t.id.clone()),
+                mine: mine(g),
                 authors,
                 roms: g.rom_files.iter().filter_map(|r| r.version.clone()).collect(),
             }
@@ -1999,6 +2008,83 @@ pub struct RomChoices {
     pub known: Vec<::library::rom_change::Candidate>,
     pub all: Vec<String>,
     pub changed: Option<::library::rom_change::Changed>,
+}
+
+/// A table whose script asks for a ROM set that isn't here, set to play another set of its game that
+/// is — a sound one, VPS's for its game first, then the newest by name — as Change the ROM sets it
+/// (its script beside it, its packs carried): any working ROM of its machine plays it. The sets it
+/// was changed from and to, where it was.
+pub fn use_usable_rom(app: &AppHandle, id: &str) -> Option<(String, String)> {
+    let shared = app.state::<Shared>();
+    let (asked, roms, on_vps) = {
+        let st = shared.0.lock().unwrap();
+        let t = st.tables.iter().find(|t| t.id == id)?;
+        if !t.read.pinmame || t.holds.rom.is_some() {
+            return None;
+        }
+        let asked = t.read.game_name.clone()?;
+        let layout = st.layout.as_ref()?;
+        let on_vps: Vec<String> = st.db.as_deref().zip(t.on_vps.game.as_deref()).and_then(|(db, g)| db.game(g)).map(|g| g.rom_files.iter().filter_map(|r| r.version.clone()).collect()).unwrap_or_default();
+        (asked, roms_of(layout, t), on_vps)
+    };
+    // PinMAME asked, and each set checked file by file, the library free meanwhile
+    let mut usable: Vec<::library::rom_change::Candidate> = ::library::rom_change::candidates(&roms, &asked, &on_vps)
+        .into_iter()
+        .filter(|c| c.have && !c.current && ::library::roms::check_installed(&roms, &c.set).is_ok_and(|(look, _)| look == "good"))
+        .collect();
+    usable.sort_by(|a, b| b.on_vps.cmp(&a.on_vps).then(b.set.cmp(&a.set)));
+    let to = usable.first()?.set.clone();
+    let mut st = shared.0.lock().unwrap();
+    let done = change_rom(&mut st, id, &to);
+    // changed even where a pack didn't go with it
+    let changed = st.tables.iter().find(|t| t.id == id).is_some_and(|t| st.user.rom_changes.get(&key(&t.path)).is_some_and(|c| c.to.eq_ignore_ascii_case(&to)));
+    if let Err(e) = done {
+        eprintln!("{asked} to {to}: {e}");
+    }
+    if !changed {
+        return None;
+    }
+    if let Some(t) = st.tables.iter_mut().find(|t| t.id == id) {
+        t.read.game_name = Some(to.clone());
+        t.holds.rom_set = Some(to.clone());
+        t.holds.rom = Some(roms.join(format!("{to}.zip")));
+    }
+    Some((asked, to))
+}
+
+/// The tables the drop window just added, or put files in place for, by their paths (lower case):
+/// each set to play a ROM of its game it has where the one its script asks for isn't here, once the
+/// library's read again (`fit_roms`).
+static ROMS_TO_FIT: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+pub fn fit_roms_after(tables: impl IntoIterator<Item = PathBuf>) {
+    ROMS_TO_FIT.lock().unwrap().extend(tables.into_iter().map(|p| key(&p)));
+}
+
+/// A ROM chosen for a table, for the screens' notice.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RomChosen {
+    pub name: String,
+    pub from: String,
+    pub to: String,
+}
+
+fn fit_roms(app: &AppHandle) {
+    let keys = std::mem::take(&mut *ROMS_TO_FIT.lock().unwrap());
+    if keys.is_empty() {
+        return;
+    }
+    let tables: Vec<(String, String)> = {
+        let shared = app.state::<Shared>();
+        let st = shared.0.lock().unwrap();
+        st.tables.iter().filter(|t| keys.contains(&key(&t.path))).map(|t| (t.id.clone(), view(&st, t).name)).collect()
+    };
+    for (id, name) in tables {
+        if let Some((from, to)) = use_usable_rom(app, &id) {
+            let _ = app.emit("rom-chosen", RomChosen { name, from, to });
+        }
+    }
 }
 
 pub fn rom_choices(shared: &Shared, id: &str) -> Result<RomChoices, String> {

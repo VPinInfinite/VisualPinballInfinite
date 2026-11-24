@@ -64,6 +64,10 @@ export const app = $state({
   reveal: null,
   /** the table the library has just shown, lit for a moment */
   glow: null,
+  /** the table whose page was left for the library, for the library to show where it is */
+  backTo: null,
+  /** Tools › PinUP packs to ask at once about fitting every pack to the screens (after they changed) */
+  pupFitAsk: false,
   /** a table renamed, its page to follow it to its new ID once the library has it: { from, to } */
   follow: null,
   /** PinUP Popper's media folder is there */
@@ -72,8 +76,12 @@ export const app = $state({
   ratingFronts: [],
   /** the first rating given, the user asked whether ratings go in those lists too: { name } */
   askRatings: null,
-  /** Report a problem, open: { table } (null: not about one table) */
+  /** Report a problem, open: { table, open, list } — table null when not about one table; open, a
+   *  sent report's key to show first; list, the reports sent shown first */
   report: null,
+  /** the reports sent from here, the newest first, each with the team's replies and how many are
+   *  new (`reports_list`) */
+  reports: [],
   /** cabinet mode shown (`CabinetMode`) */
   cabinet: false,
   /** the test mode's pause menu, shown over the window as if a game were paused: its table, by part of its name */
@@ -242,7 +250,48 @@ export const vps = $state({
   sort: 'newest',
   notMine: false,
   has: [],
+  /** the top bar's list of the downloads waiting, and of the tasks, open: the panel's page out of
+   *  sight meanwhile, as the web view is drawn over the app's own page and would hide them */
+  inboxOpen: false,
+  tasksOpen: false,
+  /** what the browser shows: every machine (`all`), what's to get for the user's tables (`yours`),
+   *  tables picked for the user (`picks`) */
+  view: 'all',
+  /** the page the in-app browser shows, as the web view tells it, and the screen showing it:
+   *  { url, loading, from: 'browser' | 'table' } */
+  web: null,
+  /** the page a Get asked for, numbered, with the VPS machine it's for: { url, game, n } */
+  ask: null,
+  /** the files downloaded in the panel, waiting to be imported: [{ name, path, size, at, downloading }] */
+  inbox: [],
 });
+
+let webAsks = 0;
+/** A file's page shown in the in-app browser: `game`, the VPS machine it's for (what's downloaded
+ *  there then finds its table); `from`, the screen showing it (`browser`, `table`). */
+export function openWeb(url, game, from) {
+  vps.ask = { url, game: game ?? null, n: ++webAsks };
+  vps.web = { url, loading: true, from };
+}
+export function closeWeb() {
+  vps.web = null;
+}
+
+/** The files downloaded in the panel, waiting to be imported, all put in the drop window, which
+ *  sorts them by table: each one got for a machine the library has a table of dropped on that
+ *  table, as if onto its page — those for no table first, so a table they bring is there for the
+ *  rest to join. */
+export async function importWaiting() {
+  const ready = vps.inbox.filter((w) => !w.downloading);
+  const tableOf = (game) => (game && app.tables.find((t) => t.onVps?.sure && t.onVps.game === game)?.id) || null;
+  const groups = new Map();
+  for (const w of ready) {
+    const id = tableOf(w.game);
+    groups.set(id, [...(groups.get(id) || []), w.path]);
+  }
+  const order = [...groups].sort(([a], [b]) => (a === null ? -1 : b === null ? 1 : 0));
+  for (const [id, paths] of order) await dropFiles(paths, id);
+}
 
 /** Every machine VPS lists, read again: which are in the library changes with it. */
 export async function loadVps() {
@@ -534,6 +583,55 @@ export async function lookForUpdate(asked = false) {
   }
 }
 
+/** The reports sent from here, as kept: the top bar counts their new replies. */
+export async function loadReports() {
+  try {
+    app.reports = await invoke('reports_list');
+  } catch {
+    app.reports = [];
+  }
+}
+
+/** The team's replies to the reports sent from here looked for — only where one can still be
+ *  answered — and a new one said once, with a button to read it (`quiet`: taken in alone). */
+export async function checkReports({ quiet = false } = {}) {
+  if (app.testing || !app.reports.some((r) => r.answerable && !r.closed)) return;
+  const before = new Map(app.reports.map((r) => [r.key, r.unread]));
+  try {
+    app.reports = await invoke('reports_check');
+  } catch {
+    return;
+  }
+  const fresh = app.reports.filter((r) => r.unread > (before.get(r.key) ?? 0));
+  if (quiet || !fresh.length || app.report) return;
+  const one = fresh.length === 1 ? fresh[0] : null;
+  notice(one ? `The Visual Pinball Infinite team replied to your report${one.table ? ` on ${one.table}` : ''}.` : 'The Visual Pinball Infinite team replied to your reports.', {
+    kind: 'info',
+    action: { label: 'Read it', run: () => (app.report = { table: null, open: one?.key ?? null, list: true }) },
+  });
+}
+
+/** The team's replies not opened yet, across the reports sent. */
+export const unreadReplies = () => app.reports.reduce((n, r) => n + (r.unread || 0), 0);
+
+/** A notice to everyone the team has put up, shown once as the app starts, its link a button. */
+export async function lookForNotices() {
+  if (app.testing) return;
+  let found = [];
+  try {
+    found = await invoke('notices_new');
+  } catch {
+    return;
+  }
+  for (const n of found) {
+    const link = n.text.match(/https:\/\/[^\s<>"')\]]+/)?.[0];
+    notice(`From the Visual Pinball Infinite team: ${n.text}`, {
+      kind: 'update',
+      action: link ? { label: 'Open the link', run: () => invoke('open_link', { url: link }).catch((e) => notice(String(e), { kind: 'problem' })) } : null,
+    });
+  }
+}
+
 /** The new version downloaded and installed; the app closes for its installer. */
 export async function installUpdate() {
   notice('Downloading the new version… the app closes to install it.', { kind: 'info' });
@@ -608,6 +706,22 @@ export async function start() {
     app.tasks = e.payload;
   });
   app.tasks = await invoke('tasks_now');
+  // a table set to play another ROM of its machine, the one its script asks for not here
+  await listen('rom-chosen', (e) => {
+    const { name, from, to } = e.payload;
+    notice(`${name} plays ${to}, a version of its machine you have: its script asked for ${from}, which isn’t here. Its page’s ROM row changes it.`, { kind: 'done' });
+  });
+  // the VPS browser's web page and its downloads, waiting to be imported
+  await listen('inbox', (e) => (vps.inbox = e.payload));
+  await listen('web-page', (e) => {
+    if (vps.web) vps.web = { ...vps.web, ...e.payload };
+  });
+  await listen('web-download', (e) => {
+    const { name, success } = e.payload;
+    if (success) toast(`Downloaded ${name}`, ['Waiting for import: Import in the VPS browser puts it in place.']);
+    else notice(`${name || 'A download'} didn’t finish.`, { kind: 'problem' });
+  });
+  invoke('inbox_list').then((l) => (vps.inbox = l)).catch(() => {});
   // a machine's first start, unseen, before its first game in VPX
   await listen('vpx-first-start', (e) => notice(`Starting ${e.payload}’s machine for the first time, which takes a few seconds. The game follows.`, { kind: 'info' }));
   await listen('player-ended', (e) => {
@@ -673,7 +787,9 @@ export function openTable(id, order) {
   }
 }
 
+/** The library; from a table's page, shown where that table is, not at its top. */
 export function goLibrary() {
+  if (app.page === 'table') app.backTo = app.tableId;
   app.page = 'library';
 }
 
@@ -737,7 +853,9 @@ function goTo(at) {
   if (at.hubPage !== undefined) app.hubPage = at.hubPage;
   if (at.inspectId !== undefined) app.inspectId = app.tables.some((t) => t.id === at.inspectId) ? at.inspectId : null;
   if (at.inspectMode !== undefined) app.inspectMode = at.inspectMode;
-  app.page = at.tableId !== undefined && !app.tables.some((t) => t.id === at.tableId) ? 'library' : at.page;
+  const page = at.tableId !== undefined && !app.tables.some((t) => t.id === at.tableId) ? 'library' : at.page;
+  if (page === 'library' && app.page === 'table') app.backTo = app.tableId;
+  app.page = page;
   window.scrollTo(0, 0);
 }
 

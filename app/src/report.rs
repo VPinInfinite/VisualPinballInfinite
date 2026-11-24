@@ -269,9 +269,21 @@ pub fn show(path: &Path) -> Result<(), String> {
 /// build made from the source alone has none and sends nothing.
 const SEND_TO: Option<&str> = option_env!("VPI_REPORTS_ADDRESS");
 
+/// The reports' address, where the build was given one on https; anything else counts as none (the
+/// build's own environment reaches `option_env!` as it is, past `build.rs`'s check).
+fn send_to() -> Option<&'static str> {
+    SEND_TO.filter(|a| a.starts_with("https://"))
+}
+
 /// Whether this build sends reports, or only makes them for the user to attach to a post.
 pub fn can_send() -> bool {
-    SEND_TO.is_some()
+    send_to().is_some()
+}
+
+/// Where Send takes a report, in a build that sends them: the reports service, which also answers
+/// for replies and notices (`replies.rs`).
+pub fn address() -> Option<&'static str> {
+    send_to()
 }
 
 /// A report's files as Send passes them on: each one in the zip under the plain name the reports
@@ -345,10 +357,11 @@ fn cut_to_end(text: &str, most: usize) -> String {
 
 /// A report made here sent to the team, with the user's note and the table's name, on their word
 /// (Report a problem's "Send it to us"): only a zip in the app's own reports folder, its files passed
-/// on one by one as plain text (never the zip), through Windows' own curl with no window; the
-/// service's answer said back.
-pub fn send(path: &Path, note: &str, table: Option<&str>) -> Result<(), String> {
-    let Some(address) = SEND_TO else {
+/// on one by one as plain text (never the zip), through Windows' own curl with no window, with a key
+/// of its own for the team's replies; the report as sent, to keep, or the service's own words why
+/// not.
+pub fn send(path: &Path, note: &str, table: Option<&str>) -> Result<crate::replies::Sent, String> {
+    let Some(address) = send_to() else {
         return Err("This copy of Visual Pinball Infinite doesn't send reports. Show it, and attach it to a post on Discord (#bug-reports) or a GitHub issue instead.".into());
     };
     let reports = crate::library::data_folder().ok_or("no APPDATA folder")?.join("Logs").join("Reports");
@@ -360,33 +373,62 @@ pub fn send(path: &Path, note: &str, table: Option<&str>) -> Result<(), String> 
     // each file where curl reads it, in a folder of its own, gone again after
     let dir = reports.join(format!("sending {}", crate::library::stamp().replace(':', "-")));
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let sent = (|| -> Result<(), String> {
-        let version = env!("CARGO_PKG_VERSION");
-        let mut curl = ::library::vps::curl();
-        curl.args(["-sS", "--max-time", "120", "-A", &format!("VisualPinballInfinite/{version}")])
-            .arg("--form-string")
-            .arg(format!("note={}", note.chars().take(1500).collect::<String>()))
-            .arg("--form-string")
-            .arg(format!("version={version}"))
-            .arg("--form-string")
-            .arg(format!("table={}", table.unwrap_or("")));
+    let note: String = note.chars().take(1500).collect();
+    let key = crate::replies::new_key()?;
+    let version = env!("CARGO_PKG_VERSION");
+    let sent = (|| -> Result<crate::replies::Sent, String> {
         for (name, text) in &parts {
             let file = dir.join(name);
             std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
-            curl.arg("-F").arg(format!("files=@\"{}\";type=text/plain;filename={name}", file.display()));
         }
-        curl.arg("-w").arg("\n%{http_code}").arg(address);
-        let out = curl.output().map_err(|e| format!("The report couldn't be sent: {e}"))?;
-        let text = String::from_utf8_lossy(&out.stdout).into_owned();
-        let (body, code) = text.rsplit_once('\n').unwrap_or((text.as_str(), ""));
-        if code.trim() == "200" {
-            return Ok(());
+        // the report's files and words, with its key or without
+        let post = |key: Option<&str>| -> Result<(String, String, String), String> {
+            let mut curl = ::library::vps::curl();
+            curl.args(["-sS", "--max-time", "120", "-A", &format!("VisualPinballInfinite/{version}")])
+                .arg("--form-string")
+                .arg(format!("note={note}"))
+                .arg("--form-string")
+                .arg(format!("version={version}"))
+                .arg("--form-string")
+                .arg(format!("table={}", table.unwrap_or("")));
+            if let Some(key) = key {
+                curl.arg("--form-string").arg(format!("key={key}"));
+            }
+            for (name, _) in &parts {
+                curl.arg("-F").arg(format!("files=@\"{}\";type=text/plain;filename={name}", dir.join(name).display()));
+            }
+            curl.arg("-w").arg("\n%{http_code}").arg(address);
+            let out = curl.output().map_err(|e| format!("The report couldn't be sent: {e}"))?;
+            let text = String::from_utf8_lossy(&out.stdout).into_owned();
+            let (body, code) = text.rsplit_once('\n').unwrap_or((text.as_str(), ""));
+            Ok((body.to_string(), code.trim().to_string(), String::from_utf8_lossy(&out.stderr).trim().to_string()))
+        };
+        let mut with_key = true;
+        let (mut body, mut code, mut err) = post(Some(key.as_str()))?;
+        // a service from before replies refuses a report with a key: it goes again without one
+        if code == "400" {
+            with_key = false;
+            (body, code, err) = post(None)?;
+        }
+        let said = serde_json::from_str::<serde_json::Value>(&body).unwrap_or(serde_json::Value::Null);
+        if code == "200" {
+            return Ok(crate::replies::Sent {
+                key: key.clone(),
+                at: said["at"].as_i64().unwrap_or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)),
+                note: note.clone(),
+                table: table.map(str::to_string).filter(|t| !t.trim().is_empty()),
+                version: version.to_string(),
+                file: Some(path.display().to_string()),
+                answerable: with_key && said["answerable"].as_bool().unwrap_or(false),
+                messages: Vec::new(),
+                read: 0,
+                closed: false,
+                unread: 0,
+            });
         }
         // the service's own words when it said why, else curl's
-        let said = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| v["error"].as_str().map(str::to_string));
-        Err(said.unwrap_or_else(|| {
-            let err = String::from_utf8_lossy(&out.stderr);
-            let why = if err.trim().is_empty() { format!("answer {}", code.trim()) } else { err.trim().to_string() };
+        Err(said["error"].as_str().map(str::to_string).unwrap_or_else(|| {
+            let why = if err.is_empty() { format!("answer {code}") } else { err };
             format!("The report couldn't be sent ({why}). Show it, and attach it to a post on Discord or GitHub instead.")
         }))
     })();

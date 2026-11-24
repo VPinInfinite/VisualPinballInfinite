@@ -2,7 +2,7 @@
 
 Drop what you downloaded onto the app: table files, zips, 7-Zip and RAR archives (multi-part RARs too), or a whole folder of downloads at once. Or click **Add tables** at the top and drop them onto its window. The drop window opens and shows where every file will go **before anything is copied**.
 
-Looking for tables? The Virtual Pinball Spreadsheet lists them with their files, each linked to where its authors released it. The app's **VPS browser** shows it all: see [Your library](Your-library#the-vps-browser).
+Looking for tables? The Virtual Pinball Spreadsheet lists them with their files, each linked to where its authors released it. The app's **VPS browser** shows it all, and what each of your tables is missing: see [Your library](Your-library#the-vps-browser). A file's **Get** there opens its page inside the app, and what you download waits under **to import** at the top, each with its table, until **Import all** brings it here: see [A file's page inside the app](Your-library#a-files-page-inside-the-app).
 
 ## What you can drop
 

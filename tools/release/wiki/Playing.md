@@ -72,6 +72,7 @@ When the game ends, the app reads VPX's log, and where it says something you can
 - **VPX ran short of graphics memory:** it skipped some pictures it needed, which show pink or empty. Where supersampling is above 1×, **Set supersampling to 1×** frees a lot of memory; **Open Settings › Picture** for fewer reflections or a lower detail level.
 - **VPX couldn't find the screen:** a screen the settings name wasn't there, and VPX used another. Where the settings named it the way older VPX builds did, the app names it again as your VPX needs, and it's right next game. Otherwise, check the screen is switched on: **Open Settings › Screens**.
 - **Its script stopped with an error:** its line, and VPX's words for the error. Where that line sets a ball's ID, which VPX 10.8.1 refuses, it says so. Where VPX 10.8.0 is in your library, **Play it with VPX 10.8.0**; **Report it** opens Report a problem for the table.
+- **VPX tried to play it in VR, and couldn't:** VPX's Enable VR setting is on, or on Autodetect with a VR program on the PC (SteamVR, say), so VPX started the table for a VR headset; that didn't work, and the table never played. Not playing in VR? **Turn VR off** sets Enable VR to Disabled in VPX's settings, and tables play on your screens from the next game. The setting itself is on Settings › Advanced.
 
 **Dismiss** clears them. The achievements a game earned show in a notice. If VPX itself stopped with a problem, a notice says so, with **Report it**: its log goes in the report.
 

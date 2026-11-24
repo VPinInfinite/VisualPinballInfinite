@@ -155,7 +155,9 @@ pub fn install_rows(
                         Some(top) => step.from.strip_prefix(top.as_str()).map(|p| p.trim_start_matches('/')).unwrap_or(&step.from),
                         None => step.from.rsplit('/').next().unwrap_or(&step.from),
                     };
-                    Some(folder.join(below))
+                    // never out of the folder, whatever the archive named it (its listing leaves
+                    // such a name out already)
+                    crate::archive::stays_inside(below).then(|| folder.join(below))
                 }
                 None => step.to.clone(),
             };

@@ -76,7 +76,19 @@ Each table is matched to its entry on VPS by its file's name, the name, version 
 
 ## The VPS browser
 
-**VPS browser** at the top shows every machine VPS lists, as cards. Filter them by maker, era, machine type and table format, show **Only machines I don't have**, and sort by newest release, name, year or most releases. The **VPS has** chips show only the machines VPS has a backglass, a PinUP pack or another kind of file for. A machine's card opens a panel beside the cards: who designed it, every release and file VPS lists for it (each **Get** opens its page in your browser), **On VPS's site**, and **Open in my library** for one you have.
+**VPS browser** at the top has three views:
+
+- **All machines:** every machine VPS lists, as cards. Filter them by maker, era, machine type and table format, show only those **Not in my library**, and sort by newest release, name, year or most releases. **VPS has** shows only the machines VPS has a backglass, a PinUP pack or another kind of file for, each kind you tick shown as a chip.
+- **For your tables:** your library against VPS's list. For each kind of file (backglasses, ROMs, PinUP packs, AltSound packs, color DMDs, POV files, wheels, toppers), how many of your tables have one, out of those VPS lists one for, and which tables have none: choose one to see VPS's files of that kind beside the list.
+- **Recommended:** machines you don't have, picked by what you play (the makers, eras, themes and designers of your favourites, your best-rated and most-played tables) and by what VPS shows (VPin Workshop's tables, many releases, a new one this month, a ROM you have with no table), each saying why. **New list** picks again.
+
+A machine's card opens a panel beside the cards: who designed it, every release and file VPS lists for it, **On VPS's site**, and **Open in my library** for one you have.
+
+### A file's page inside the app
+
+A file's **Get**, in the VPS browser or on a table's page, opens its page inside the app: VPUniverse's, VPForums' or wherever its authors released it. It's a browser of the app's own, with back, forward and **Load it again**. Sign in to a site there once and you stay signed in, apart from your usual browser: **Sign out** signs you out of every site shown there, and **In my browser** opens the page in your usual browser. The button at its left goes back to what showed before.
+
+What you download there goes into `Downloads\Visual Pinball Infinite`, the bar at the top showing how much has come, and then waits under **to import** at the top of the app, each download with the table it was got for. **Import all** puts them in place through the drop window (see [Adding tables](Adding-tables)), each dropped on its own table, and what's added leaves that folder for the Recycle Bin. The cross beside a download takes it out.
 
 ## Tools
 

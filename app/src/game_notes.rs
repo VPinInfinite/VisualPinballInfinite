@@ -26,6 +26,11 @@ pub enum GameNote {
     /// `Ball::put_ID`) and 10.8.0 allowed; `older` where VPX 10.8.0 is in the library to play it with.
     #[serde(rename = "script", rename_all = "camelCase")]
     Script { line: u32, text: String, ball_id: bool, older: bool },
+    /// VPX tried to play in VR — its Enable VR setting (`[PlayerVR]` `AskToTurnOn`) on, or on
+    /// Autodetect with a VR program on the PC — and couldn't start it (`VRDevice::CreateSession`),
+    /// so the table never played: the VR program VPX found (`SteamVR/OpenXR - 2.18.4`).
+    #[serde(rename = "vr")]
+    Vr { runtime: String },
 }
 
 /// The first script error of VPX's last run, as `Player::OnScriptError` logs one: `Runtime error
@@ -89,6 +94,11 @@ pub fn from_log(text: &str, supersampling: f32) -> Vec<GameNote> {
     if run.contains("GPU memory budget reached") {
         notes.push(GameNote::Memory { supersampling });
     }
+    // VPX's `VRDevice`: `OpenXR Runtime: <name>`, then `Failed to create Session.`
+    if run.lines().any(|l| l.contains("[VRDevice::CreateSession") && l.contains("Failed to create Session")) {
+        let runtime = run.lines().find_map(|l| l.split_once("OpenXR Runtime: ").map(|(_, r)| r.trim().to_string())).unwrap_or_default();
+        notes.push(GameNote::Vr { runtime });
+    }
     // VPX's `Window::GetDisplayConfig`: `The selected display "<asked>" is not available. Using
     // display "<used>" instead.`
     for line in run.lines() {
@@ -128,9 +138,25 @@ pub fn supersampling_off(shared: State<'_, Shared>, id: Option<String>) -> Resul
     Ok(())
 }
 
+/// VR off in VPX's settings, its own default: Enable VR Disabled (`[PlayerVR]` `AskToTurnOn = 2`), so
+/// tables play on the screens.
+#[tauri::command]
+pub fn vr_off() -> Result<(), String> {
+    vpi_settings::save(&[vpi_settings::Change::set("PlayerVR", "AskToTurnOn", "2")])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vpx_trying_vr_and_failing_is_read_from_its_log() {
+        let log = "2025-01-02 17:01:05.413 INFO  [Main] [VPApp::InitInstance@354] Starting VPX - v10.8.1 Beta (Rev. 6758 (0af977650), windows BGFX 64bits)\n\
+            2025-01-02 17:01:06.299 INFO  [Main] [VRDevice::VRDevice@327] OpenXR Runtime: SteamVR/OpenXR - 2.18.4\n\
+            2025-01-02 17:01:06.302 ERROR [Main] [XRD3D11Backend::XRD3D11Backend@76] ERROR: OPENXR: -1 (XR_ERROR_VALIDATION_FAILURE) Failed to find matching graphics adapter from xrGetD3D11GraphicsRequirementsKHR.\n\
+            2025-01-02 17:01:06.722 ERROR [RenderThread] [VRDevice::CreateSession@710] ERROR: OPENXR: -38 (XR_ERROR_GRAPHICS_DEVICE_INVALID) Failed to create Session.\n";
+        assert_eq!(from_log(log, 1.0), vec![GameNote::Vr { runtime: "SteamVR/OpenXR - 2.18.4".into() }]);
+    }
 
     #[test]
     fn the_last_runs_notes_are_read_from_vpxs_log() {

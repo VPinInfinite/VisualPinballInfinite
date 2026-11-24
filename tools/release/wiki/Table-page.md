@@ -55,7 +55,7 @@ Every file it plays with, each checked: its table file, backglass, ROM, PinUP pa
 - **The Achievements rows:** each of its packs, with how many you've earned of it, or **Add a pack…** where it has none. Its bin deletes the pack for good, after asking. See [Achievements](Achievements#deleting-a-pack).
 - **The bin** on a row moves that one file to the Recycle Bin, after asking, and says what that means first: the game won't start without its ROM, say, or another table uses it too.
 - **Other:** what else it has. That's the music its script plays (and the songs it plays that aren't there), **Its sounds** that came with it, each with **Listen**, scripts of its own, the folders its DMD pictures come from, the pictures kept for it (see [Your pictures in a copy of the table](#your-pictures-in-a-copy-of-the-table)), other files beside it named for it, and what the drop window added for it. A read-me or manual has **Read**: see [Read-mes and manuals](#read-mes-and-manuals).
-- **More on VPS:** everything VPS lists for it, kind by kind, once its VPS match is confirmed. Each file's **Get** opens its page in your browser.
+- **More on VPS:** everything VPS lists for it, kind by kind, once its VPS match is confirmed. Each file's **Get** opens its page inside the app, beside the table's: see [A file's page inside the app](Your-library#a-files-page-inside-the-app).
 
 To add files for a table, drop them anywhere on its page: see [Adding tables](Adding-tables).
 

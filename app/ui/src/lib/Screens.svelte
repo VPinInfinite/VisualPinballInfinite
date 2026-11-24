@@ -453,7 +453,12 @@
         delete app.prefs.screensBefore;
         savePrefs();
       }
-      notice(table ? `Saved. ${table.short} plays with these screens from now on.` : 'Saved. Tables started from now on use these screens.', { kind: 'done' });
+      // PinUP packs' layouts fitted to the screens: offered again as they change
+      const refit = !table && (app.prefs.pupLayouts || 'fit') === 'fit';
+      notice(table ? `Saved. ${table.short} plays with these screens from now on.` : 'Saved. Tables started from now on use these screens.', {
+        kind: 'done',
+        action: refit ? { label: 'Fit PinUP packs to them…', run: () => Object.assign(app, { page: 'tools', toolsPage: 'pinup', pupFitAsk: true }) } : null,
+      });
     } catch (e) {
       notice(String(e), { kind: 'problem' });
     }

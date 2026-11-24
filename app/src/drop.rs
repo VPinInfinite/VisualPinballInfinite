@@ -36,12 +36,15 @@ pub fn download<R: tauri::Runtime>(app: &tauri::AppHandle<R>, n: usize) -> Optio
 /// several of a kind are all added (a 2-screen and a 3-screen backglass dropped together, two
 /// downloads' wheels): the backglass made for the player's screens the one VPX plays — three where
 /// VPX's settings give the score display a window of its own — the rest kept numbered.
-fn settle(downloads: &mut [Download]) {
+/// And a table's missing ROM said again, every download the window shows counting: one dropped onto
+/// it after its table takes the note away.
+fn settle(downloads: &mut [Download], layout: &library::plan::Layout) {
     let ini = vpi_settings::parse_ini(&vpi_settings::vpx_settings_text());
     let three = vpi_settings::get(&ini, "ScoreView", "ScoreViewOutput") == Some("1");
     library::drop::backglasses_apart(downloads, three);
     // two downloads' media for one screen of one table: each kept, numbered as the front end numbers
     library::drop::media_apart(downloads);
+    library::drop::note_missing_roms(downloads, layout);
 }
 
 /// How alike, in where its colours lie, a picture is to the table's own backglass to be taken for
@@ -243,7 +246,7 @@ pub fn inspect(app: &AppHandle, paths: Vec<PathBuf>, table_id: Option<String>, j
             *d = library::drop::again(d, &db, &all_known, &brought_now, &layout);
         }
     }
-    settle(&mut w.downloads);
+    settle(&mut w.downloads, &layout);
     liken(&st, &mut w.downloads);
     Ok(views(&st, &w.downloads))
 }
@@ -264,7 +267,7 @@ pub fn choose_table(app: &AppHandle, index: usize, table_id: String) -> Result<s
     let d = w.downloads.get(index).ok_or("That download isn't in the drop any more.")?;
     let again = library::drop::with_table(d, &db, &layout, &table);
     w.downloads[index] = again;
-    settle(&mut w.downloads);
+    settle(&mut w.downloads, &layout);
     liken(&st, &mut w.downloads);
     Ok(views(&st, &w.downloads))
 }
@@ -281,12 +284,12 @@ pub fn take_out(app: &AppHandle, index: usize) -> Result<serde_json::Value, Stri
         return Err("That download isn't in the drop any more.".into());
     }
     let gone = w.downloads.remove(index);
+    let layout = st.layout.clone().unwrap_or_else(library::plan::Layout::reference);
     if let Some(stem) = gone.table.as_ref().map(|t| t.stem.clone())
         && !w.downloads.iter().any(|d| d.table.as_ref().is_some_and(|t| t.stem.eq_ignore_ascii_case(&stem)))
         && !st.tables.iter().any(|t| t.stem.eq_ignore_ascii_case(&stem))
         && let Some(db) = st.db.clone()
     {
-        let layout = st.layout.clone().unwrap_or_else(library::plan::Layout::reference);
         let brought_now = brought(&w.downloads);
         let library_known: Vec<Known> = known(&st).into_iter().map(|(_, k)| k).collect();
         let all_known = library::drop::known_with(&brought_now, &library_known);
@@ -294,7 +297,7 @@ pub fn take_out(app: &AppHandle, index: usize) -> Result<serde_json::Value, Stri
             *d = library::drop::again(d, &db, &all_known, &brought_now, &layout);
         }
     }
-    settle(&mut w.downloads);
+    settle(&mut w.downloads, &layout);
     liken(&st, &mut w.downloads);
     Ok(views(&st, &w.downloads))
 }
@@ -347,6 +350,8 @@ pub struct Result_ {
     /// The tables it brought, tested (when the full test of new tables is on): each one's name and
     /// what its test came to.
     pub tested: Vec<(String, String, String)>,
+    /// Its PinUP packs' layouts set to fit the screens, in words.
+    pub layouts: Vec<String>,
 }
 
 /// A table a download put in place: its ID as the library will have it, its name, whether it's new
@@ -445,11 +450,30 @@ pub fn add(app: &AppHandle, choices: Vec<Choice>, already: Already, test: bool) 
                         sure: d.table.as_ref().is_some_and(|f| f.sure),
                     })
                     .collect();
-                results.push(Result_ { index: i, name: d.name.clone(), tables, added: Some(added), problem, tested });
+                // a PinUP pack put in place: its layout set to fit the screens, as the preferences say
+                let mut packs: Vec<PathBuf> = Vec::new();
+                for (file, kind) in &added.placed {
+                    let pack = file.ancestors().find(|a| a.parent().and_then(|p| p.file_name()).is_some_and(|n| n.eq_ignore_ascii_case("PUPVideos")));
+                    if *kind == "pupPack"
+                        && let Some(pack) = pack
+                        && !packs.iter().any(|p| p == pack)
+                    {
+                        packs.push(pack.to_path_buf());
+                    }
+                }
+                let layouts = packs.iter().filter_map(|p| crate::pup_packs::fit_new(app, p)).collect();
+                results.push(Result_ { index: i, name: d.name.clone(), tables, added: Some(added), problem, tested, layouts });
+                // a download from the panel's waiting folder: out of it, now it's in place
+                crate::web_view::imported(app, &d.source);
             }
-            Err(e) => results.push(Result_ { index: i, name: d.name.clone(), tables: Vec::new(), added: None, problem: Some(e), tested: Vec::new() }),
+            Err(e) => results.push(Result_ { index: i, name: d.name.clone(), tables: Vec::new(), added: None, problem: Some(e), tested: Vec::new(), layouts: Vec::new() }),
         }
     }
+    // the tables added, and those files were put in place for: each set to play a ROM of its game it
+    // has, where the one its script asks for isn't here, once the library's read again
+    let mut tables: Vec<PathBuf> = results.iter().flat_map(|r| r.added.iter().flat_map(|a| a.tables.iter().cloned())).collect();
+    tables.extend(downloads.iter().filter_map(|d| d.stem.as_ref().map(|stem| d.table_dir.clone().unwrap_or_else(|| layout.tables.clone()).join(format!("{stem}.vpx")))));
+    crate::library::fit_roms_after(tables);
     // the library read again: the tables added, what they hold now
     crate::library::start(app.clone());
     Ok(results)

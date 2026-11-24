@@ -2,11 +2,11 @@
   // Every file VPS lists for a game, kind by kind — table releases, backglasses, ROMs, packs and the
   // rest — each kind opened or closed, a file's Get opening its page in the browser: on a table's
   // page ("More on VPS") and in the drop window's "See them". `mine`: what the user's own release is
-  // called (Yours, Dropped).
+  // called (Yours, Dropped); `onget`, where a file's page opens instead (the VPS browser's panel).
   import Icon from './Icon.svelte';
   import { openLink } from './store.svelte.js';
 
-  let { kinds, open = $bindable({}), mine = 'Yours' } = $props();
+  let { kinds, open = $bindable({}), mine = 'Yours', onget = openLink } = $props();
 
   const date = (ms) => (ms ? new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 </script>
@@ -34,7 +34,7 @@
                 {#if f.features.length}<div class="vtags">{#each f.features as x (x)}<span class="tag">{x}</span>{/each}</div>{/if}
               </div>
               {#if f.links.length}
-                <button type="button" class="btn small" title={f.links[0]} onclick={() => openLink(f.links[0])}><Icon name="ext" size={14} />Get</button>
+                <button type="button" class="btn small" title={f.links[0]} onclick={() => onget(f.links[0])}><Icon name="ext" size={14} />Get</button>
               {/if}
             </div>
           {/each}

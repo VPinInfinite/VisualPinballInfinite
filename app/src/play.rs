@@ -382,6 +382,14 @@ struct Prepared {
 fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) -> Result<(), String> {
     let shared = app.state::<Shared>();
     let counted = matches!(run, Run::Play(_) | Run::Record(_));
+    // the ROM its script asks for not here, and another of its machine that is: that one played
+    if let Some((from, to)) = crate::library::use_usable_rom(app, id) {
+        let name = {
+            let st = shared.0.lock().unwrap();
+            st.tables.iter().find(|t| t.id == id).map(|t| library::view(&st, t).name).unwrap_or_default()
+        };
+        let _ = app.emit("rom-chosen", crate::library::RomChosen { name, from, to });
+    }
     // the library's layout, with the VPX this table plays with: Settings › Library's, or the one
     // chosen for it
     let (layout, library_layout) = {
@@ -593,7 +601,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                         return;
                     }
                     let _ = app.emit("player-showing", ());
-                    if !stay && let Some(w) = app.get_webview_window("main") {
+                    if !stay && let Some(w) = crate::main_window::window(&app) {
                         let _ = w.minimize();
                     }
                 });
@@ -646,10 +654,10 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                     library::record_end(&mut st, &path, at, left.scores.clone());
                 }
             }
-            if let Some(w) = app.get_webview_window("main") {
+            if let Some(w) = crate::main_window::window(&app) {
                 let _ = w.unminimize();
-                crate::cabinet::focus(&w);
             }
+            crate::main_window::focus(&app);
             let log = ::library::vpx::log_file(&vpx, prefs.as_deref()).filter(|l| l.is_file());
             // what VPX's log says of the game that the player can do something about
             let mut notes = log

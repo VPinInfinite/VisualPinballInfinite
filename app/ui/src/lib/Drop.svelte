@@ -200,6 +200,9 @@
               {#each res.tested as [table, look, text] (table)}
                 <p class="check {look}"><Icon name={look === 'good' ? 'check' : 'alert'} size={14} width={2.4} />Tested {table}: {text}</p>
               {/each}
+              {#each res.layouts || [] as said (said)}
+                <p class="check good"><Icon name="check" size={14} width={2.4} />{said}</p>
+              {/each}
             {/if}
           </article>
         {/each}

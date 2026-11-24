@@ -75,6 +75,8 @@ pub struct Shot {
     pub click: Vec<String>,
     /// Buttons of the drop window clicked once it shows, as `click` (`--drop-click`).
     pub drop_click: Vec<String>,
+    /// Milliseconds more before the picture, for a web page in the panel to load (`--wait`).
+    pub wait: Option<u64>,
 }
 
 /// The test mode's options, when it's asked for.
@@ -116,31 +118,101 @@ pub fn from_args() -> Option<Shot> {
         then_drop: args.windows(2).filter(|w| w[0] == "--then-drop").map(|w| w[1].clone()).collect(),
         click: args.windows(2).filter(|w| w[0] == "--click").map(|w| w[1].clone()).collect(),
         drop_click: args.windows(2).filter(|w| w[0] == "--drop-click").map(|w| w[1].clone()).collect(),
+        wait: value("--wait").and_then(|w| w.parse().ok()),
     })
 }
 
 /// A picture of the page, saved where the test mode was told, then the app closed. The pause menu's
-/// guide, a window of its own over the page, saved first beside it (`<picture>-guide.png`).
+/// guide, a window of its own over the page, saved first beside it (`<picture>-guide.png`); a web
+/// page in the panel (the in-app browser, a view of its own laid over the page) saved beside it
+/// (`<picture>-web.png`) and laid into the page's picture where it shows.
 pub fn take(app: &AppHandle, shot: &Shot) -> Result<(), String> {
-    let window = app.get_webview_window("main").ok_or("no window")?;
+    let window = crate::main_window::page(app).ok_or("no window")?;
     let (path, full, done) = (shot.path.clone(), shot.full, app.clone());
-    let page = move || {
+    let stem = shot.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    // the page's picture, then the app closed; `web`, the panel's page laid into it where it shows
+    let page = move |web: Option<Laid>| {
         let exit = done.clone();
-        let taken = window.with_webview(move |webview| capture(webview, full, path, Box::new(move |saved| exit.exit(if saved.is_ok() { 0 } else { 1 }))));
+        let whole = path.clone();
+        let taken = window.with_webview(move |webview| {
+            capture(
+                webview,
+                full,
+                path,
+                Box::new(move |saved| {
+                    if saved.is_ok()
+                        && let Some(part) = web
+                        && part.path.is_file()
+                        && let Err(e) = lay_in(&whole, &part)
+                    {
+                        eprintln!("The web page couldn't be laid into the picture: {e}");
+                    }
+                    exit.exit(if saved.is_ok() { 0 } else { 1 })
+                }),
+            )
+        });
         if taken.is_err() {
             done.exit(1);
         }
     };
+    // a web page in the panel: its own picture first, from a thread of its own — the view's place
+    // and size are asked of the window's thread, which this command runs on — and the page's
+    // picture alone where it never comes
+    if let Some(view) = app.get_webview(crate::web_view::LABEL).filter(|_| !full) {
+        let web_path = shot.path.with_file_name(format!("{stem}-web.png"));
+        std::thread::spawn(move || {
+            let laid = view.position().ok().zip(view.size().ok()).map(|(at, size)| Laid {
+                path: web_path.clone(),
+                x: at.x.max(0) as u32,
+                y: at.y.max(0) as u32,
+                width: size.width,
+                height: size.height,
+            });
+            let once = std::sync::Arc::new(std::sync::Mutex::new(Some(page)));
+            let go = move |web: Option<Laid>| {
+                let page = once.lock().unwrap_or_else(|e| e.into_inner()).take();
+                if let Some(page) = page {
+                    page(web);
+                }
+            };
+            let late = go.clone();
+            let asked = view.with_webview(move |webview| capture(webview, false, web_path, Box::new(move |saved| go(laid.filter(|_| saved.is_ok())))));
+            std::thread::sleep(std::time::Duration::from_secs(if asked.is_ok() { 20 } else { 0 }));
+            late(None);
+        });
+        return Ok(());
+    }
     match app.get_webview_window("pause-guide") {
         Some(view) => {
-            let beside = shot.path.with_file_name(format!("{}-guide.png", shot.path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()));
-            view.with_webview(move |webview| capture(webview, false, beside, Box::new(move |_| page()))).map_err(|e| e.to_string())
+            let beside = shot.path.with_file_name(format!("{stem}-guide.png"));
+            view.with_webview(move |webview| capture(webview, false, beside, Box::new(move |_| page(None)))).map_err(|e| e.to_string())
         }
         None => {
-            page();
+            page(None);
             Ok(())
         }
     }
+}
+
+/// A picture of the panel's web page, and where it goes in the page's: in the window's pixels, as
+/// both pictures are taken.
+struct Laid {
+    path: PathBuf,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+/// The panel's picture laid into the page's at `whole`, at its place and fitted to its size.
+fn lay_in(whole: &std::path::Path, part: &Laid) -> Result<(), String> {
+    let mut picture = image::open(whole).map_err(|e| e.to_string())?.to_rgba8();
+    let mut page = image::open(&part.path).map_err(|e| e.to_string())?.to_rgba8();
+    if (page.width(), page.height()) != (part.width, part.height) && part.width > 0 && part.height > 0 {
+        page = image::imageops::resize(&page, part.width, part.height, image::imageops::FilterType::Lanczos3);
+    }
+    image::imageops::overlay(&mut picture, &page, i64::from(part.x), i64::from(part.y));
+    picture.save(whole).map_err(|e| e.to_string())
 }
 
 /// A picture of what a web view shows saved to `path` (`full`: all of its page), then `after` told

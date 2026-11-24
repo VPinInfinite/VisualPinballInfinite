@@ -17,6 +17,16 @@ pub struct Entry {
     pub modified: Option<i64>,
 }
 
+/// Whether an archive's name for one of its files keeps the file inside the folder it's unpacked
+/// into: no `..`, no root, drive or share, no stream (`name:stream`), no control characters. An
+/// archive can name its files anything; one named to climb out of its folder is left out of the
+/// listing, so nothing ever places it.
+pub fn stays_inside(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with(['/', '\\'])
+        && name.split(['/', '\\']).all(|part| part != ".." && !part.contains(':') && !part.chars().any(char::is_control))
+}
+
 /// An archive's kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -95,7 +105,7 @@ pub fn list(path: &Path) -> Result<Listing, String> {
         return Ok(Listing { source: Source::Folder(path.to_path_buf()), entries });
     }
     let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-    let (archive, entries) = match format_of(path) {
+    let (archive, mut entries) = match format_of(path) {
         Some(Format::Zip) => {
             let mut zip = zip::ZipArchive::new(std::fs::File::open(path).map_err(|e| fail(&e))?).map_err(|e| fail(&e))?;
             let mut entries = Vec::new();
@@ -135,6 +145,8 @@ pub fn list(path: &Path) -> Result<Listing, String> {
             return Ok(Listing { source: Source::File(path.to_path_buf()), entries: vec![Entry { path: name, size: meta.len(), modified }] });
         }
     };
+    // a file named to climb out of wherever it's unpacked: left out, never placed
+    entries.retain(|e| stays_inside(&e.path));
     Ok(Listing { source: Source::Archive(archive), entries })
 }
 
@@ -350,5 +362,31 @@ mod tests {
         assert_eq!(format_of(Path::new("a.part2.rar")), Some(Format::Rar));
         assert_eq!(format_of(Path::new("a.r07")), Some(Format::Rar));
         assert_eq!(format_of(Path::new("a.vpx")), None);
+    }
+
+    #[test]
+    fn names_that_climb_out_of_their_folder_are_left_out() {
+        for fine in ["table.vpx", "pack/Backglass/a.mp4", "./pack/a.png", "Jaws (1975).zip", "a..b.zip"] {
+            assert!(stays_inside(fine), "{fine}");
+        }
+        for out in ["", "../evil.dll", "pack/../../evil.dll", "pack\\..\\..\\evil.dll", "/Windows/evil.dll", "\\\\server\\share\\x", "C:/Windows/evil.dll", "c:evil.dll", "read-me.txt:hidden", "a\u{0}b"] {
+            assert!(!stays_inside(out), "{out:?}");
+        }
+        // a zip holding one: listed without it
+        let dir = std::env::temp_dir().join(format!("vpi-archive-names-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("pack.zip");
+        {
+            let mut z = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            for name in ["pack/screens.pup", "pack/../../evil.dll"] {
+                z.start_file(name, options).unwrap();
+                z.write_all(b"x").unwrap();
+            }
+            z.finish().unwrap();
+        }
+        let listed: Vec<String> = list(&path).unwrap().entries.into_iter().map(|e| e.path).collect();
+        assert_eq!(listed, ["pack/screens.pup"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

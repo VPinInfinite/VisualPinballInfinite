@@ -673,7 +673,41 @@ fn table_for<'a>(contents: &Contents, known: &'a [Known], db: &Database) -> Resu
         }
         return Err(Untied::Elsewhere(format!("for {} on VPS, which isn't in your library", game.name)));
     }
+    // a name holding a table's whole game name as VPS has it, letters only, a release's words
+    // beside it ("Diablo Pinball v4 16.9 With Full DMD", Diablo Pinball's): the longest such name
+    if let Some(s) = &companion {
+        let name = letters(s);
+        let holds = known
+            .iter()
+            .filter_map(|k| {
+                let g = db.game(k.vps_game.as_deref()?)?;
+                let n = letters(&g.name);
+                (n.len() >= 6 && name.contains(&n)).then_some((k, g, n.len()))
+            })
+            .max_by_key(|(_, _, len)| *len);
+        if let Some((k, g, _)) = holds {
+            return Ok((k, format!("by its name, {}'s", g.name)));
+        }
+    }
     Err(Untied::Unknown)
+}
+
+/// A name's letters, lower case.
+fn letters(text: &str) -> String {
+    text.chars().filter(char::is_ascii_alphabetic).collect::<String>().to_lowercase()
+}
+
+/// A lone file whose name speaks of another game than `table`'s, the table being added with it: the
+/// game nearest its name on VPS shares no word of its own with the table's game.
+fn names_another(contents: &Contents, table: &Known, db: &Database) -> bool {
+    let Some(name) = contents.files.iter().find(|(_, k)| COMPANIONS.contains(k)).map(|(e, _)| stem(&e.path).to_string()) else { return false };
+    let Some(own) = table.vps_game.as_deref().and_then(|g| db.game(g)) else { return false };
+    let Some((nearest, d)) = matcher::game_by_file_name(db, &name) else { return false };
+    let words = |t: &str| -> Vec<String> {
+        t.to_lowercase().split(|c: char| !c.is_ascii_alphabetic()).filter(|w| w.len() >= 3 && !["the", "and", "pinball", "edition", "original", "remix", "limited"].contains(w)).map(str::to_string).collect()
+    };
+    let theirs = words(&own.name);
+    d < 10.0 && nearest.id != own.id && !words(&nearest.name).iter().any(|w| theirs.contains(w))
 }
 
 /// A backglass in a download whose name VPS knows for another machine than `game`'s, the table it
@@ -947,8 +981,9 @@ pub fn inspect(paths: &[PathBuf], db: &Database, known: &[Known], layout: &Layou
 }
 
 /// A table the drop brings whose machine's ROM is neither in the drop nor among the ROMs: said, as
-/// the table won't start without it.
-fn note_missing_roms(downloads: &mut [Download], layout: &Layout) {
+/// the table won't start without it. Said afresh whenever the downloads change — the drop window's
+/// all counting, so a ROM dropped onto it after its table takes the note away.
+pub fn note_missing_roms(downloads: &mut [Download], layout: &Layout) {
     let brought: Vec<String> = downloads
         .iter()
         .flat_map(|d| d.steps.iter().filter(|s| s.kind == Kind::Rom).filter_map(|s| Some(s.to.as_ref()?.file_stem()?.to_string_lossy().to_lowercase())))
@@ -956,10 +991,26 @@ fn note_missing_roms(downloads: &mut [Download], layout: &Layout) {
     let roms = layout.vpinmame.join("roms");
     for d in downloads.iter_mut() {
         let Some(rom) = d.table.as_ref().filter(|t| t.pinmame).and_then(|t| t.game_name.clone()) else { continue };
+        let (note, other) = (missing_rom_note(&rom), other_rom_note(&rom));
+        d.notes.retain(|n| *n != note && !n.starts_with(&other));
         if !brought.contains(&rom.to_lowercase()) && !crate::roms::installed(&roms, &rom) {
-            d.notes.push(format!("Its ROM, {rom}, isn't in this drop or among your ROMs: the table won't start until it's added (VPS lists its ROMs)"));
+            // another set of its game in the drop or here: the one it'll be set to play
+            let sets: Vec<String> = crate::roms::same_game(&rom).into_iter().map(|k| k.set.to_lowercase()).filter(|s| !s.eq_ignore_ascii_case(&rom)).collect();
+            let found = brought.iter().find(|b| sets.contains(b)).map(|b| (b.clone(), "the drop brings")).or_else(|| sets.iter().find(|s| crate::roms::installed(&roms, s)).map(|s| (s.clone(), "you have")));
+            d.notes.push(match found {
+                Some((set, how)) => format!("{other}, which isn't here; {how} {set}, another version of its machine, which it'll be set to play once it's added (its ROM row changes it)"),
+                None => note,
+            });
         }
     }
+}
+
+fn missing_rom_note(rom: &str) -> String {
+    format!("Its ROM, {rom}, isn't in this drop or among your ROMs: the table won't start until it's added (VPS lists its ROMs)")
+}
+
+fn other_rom_note(rom: &str) -> String {
+    format!("Its script asks for its ROM as {rom}")
 }
 
 /// The tables being added, then the library's: a table being added counts once, before the
@@ -990,6 +1041,17 @@ pub fn again(d: &Download, db: &Database, all_known: &[Known], brought: &[Known]
 /// (`brought`) and the library's, as `tie` says — its files' places, its rows.
 #[allow(clippy::too_many_arguments)]
 fn sorted(name: String, source: PathBuf, listing: Listing, mut contents: Contents, table: Option<(TableFound, Option<String>)>, all_known: &[Known], brought: &[Known], db: &Database, layout: &Layout, tie: Tie) -> Download {
+    // a ROM set's zip under a name PinMAME doesn't know (`sopranos-usa.zip`): the set its files are,
+    // its name from here on, for its table and its place
+    if let Some(set) = contents.rom_set.clone()
+        && crate::roms::set(&set).is_ok_and(|s| !s.known)
+        && let Source::Archive(a) = &listing.source
+        && let Ok(found) = std::fs::File::open(a.path()).map_err(|e| e.to_string()).and_then(crate::roms::zip_files)
+        && let Ok(all) = crate::roms::all_rom_files()
+        && let Some(nearest) = nearest_set(&found, &all)
+    {
+        contents.rom_set = Some(nearest);
+    }
     {
         let mut notes = Vec::new();
         let tables = contents.tables().len();
@@ -1018,8 +1080,9 @@ fn sorted(name: String, source: PathBuf, listing: Listing, mut contents: Content
                     },
                     Tie::Found => match table_for(&contents, all_known, db) {
                         Ok((k, how)) => (Some(k), Some(how)),
-                        // nothing saying which, and one table being added: that one
-                        Err(Untied::Unknown) if brought.len() == 1 => (Some(&brought[0]), Some("being added with it".to_string())),
+                        // nothing saying which, and one table being added: that one, unless its name
+                        // speaks of another game
+                        Err(Untied::Unknown) if brought.len() == 1 && !names_another(&contents, &brought[0], db) => (Some(&brought[0]), Some("being added with it".to_string())),
                         Err(why) => (None, Some(why.said())),
                     },
                 };
@@ -1244,6 +1307,23 @@ fn check_roms(steps: &mut [Step], listing: &Listing, asked: Option<&str>, layout
                 c = a;
             }
         }
+        // a zip that came under another name than its set's, named for it (`sorted`): said
+        let came = Path::new(&step.from).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        if step.note.is_none() && step.from.to_lowercase().ends_with(".zip") && !came.eq_ignore_ascii_case(&own) && c.known {
+            step.note = Some(format!("named {own}.zip, the set its files are (it came as {came}.zip)"));
+        }
+        // a name PinMAME doesn't know (`sopranos-usa.zip`): the set its files are, by their checksums,
+        // named for it — one a file or two short still that set, said so
+        if !c.known
+            && step.note.is_none()
+            && let Ok(all) = crate::roms::all_rom_files()
+            && let Some(set) = nearest_set(&found, &all)
+            && let Ok(s) = crate::roms::set(&set)
+        {
+            step.note = Some(format!("named {}.zip, the set its files are (it came as {own}.zip)", s.set));
+            step.to = Some(rom_dir.join(format!("{}.zip", s.set)));
+            c = crate::roms::check(&s, &found);
+        }
         let parent_there = c.parent.as_deref().is_some_and(|p| crate::roms::installed(&rom_dir, p) || brought.iter().any(|b| b.eq_ignore_ascii_case(p)));
         let (mut look, mut text) = crate::roms::verdict(&c, parent_there, crate::roms::Of::Drop);
         // the set there now, when it's sound and this one isn't: kept
@@ -1259,6 +1339,27 @@ fn check_roms(steps: &mut [Step], listing: &Listing, asked: Option<&str>, layout
         out.push((i, (look, text)));
     }
     out
+}
+
+/// The set a zip's files are nearest, by their checksums: the one with most of its own files there
+/// (not its parent's), at least three in four of them and two at the least, a parent set before its
+/// clones — a set a file short (Stern's sound board program left out of `sopranos-usa.zip`) still
+/// that set, for its check to say what it lacks.
+fn nearest_set(found: &[crate::roms::Found], all: &[crate::roms::Set]) -> Option<String> {
+    let has = |crc: &str, size: u64| u32::from_str_radix(crc, 16).ok().filter(|c| *c != 0).is_some_and(|crc| found.iter().any(|f| f.crc == crc && f.size == size));
+    let mut best: Option<((f32, usize, bool), &str)> = None;
+    for s in all {
+        let own: Vec<_> = s.files.iter().filter(|e| !e.optional && !e.no_dump && !e.in_parent).collect();
+        let there = own.iter().filter(|e| has(&e.crc, e.size)).count();
+        if own.is_empty() || there < 2 || there * 4 < own.len() * 3 {
+            continue;
+        }
+        let key = (there as f32 / own.len() as f32, there, s.parent().is_none());
+        if best.as_ref().is_none_or(|(b, _)| key > *b) {
+            best = Some((key, &s.set));
+        }
+    }
+    best.map(|(_, s)| s.to_lowercase())
 }
 
 /// What a backglass's file name says it's made for: `Some(2)` for two screens (the playfield and
@@ -1779,5 +1880,87 @@ mod tests {
         assert_eq!(rows.len(), 3);
         assert_eq!((rows[1].kind.as_str(), rows[1].files, rows[1].name.as_str()), ("pupPack", 2, "taxi"));
         assert_eq!((rows[2].state.as_str(), rows[2].include), ("skip", false));
+    }
+
+    #[test]
+    fn a_backglass_named_for_a_library_table_with_a_release_beside_it() {
+        use crate::vps::{Game, TableFile};
+        let game = |id: &str, name: &str, year| Game { id: id.into(), name: name.into(), manufacturer: "Original".into(), year: Some(year), table_files: vec![TableFile { table_format: Some("VPX".into()), ..Default::default() }], ..Default::default() };
+        let db = Database { games: vec![game("diablo", "Diablo Pinball", 2017), game("aero", "Aerosmith", 2019)] };
+        let diablo = Known { stem: "Diablo Pinball v600".into(), game_name: Some("diablo".into()), vps_game: Some("diablo".into()), ..Default::default() };
+        let aero = Known { stem: "Aerosmith-(Original 2019) Pup Pack".into(), vps_game: Some("aero".into()), ..Default::default() };
+        let contents = analyse(&Listing { source: Source::Folder("x".into()), entries: vec![archive::Entry { path: "Diablo Pinball v4 16.9 With Full DMD.directb2s".into(), size: 1, modified: None }] });
+        // its name holds the library's table's game's, a release's words beside it
+        let known = [aero.clone(), diablo];
+        let Ok((k, how)) = table_for(&contents, &known, &db) else { panic!("not tied to a table") };
+        assert_eq!(k.stem, "Diablo Pinball v600", "{how}");
+        // and its name speaks of another game than the table being added with it
+        assert!(names_another(&contents, &aero, &db));
+        assert!(!names_another(&contents, &Known { vps_game: Some("diablo".into()), ..aero }, &db));
+    }
+
+    #[test]
+    fn a_missing_rom_said_afresh_as_the_window_changes() {
+        let d = scratch("missing-rom");
+        let layout = Layout::under(&d);
+        let download = |name: &str| Download {
+            source: d.join(name),
+            name: name.into(),
+            what: String::new(),
+            table: None,
+            for_table: None,
+            for_note: None,
+            rom: None,
+            pup: None,
+            stem: None,
+            media_name: None,
+            notes: Vec::new(),
+            rows: Vec::new(),
+            readme: None,
+            error: None,
+            listing: None,
+            steps: Vec::new(),
+            table_dir: None,
+            previews: Previews::default(),
+        };
+        let mut table = download("Star Wars Trilogy.vpx");
+        table.table = Some(TableFound {
+            file: "Star Wars Trilogy.vpx".into(),
+            stem: "Star Wars Trilogy".into(),
+            game_id: None,
+            game: None,
+            maker: None,
+            year: None,
+            file_id: None,
+            version: None,
+            authors: Vec::new(),
+            sure: false,
+            how: String::new(),
+            game_name: Some("swtril43".into()),
+            pinmame: true,
+            pup_names: Vec::new(),
+            helpers: Vec::new(),
+            own_name: None,
+            own_authors: None,
+            own_version: None,
+            music: Vec::new(),
+            on_disk: None,
+        });
+        let mut downloads = vec![table];
+        // said once, however often the window changes
+        note_missing_roms(&mut downloads, &layout);
+        note_missing_roms(&mut downloads, &layout);
+        assert_eq!(downloads[0].notes.len(), 1);
+        // its ROM dropped onto the window after it: the note gone
+        let mut rom = download("swtril43.zip");
+        rom.steps.push(Step { from: "swtril43.zip".into(), kind: Kind::Rom, size: 1, to: Some(layout.vpinmame.join("roms").join("swtril43.zip")), note: None });
+        downloads.push(rom);
+        note_missing_roms(&mut downloads, &layout);
+        assert!(downloads[0].notes.is_empty(), "{:?}", downloads[0].notes);
+        // and back once it's taken out
+        downloads.pop();
+        note_missing_roms(&mut downloads, &layout);
+        assert_eq!(downloads[0].notes.len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

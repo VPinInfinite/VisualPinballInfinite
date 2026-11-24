@@ -468,7 +468,7 @@ pub fn colour_show(shared: State<'_, Shared>, id: String) -> Result<(), String> 
 /// A finished colouring chosen in Windows' file picker put in place for the table; false when the
 /// picker's cancelled. The library read again after.
 #[tauri::command]
-pub async fn colour_use(app: AppHandle, window: tauri::WebviewWindow, shared: State<'_, Shared>, id: String) -> Result<bool, String> {
+pub async fn colour_use(app: AppHandle, window: tauri::Window, shared: State<'_, Shared>, id: String) -> Result<bool, String> {
     let rom = rom_of(&shared, &id)?;
     let folder = {
         let st = shared.0.lock().unwrap();

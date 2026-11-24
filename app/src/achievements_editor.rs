@@ -291,7 +291,7 @@ pub fn ach_edit_draft_drop(id: String) -> Result<(), String> {
 
 /// A sound for a pack, chosen in Windows' picker: played as its achievements are announced.
 #[tauri::command]
-pub async fn ach_edit_sound(window: tauri::WebviewWindow) -> Result<Option<Picked>, String> {
+pub async fn ach_edit_sound(window: tauri::Window) -> Result<Option<Picked>, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<Picked>, String> {
         let kinds = [("A sound", "*.wav;*.ogg;*.mp3;*.flac")];
@@ -337,7 +337,7 @@ const SOUND_KINDS: [&str; 4] = ["wav", "ogg", "mp3", "flac"];
 
 /// A picture for a pack or an achievement, chosen in Windows' picker.
 #[tauri::command]
-pub async fn ach_edit_picture(window: tauri::WebviewWindow) -> Result<Option<Picked>, String> {
+pub async fn ach_edit_picture(window: tauri::Window) -> Result<Option<Picked>, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     tauri::async_runtime::spawn_blocking(move || -> Result<Option<Picked>, String> {
         let kinds = [("A picture", "*.png;*.jpg;*.jpeg;*.webp")];

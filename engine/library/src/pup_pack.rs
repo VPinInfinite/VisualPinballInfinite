@@ -1135,6 +1135,249 @@ fn csv_line(line: &str) -> Vec<String> {
     parts
 }
 
+/// Which of VPX's windows a pack shows something in, from its screens file, as VPX's PinUP add-on
+/// draws them (`PUPManager::Render`, `isUsableRoot`): the backglass window shows screen 2, else 6,
+/// the score display's 5, else 1, the topper's 0 — each where it can be a window's own, not a
+/// screen placed on another with none placed on it, and something under it shows — and a screen
+/// placed on another by its `CustomPos` shows in that one's window. A screen shows unless its
+/// `Active` is off or sound only.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shows {
+    pub backglass: bool,
+    /// The score display in a window of its own.
+    pub score: bool,
+    pub topper: bool,
+    /// The score display placed on the backglass.
+    pub score_on_backglass: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Window {
+    Backglass,
+    Score,
+    Topper,
+}
+
+/// What a screens file shows where.
+pub fn shows_of(screens: &str) -> Shows {
+    // each screen by its number: shown or not, and the screen it's placed in
+    let mut lines: BTreeMap<i32, (bool, Option<i32>)> = BTreeMap::new();
+    for line in screens.lines() {
+        let f = csv_line(line);
+        let Some(n) = f.first().and_then(|n| n.trim().parse::<i32>().ok()) else { continue };
+        if f.len() < 6 {
+            continue;
+        }
+        let shown = matches!(f[5].trim().to_ascii_lowercase().as_str(), "show" | "forceon" | "forcepop" | "forceback" | "forcepopback");
+        let placed = f.get(7).map(|p| csv_line(p)).filter(|p| p.len() >= 5).and_then(|p| p[0].trim().parse::<i32>().ok()).filter(|s| *s != n && (0..99).contains(s));
+        lines.insert(n, (shown, placed));
+    }
+    // a window's own screen the file places others on but leaves out itself: made by the table's
+    // script as it starts the pack (PinUP's `Init`), showing nothing of its own
+    let placed_on: Vec<i32> = lines.values().filter_map(|(_, p)| *p).filter(|p| [0, 1, 2, 5, 6].contains(p)).collect();
+    for p in placed_on {
+        lines.entry(p).or_insert((false, None));
+    }
+    // a screen's parent: the one it's placed on, where the file has it
+    let parent = |n: i32| lines.get(&n).and_then(|(_, p)| *p).filter(|p| lines.contains_key(p));
+    let under = |mut k: i32, root: i32| {
+        for _ in 0..=lines.len() {
+            if k == root {
+                return true;
+            }
+            match parent(k) {
+                Some(p) => k = p,
+                None => return false,
+            }
+        }
+        false
+    };
+    let usable = |n: i32| {
+        lines.contains_key(&n)
+            && !(parent(n).is_some() && !lines.keys().any(|&k| parent(k) == Some(n)))
+            && lines.iter().any(|(&k, &(shown, _))| shown && under(k, n))
+    };
+    let roots = [(Window::Backglass, [2, 6].into_iter().find(|&n| usable(n))), (Window::Score, [5, 1].into_iter().find(|&n| usable(n))), (Window::Topper, Some(0).filter(|&n| usable(n)))];
+    let mut out = Shows::default();
+    for (window, root) in roots {
+        let Some(root) = root else { continue };
+        match window {
+            Window::Backglass => {
+                out.backglass = true;
+                // the score display's screen placed on it
+                out.score_on_backglass = lines.iter().any(|(&k, &(shown, _))| shown && (k == 1 || k == 5) && k != root && under(k, root));
+            }
+            Window::Score => out.score = true,
+            Window::Topper => out.topper = true,
+        }
+    }
+    out
+}
+
+/// What a layout would show, from the screens file it puts at the pack's top: None for one that
+/// leaves the screens file as it is (a layout of something else: the pack's player version, its
+/// music) or that the app won't apply.
+pub fn layout_shows(pack: &Path, layout: &Layout) -> Option<Shows> {
+    if layout.refused.is_some() {
+        return None;
+    }
+    let files = overlay(pack, &layout.file).ok()?;
+    let (_, from) = files.iter().find(|(n, _)| n.eq_ignore_ascii_case("screens.pup"))?;
+    Some(shows_of(&String::from_utf8_lossy(&std::fs::read(from).ok()?)))
+}
+
+/// The windows VPX shows beside the playfield, as the user's settings have them (a window of its
+/// own, or drawn in the playfield's), and their shapes, width over height, where the settings say.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Windows {
+    pub backglass: bool,
+    pub score: bool,
+    pub topper: bool,
+    pub backglass_shape: Option<f32>,
+    pub score_shape: Option<f32>,
+}
+
+/// The windows a VPX settings file gives VPX beside the playfield (VPX's own default: none), each
+/// one's shape where the file gives its size.
+pub fn windows_in(settings: &str) -> Windows {
+    let ini = vpi_settings::parse_ini(settings);
+    let on = |section: &str, key: &str| vpi_settings::int(&ini, section, key, 0, 2).is_some_and(|v| v != 0);
+    let shape = |section: &str| {
+        let n = |key: String| vpi_settings::get(&ini, section, &key).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| *v > 0.0 && *v < 16384.0);
+        Some(n(format!("{section}Width"))? / n(format!("{section}Height"))?)
+    };
+    Windows {
+        backglass: on("Backglass", "BackglassOutput"),
+        score: on("ScoreView", "ScoreViewOutput"),
+        topper: on("Topper", "TopperOutput"),
+        backglass_shape: shape("Backglass"),
+        score_shape: shape("ScoreView"),
+    }
+}
+
+/// The layout of a pack that fits the windows best, and why, in words.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Fit {
+    pub file: String,
+    pub name: String,
+    pub why: String,
+    /// It's in place already.
+    pub in_place: bool,
+    /// It shows everything in a window there is, and leaves none empty.
+    pub exact: bool,
+}
+
+/// How badly a layout's screens fit the windows: what would show in a window there isn't costs
+/// most — the backglass's or the score display's videos unseen — a window left to VPX's own less.
+fn misfit(s: Shows, w: Windows) -> u32 {
+    let mut cost = 0;
+    if s.backglass && !w.backglass {
+        cost += 4;
+    }
+    if s.score && !w.score {
+        cost += 4;
+    }
+    if s.topper && !w.topper {
+        cost += 2;
+    }
+    if !s.backglass && w.backglass {
+        cost += 2;
+    }
+    // the score display on the backglass though it has a window of its own
+    if s.score_on_backglass && w.score {
+        cost += 1;
+    }
+    if !s.score && !s.score_on_backglass && w.score {
+        cost += 1;
+    }
+    if !s.topper && w.topper {
+        cost += 1;
+    }
+    cost
+}
+
+static SHAPE_NAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(\d{1,2})\s*[x:]\s*(\d{1,2})\b").unwrap());
+static VR_NAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bvr\b").unwrap());
+static SCREENS_NAMED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)(\d)\s*(?:or\s*(\d)\s*)?-?\s*screen").unwrap());
+
+/// How far the number of screens a layout's name gives (`3 Screen`, `3 or 4 screen`, `Desktop` for
+/// one) is from the user's — the playfield's and the windows' — 0 where it names none: for layouts
+/// whose screens files show the same.
+fn count_miss(name: &str, w: Windows) -> u32 {
+    let have = 1 + u32::from(w.backglass) + u32::from(w.score) + u32::from(w.topper);
+    let named: Vec<u32> = match SCREENS_NAMED.captures(name) {
+        Some(c) => [c.get(1), c.get(2)].into_iter().flatten().filter_map(|m| m.as_str().parse().ok()).collect(),
+        None if name.to_lowercase().contains("desktop") => vec![1],
+        None => Vec::new(),
+    };
+    named.iter().map(|n| n.abs_diff(have)).min().unwrap_or(0)
+}
+
+/// How far the shapes a layout's name gives — its backglass's (`16x9`, `5x4`), a slim or a full
+/// score display — are from the windows', 0 where it names none.
+fn shape_miss(name: &str, w: Windows) -> f32 {
+    let far = |a: f32, b: f32| (a / b).ln().abs();
+    let mut miss = 0.0;
+    if let (Some(c), Some(shape)) = (SHAPE_NAMED.captures(name), w.backglass_shape) {
+        let (a, b): (f32, f32) = (c[1].parse().unwrap_or(0.0), c[2].parse().unwrap_or(0.0));
+        if a > 0.0 && b > 0.0 {
+            miss += far(a / b, shape);
+        }
+    }
+    if let Some(shape) = w.score_shape {
+        let low = name.to_lowercase().replace(' ', "");
+        if low.contains("slimdmd") {
+            miss += far(4.0, shape);
+        } else if low.contains("fulldmd") {
+            miss += far(16.0 / 9.0, shape);
+        }
+    }
+    miss
+}
+
+/// What a layout shows, in words.
+fn shows_in_words(s: Shows) -> String {
+    let mut parts = Vec::new();
+    if s.backglass {
+        parts.push(if s.score_on_backglass { "the backglass with the score display on it" } else { "the backglass" });
+    }
+    if s.score {
+        parts.push("the score display in its own window");
+    }
+    if s.topper {
+        parts.push("the topper");
+    }
+    match parts.len() {
+        0 => "nothing beside the playfield".to_string(),
+        1 => parts[0].to_string(),
+        n => format!("{} and {}", parts[..n - 1].join(", "), parts[n - 1]),
+    }
+}
+
+/// The pack's layout that fits the windows best: the least that shows nowhere or leaves a window
+/// empty, then the number of screens its name gives nearest the user's, then the shape its name
+/// gives nearest the windows', then the one in place, then its author's order. Only layouts of the
+/// screens count (`layout_shows`); a VR layout comes after a layout for screens.
+pub fn fitting(pack: &Path, all: &Layouts, w: Windows) -> Option<Fit> {
+    let mut best: Option<((u32, u32, f32, u8, usize), &Layout, Shows)> = None;
+    for (i, l) in all.layouts.iter().enumerate() {
+        let Some(s) = layout_shows(pack, l) else { continue };
+        let cost = misfit(s, w) + if VR_NAMED.is_match(&l.name) { 3 } else { 0 };
+        let key = (cost, count_miss(&l.name, w), shape_miss(&l.name, w), u8::from(all.current.as_deref() != Some(l.file.as_str())), i);
+        let better = best.as_ref().is_none_or(|(k, _, _)| key.0.cmp(&k.0).then(key.1.cmp(&k.1)).then(key.2.total_cmp(&k.2)).then(key.3.cmp(&k.3)).then(key.4.cmp(&k.4)).is_lt());
+        if better {
+            best = Some((key, l, s));
+        }
+    }
+    let ((cost, ..), l, s) = best?;
+    let exact = misfit(s, w) == 0;
+    let why = if exact { format!("Fits your screens: {}", shows_in_words(s)) } else { format!("The nearest to your screens: {}", shows_in_words(s)) };
+    Some(Fit { file: l.file.clone(), name: l.name.clone(), why, in_place: all.current.as_deref() == Some(l.file.as_str()), exact: exact && cost == 0 })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1193,6 +1436,56 @@ mod tests {
         assert!(p("del %TEMP%\\x").unwrap_err().contains("Windows' settings"));
         assert!(p("copy a.pup b.pup & del c").is_err());
         assert!(p("xcopy /d \"PuP-Pack_Options\\*\"").unwrap_err().contains("/d"));
+        let _ = std::fs::remove_dir_all(&pack);
+    }
+
+    const HEAD: &str = "ScreenNum,ScreenDes,PlayList,PlayFile,Loopit,Active,Priority,CustomPos\r\n";
+
+    #[test]
+    fn what_a_screens_file_shows_where() {
+        // three screens, each in a window of its own
+        let three = format!("{HEAD}0,Topper,,,0,Off,0,\r\n1,DMD,,,0,Show,0,\r\n2,Backglass,,,0,Show,0,\r\n3,Playfield,,,0,Off,0,\r\n");
+        assert_eq!(shows_of(&three), Shows { backglass: true, score: true, topper: false, score_on_backglass: false });
+        // the score display placed on the backglass, the topper shown
+        let two = format!("{HEAD}0,Topper,,,0,Show,0,\r\n2,Backglass,,,0,Show,0,\r\n5,FullDMD,,,0,ForceON,0,\"2,0,70,100,30\"\r\n");
+        assert_eq!(shows_of(&two), Shows { backglass: true, score: false, topper: true, score_on_backglass: true });
+        // the backglass's screen 6 where there's no 2; sound only and screens placed on the playfield show in no window
+        let desktop = format!("{HEAD}3,Playfield,,,0,Show,0,\r\n6,Backglass,,,0,MusicOnly,0,\r\n1,DMD,,,0,Show,0,\"3,0,0,30,10\"\r\n");
+        assert_eq!(shows_of(&desktop), Shows::default());
+        // screens of a pack's own numbers placed on the windows' screens, which its table's script makes
+        let own = format!("{HEAD}13,Topper,,,0,ForceOn,,\"0,0,0,100,100\"\r\n15,\"Backglass Videos\",,,0,ForceBack,,\"2,3,6,93.6,83.4\"\r\n16,FULLDMD,,,0,ForceBack,,\"5,0,0,100,100\"\r\n");
+        assert_eq!(shows_of(&own), Shows { backglass: true, score: true, topper: true, score_on_backglass: false });
+    }
+
+    #[test]
+    fn the_layout_that_fits_the_windows() {
+        let pack = scratch("fit");
+        let options = pack.join("PuP-Pack_Options");
+        let made = [
+            ("1 - Desktop", format!("{HEAD}2,Backglass,,,0,Off,0,\r\n1,DMD,,,0,Off,0,\r\n")),
+            ("2 - 2 Screen DMD on BG 16x9", format!("{HEAD}2,Backglass,,,0,Show,0,\r\n1,DMD,,,0,Show,0,\"2,0,75,100,25\"\r\n")),
+            ("3 - 2 Screen DMD on BG 5x4", format!("{HEAD}2,Backglass,,,0,Show,0,\r\n1,DMD,,,0,Show,0,\"2,0,80,100,20\"\r\n")),
+            ("4 - 3 Screen FullDMD", format!("{HEAD}2,Backglass,,,0,Show,0,\r\n5,FullDMD,,,0,Show,0,\r\n")),
+            ("5 - 4 Screen Topper", format!("{HEAD}0,Topper,,,0,Show,0,\r\n2,Backglass,,,0,Show,0,\r\n5,FullDMD,,,0,Show,0,\r\n")),
+        ];
+        for (name, screens) in &made {
+            put(&options.join(name).join("screens.pup"), screens);
+            put(&pack.join(format!("Option {name}.bat")), &format!("xcopy /y \"PuP-Pack_Options\\{name}\\*\"\r\n"));
+        }
+        // a layout of something else: no screens file of its own
+        put(&options.join("Music").join("playlists.pup"), "x");
+        put(&pack.join("Use other music.bat"), "xcopy /y \"PuP-Pack_Options\\Music\\*\"\r\n");
+        let all = layouts(&pack);
+        let fit = |w: Windows| fitting(&pack, &all, w).map(|f| (f.name, f.exact));
+        let win = |backglass, score, topper| Windows { backglass, score, topper, ..Default::default() };
+        assert_eq!(fit(win(false, false, false)), Some(("Desktop".into(), true)));
+        assert_eq!(fit(win(true, true, false)), Some(("3 Screen FullDMD".into(), true)));
+        assert_eq!(fit(win(true, true, true)), Some(("4 Screen Topper".into(), true)));
+        // two screens: the score display on the backglass, the shape the backglass window has
+        assert_eq!(fit(Windows { backglass_shape: Some(1.25), ..win(true, false, false) }), Some(("2 Screen DMD on BG 5x4".into(), true)));
+        assert_eq!(fit(Windows { backglass_shape: Some(1.78), ..win(true, false, false) }), Some(("2 Screen DMD on BG 16x9".into(), true)));
+        // a topper alone, with no layout made for it: the nearest
+        assert_eq!(fit(win(false, false, true)), Some(("Desktop".into(), false)));
         let _ = std::fs::remove_dir_all(&pack);
     }
 

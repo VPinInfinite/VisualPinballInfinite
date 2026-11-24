@@ -29,6 +29,7 @@ VPX's team hasn't released 10.8.1 yet: build 6758 is one of its automatic builds
 - **1 to 4 screens:** the playfield, backglass, score display and topper placed by dragging them on a map or on the screens themselves, kept as presets to switch between, and a table can keep its own. The score display is placed in each backglass that has a window for it.
 - **Your library:** each table's pictures, facts and designers from the Virtual Pinball Spreadsheet, favourites, ratings, playlists, a play log and high scores read from the machine's own memory, a Player hub with every table's high scores, your achievements and your stats, and a table with several table files shown once, its versions side by side on its page.
 - **Adding tables:** drop in a download — a zip, 7-Zip or RAR archive, or a folder — and each file is told apart, matched to its table and shown where it'll go before anything moves, media placed one by one.
+- **Finding what's missing:** the Virtual Pinball Spreadsheet's machines to browse, what each of your tables is missing, and tables recommended by what you play; a file's page opens inside the app, and what you download there is put in place with its table.
 - **Your folders, as they are:** VPX's tables, ROMs, backglasses and PinUP packs, and your front end's media, where they already are. PinUP Popper, PinballX and PinballY keep starting VPX as they always have; the app keeps their media, ratings and game names in step with your library.
 - **Settings in one place:** screens, picture, sound (a bass shaker too), controls, ROM machines and PinUP packs on plain pages — each PinUP pack's layout chosen for your screens, VPX's own add-ons or the classic programs chosen part by part — saved into VPX's own settings, with every one of VPX's settings there when you want them.
 - **A table's script, made simple:** its options as switches and lists, or its whole script in an editor, checked before it's kept and saved beside the table, so the table file never changes.
@@ -36,7 +37,7 @@ VPX's team hasn't released 10.8.1 yet: build 6758 is one of its automatic builds
 - **Media made for you:** a table's playfield, backglass and score display drawn by the app with no window, a preview video and a wheel; and a copy of a table with your own pictures in it, kept beside the original.
 - **Tools for every table:** ROMs checked file by file, PinUP packs, media, color DMDs (colored by you, in a coloring program the app installs) and AltSound packs, made from a table's own ROM too.
 - **A table inspector:** any table seen from above, drawn from its own parts, the first part of a table editor.
-- **Report a problem:** your note, with the app's and VPX's logs and settings in one file you can look through first.
+- **Report a problem:** your note, with the app's and VPX's logs and settings in one file you can look through first; the team's replies come back to the app, and you can answer them there.
 
 <p align="center">
 <img src="docs/images/table-1600.webp" width="49%" alt="Attack from Mars's page in the app: its playfield picture, PLAY, its rating and its facts">
@@ -48,7 +49,7 @@ VPX's team hasn't released 10.8.1 yet: build 6758 is one of its automatic builds
 
 ## Privacy
 
-It goes online to read the Virtual Pinball Spreadsheet's database and pictures, and to look for a new version on this repository's releases. Nothing about you or your PC is sent with them. VPX 10.8.1 is downloaded only when you click Get VPX 10.8.1: VPX's own automatic build, through nightly.link (a service that hands out GitHub's automatic builds without a sign-in), or VPX's newest automatic build where GitHub no longer keeps that one; a coloring program from its makers' own page only when you ask for it, and a table's guide from Pinball Primer only while you have it open, nothing of it kept. Report a problem gathers a file you can look through first, and sends it only when you press Send. "Use this PC's location", for the light of day in tables that follow it, asks Windows only when you click it.
+It goes online to read the Virtual Pinball Spreadsheet's database and pictures, to look for a new version on this repository's releases, and to read the team's short notice as it starts, if there is one. Nothing about you or your PC is sent with them. A file's page you open in the app, with Get, loads from its own site in a browser of the app's own, whose sign-ins stay on your PC until you sign out. VPX 10.8.1 is downloaded only when you click Get VPX 10.8.1: VPX's own automatic build, through nightly.link (a service that hands out GitHub's automatic builds without a sign-in), or VPX's newest automatic build where GitHub no longer keeps that one; a coloring program from its makers' own page only when you ask for it, and a table's guide from Pinball Primer only while you have it open, nothing of it kept. Report a problem gathers a file you can look through first, and sends it only when you press Send; then the app asks for the team's replies to it, with a key made on your PC for that report alone. "Use this PC's location", for the light of day in tables that follow it, asks Windows only when you click it.
 
 ## Building from source
 
@@ -72,6 +73,8 @@ On Windows 10 or 11, 64-bit, from the repository's folder:
 3. **The app's screens:** in `app\ui`, `npm ci --ignore-scripts`, then `npm run build`.
 4. **The programs:** `cargo build --release`. They land in `target\release`; `vpi-app.exe` is the app, and `vpi_vpx_addon.dll` the add-on it puts into VPX for live achievements.
 5. **The installer:** `tools\release\stage.ps1` gathers everything the installer installs and checks it, and `tools\release\installer.ps1` builds the installer. Its updates are signed with the project's key; for builds of your own, make a key with `tools\release\make-updater-key.ps1` and put its public key in `app\tauri.conf.json`.
+
+A build of your own has no address for problem reports, which only the project's own builds are given: its Report a problem makes the file for you to attach to a post, and it asks nobody for replies or notices.
 
 ## Licence
 

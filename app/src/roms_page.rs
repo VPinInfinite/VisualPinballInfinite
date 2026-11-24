@@ -34,6 +34,24 @@ fn list(layout: &::library::plan::Layout, tables: &[(PathBuf, String)]) -> Resul
     Ok(::library::rom_inventory::inventory(layout, tables, &all))
 }
 
+/// The sets in VPinMAME's ROM folder by their names, nothing in them read: for the VPS browser's
+/// picks, a machine whose ROM is there with no table of it.
+#[tauri::command]
+pub fn rom_names(shared: State<'_, Shared>) -> Vec<String> {
+    let Some(layout) = shared.0.lock().unwrap().layout.clone() else { return Vec::new() };
+    let Ok(folder) = std::fs::read_dir(layout.vpinmame.join("roms")) else { return Vec::new() };
+    let mut names = Vec::new();
+    for e in folder.filter_map(Result::ok) {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x.eq_ignore_ascii_case("zip"))
+            && let Some(stem) = p.file_stem()
+        {
+            names.push(stem.to_string_lossy().to_lowercase());
+        }
+    }
+    names
+}
+
 /// Every set, checked, with its fixes.
 #[tauri::command]
 pub async fn rom_list(shared: State<'_, Shared>) -> Result<Vec<Row>, String> {

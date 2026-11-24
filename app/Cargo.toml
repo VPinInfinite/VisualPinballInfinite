@@ -21,11 +21,13 @@ serde_json = "1"
 # the app's window: Windows' own web viewer (WebView2) showing the screens in ui/, built into the
 # program at build time; pinned, as every package added for the app, to a version at least
 # two weeks old when added
-tauri = { version = "=2.12.2", features = ["custom-protocol"] }
+tauri = { version = "=2.12.2", features = ["custom-protocol", "unstable"] }
 # a problem report written as one zip, and the user's folder taken out of it (the versions the
 # table library already uses)
 zip = { version = "8", default-features = false, features = ["deflate"] }
 regex = "1"
+# a sent report's own key, from Windows' random numbers (the version the workspace already has)
+getrandom = "0.3"
 # a machine's recordings, kept compressed, written out whole for ColorizingDMD (the version the
 # player already uses)
 flate2 = "1"

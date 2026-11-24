@@ -74,7 +74,7 @@ pub async fn physics_preset_save(name: String, values: [f32; 18]) -> Result<(), 
 /// A physics settings file picked in Windows' file picker kept among the presets. False when the
 /// picker's cancelled.
 #[tauri::command]
-pub async fn physics_preset_import(window: tauri::WebviewWindow) -> Result<bool, String> {
+pub async fn physics_preset_import(window: tauri::Window) -> Result<bool, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     tauri::async_runtime::spawn_blocking(move || -> Result<bool, String> {
         let kinds = [("A physics settings file", "*.vpp")];

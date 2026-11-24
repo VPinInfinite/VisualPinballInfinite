@@ -479,7 +479,7 @@ pub fn icon(pack_id: &str, which: &str) -> Option<PathBuf> {
 /// A pack added from a file the user chooses in Windows' picker — a pack's zip, or its
 /// `achievements.json` alone — checked first, kept as its ID and version say; its name.
 #[tauri::command]
-pub async fn achievements_add(app: AppHandle, window: tauri::WebviewWindow) -> Result<Option<String>, String> {
+pub async fn achievements_add(app: AppHandle, window: tauri::Window) -> Result<Option<String>, String> {
     let owner = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
     let name = tauri::async_runtime::spawn_blocking(move || -> Result<Option<String>, String> {
         let kinds = [("An achievement pack", "*.zip;achievements.json;*.json")];

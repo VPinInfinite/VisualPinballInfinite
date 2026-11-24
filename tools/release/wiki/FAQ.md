@@ -26,9 +26,9 @@
 
 **Where are my settings?** VPX's are in VPX's own file, `%APPDATA%\VPinballX\10.8\VPinballX.ini`, which the app's settings pages and VPX's menus both change, with a table's own beside the table in `<table>.ini`, as VPX keeps them. The app's own choices are in `%APPDATA%\Visual Pinball Infinite\Settings.ini`. VPX 10.8.0 keeps settings of its own, changed in its own Preferences. See [Settings](Settings).
 
-**Does it go online?** Only to fetch the Virtual Pinball Spreadsheet's list and pictures, to look for updates, to get VPX 10.8.1 from VPX's automatic builds when you ask, to show a table's guide from Pinball Primer when you open it in the pause menu, to fetch a coloring program from its makers' releases when you ask, and to send a problem report when you choose to.
+**Does it go online?** Only to fetch the Virtual Pinball Spreadsheet's list and pictures, to look for updates and the team's short notice, if there is one, to get VPX 10.8.1 from VPX's automatic builds when you ask, to show a table's guide from Pinball Primer when you open it in the pause menu, to show a file's page you open with **Get** and download what you choose there, to fetch a coloring program from its makers' releases when you ask, and to send a problem report when you choose to, then to ask for the team's replies to it.
 
-**Where do I get tables and ROMs?** Tables come from their authors, on sites such as VPUniverse. A machine's page on the Virtual Pinball Spreadsheet links to its tables and their files, and the app's VPS browser and each table's page show them too. ROMs belong to the machines' makers, and you supply them yourself, as for VPX.
+**Where do I get tables and ROMs?** Tables come from their authors, on sites such as VPUniverse. A machine's page on the Virtual Pinball Spreadsheet links to its tables and their files, and the app's VPS browser and each table's page show them too, a file's page opening inside the app. ROMs belong to the machines' makers, and you supply them yourself, as for VPX.
 
 **Who makes it?** An independent project, not part of the Visual Pinball X project, whose work it credits throughout. It's developed with Claude, Anthropic's AI.
 

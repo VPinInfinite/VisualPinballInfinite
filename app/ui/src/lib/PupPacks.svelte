@@ -11,7 +11,63 @@
   import Icon from './Icon.svelte';
   import PupLayout from './PupLayout.svelte';
   import SearchBox from './SearchBox.svelte';
-  import { drop, dropFiles, notice, openLink, openTable } from './store.svelte.js';
+  import { app, drop, dropFiles, notice, openLink, openTable, savePrefs } from './store.svelte.js';
+
+  // packs' layouts fitted to the screens: how (`prefs.pupLayouts`), and every pack's fit, asked
+  // about first — the packs whose layout the user chose left unticked
+  const FITS = [
+    ['fit', 'Your screens (recommended)'],
+    ['desktop', 'Desktop: the playfield alone'],
+    ['2', '2 screens: the playfield and the backglass'],
+    ['3', '3 screens: and the score display'],
+    ['4', '4 screens: and the topper'],
+    ['leave', 'None: leave layouts as packs come'],
+  ];
+  const fitMode = $derived(app.prefs.pupLayouts || 'fit');
+  let plan = $state(null);
+  let ticked = $state({});
+  let fitting = $state(false);
+  function setFit(mode) {
+    app.prefs.pupLayouts = mode;
+    savePrefs();
+    plan = null;
+  }
+  async function askFit() {
+    fitting = true;
+    try {
+      plan = await invoke('pup_fit_plan');
+      ticked = Object.fromEntries(plan.rows.map((r) => [r.path, !r.byHand]));
+    } catch (e) {
+      notice(String(e), { kind: 'problem' });
+    }
+    fitting = false;
+  }
+  async function applyFit() {
+    const paths = plan.rows.filter((r) => ticked[r.path]).map((r) => r.path);
+    fitting = true;
+    try {
+      const done = await invoke('pup_fit_apply', { paths });
+      const bad = done.filter((u) => u.look === 'problem');
+      for (const u of bad) notice(u.said, { kind: 'problem' });
+      notice(`${done.length - bad.length} ${done.length - bad.length === 1 ? 'pack fits' : 'packs fit'} your screens now.`, { kind: 'done' });
+      plan = null;
+      load();
+    } catch (e) {
+      notice(String(e), { kind: 'problem' });
+    }
+    fitting = false;
+  }
+  const screensSaid = (w) => {
+    const parts = ['the playfield', w.backglass && 'the backglass', w.score && 'the score display', w.topper && 'the topper'].filter(Boolean);
+    return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+  };
+  // opened from a notice after the screens changed: the fit asked about at once
+  $effect(() => {
+    if (app.pupFitAsk && packs) {
+      app.pupFitAsk = false;
+      askFit();
+    }
+  });
 
   let packs = $state(null);
   let problem = $state('');
@@ -165,6 +221,40 @@
       {packs.length} {packs.length === 1 ? 'pack' : 'packs'}{#if unchosen}{' · '}<b class="warn">{unchosen} {unchosen === 1 ? 'needs' : 'need'} a layout chosen</b>{/if}{#if wrong}{` · ${wrong} not right`}{/if}{#if unusedAll.length}{` · ${unusedAll.length} no table plays`}{/if}.
       A pack plays for the table whose script asks for it by name; its layout says which of your screens shows what. Drop a pack onto a row to add it for that row’s table.
     </p>
+    <div class="fit">
+      <label class="fitlabel">Layouts fitted to
+        <select class="select" value={fitMode} onchange={(e) => setFit(e.currentTarget.value)}>
+          {#each FITS as [v, l] (v)}<option value={v}>{l}</option>{/each}
+        </select>
+      </label>
+      {#if fitMode !== 'leave'}
+        <button type="button" class="btn small" disabled={fitting} onclick={askFit}>{fitting && !plan ? 'Looking…' : 'Fit all packs…'}</button>
+        <span class="faint">A pack added is fitted as it comes in; a layout you choose yourself stays yours.</span>
+      {/if}
+    </div>
+    {#if plan}
+      <div class="fitplan">
+        {#if !plan.rows.length}
+          <p class="note">Every pack fits {plan.windows ? screensSaid(plan.windows) : 'your screens'} already, or has no layout for them. <button type="button" class="btn small ghost" onclick={() => (plan = null)}>Close</button></p>
+        {:else}
+          <p class="note">For {screensSaid(plan.windows)}, {plan.rows.length} {plan.rows.length === 1 ? 'pack' : 'packs'} would change. Untick any to leave; a layout you chose yourself is unticked. What a layout replaces that the pack keeps no copy of goes to the Recycle Bin.</p>
+          <div class="fitrows">
+            {#each plan.rows as r (r.path)}
+              <label class="fitrow">
+                <input type="checkbox" bind:checked={ticked[r.path]} />
+                <span class="fitname">{r.tables.length ? r.tables.join(', ') : r.name}<span class="faint"> · {r.name}</span></span>
+                <span class="fitto">{r.current || 'No layout'} → <b>{r.fit.name}</b>{#if r.byHand}<span class="warnword"> · chosen by you</span>{/if}</span>
+                <span class="fitwhy faint">{r.fit.why}</span>
+              </label>
+            {/each}
+          </div>
+          <div class="fitbuttons">
+            <button type="button" class="btn small ghost" onclick={() => (plan = null)}>Cancel</button>
+            <button type="button" class="btn small go" disabled={fitting || !plan.rows.some((r) => ticked[r.path])} onclick={applyFit}>{fitting ? 'Fitting…' : `Fit ${plan.rows.filter((r) => ticked[r.path]).length}`}</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
     <div class="bar">
       <div class="seg" role="radiogroup" aria-label="Which packs show">
         {#each [['all', 'All', packs.length], ['used', 'Used', usedAll.length], ['unused', 'Unused', unusedAll.length]] as [key, label, n] (key)}
@@ -194,6 +284,16 @@
 
 <style>
   .packs { display: flex; flex-direction: column; gap: 10px; padding-top: 22px; border-top: 1px solid var(--line); }
+  .fit { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+  .fitlabel { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .fitplan { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--card-line); border-radius: 12px; background: var(--card); }
+  .fitrows { display: flex; flex-direction: column; gap: 4px; max-height: 420px; overflow-y: auto; }
+  .fitrow { display: grid; grid-template-columns: auto minmax(160px, 1fr) minmax(200px, 1.4fr); grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; font-size: 13px; }
+  .fitrow:hover { background: var(--hover); }
+  .fitrow input { grid-row: span 2; }
+  .fitname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fitwhy { grid-column: 2 / 4; font-size: 12px; }
+  .fitbuttons { display: flex; justify-content: flex-end; gap: 8px; }
   .partname { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--fg); }
   .sub-head { margin: 16px 0 6px; font-size: 15px; color: var(--fg); }
   .note { margin: -4px 0 0; color: var(--faint); font-size: 13px; max-width: 900px; line-height: 1.5; }

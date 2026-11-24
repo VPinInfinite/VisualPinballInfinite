@@ -317,13 +317,20 @@ fn run() -> Result<(), String> {
             } else {
                 rest.clone()
             };
+            // and the layout that fits VPX's windows as its settings have them
+            let windows = library::pup_pack::windows_in(&vpi_settings::vpx_settings_text());
+            println!("VPX's windows: {windows:?}");
             for pack in &packs {
                 let all = library::pup_pack::layouts(pack);
                 let c = library::pup_pack::check(pack, &all);
                 println!("{:<4} {}: {}", c.look, pack.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(), c.text);
                 for l in &all.layouts {
                     let mark = if all.current.as_deref() == Some(l.file.as_str()) { '*' } else { ' ' };
-                    println!("    {mark} {}{}{}", l.name, l.refused.as_deref().map(|r| format!("  — refused: {r}")).unwrap_or_default(), l.note.as_deref().map(|n| format!("  — {n}")).unwrap_or_default());
+                    let shows = library::pup_pack::layout_shows(pack, l).map(|s| format!("  [{s:?}]")).unwrap_or_default();
+                    println!("    {mark} {}{shows}{}{}", l.name, l.refused.as_deref().map(|r| format!("  — refused: {r}")).unwrap_or_default(), l.note.as_deref().map(|n| format!("  — {n}")).unwrap_or_default());
+                }
+                if let Some(f) = library::pup_pack::fitting(pack, &all, windows) {
+                    println!("    fits: {}{} — {}", f.name, if f.in_place { " (in place)" } else { "" }, f.why);
                 }
             }
             Ok(())

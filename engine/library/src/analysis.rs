@@ -150,6 +150,16 @@ pub(crate) fn looks_like_rom_set(name: &str) -> bool {
     (2..=16).contains(&stem.len()) && stem.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
 }
 
+/// An ending a kind of file other than a ROM's has: a table's, its companions', a pack's, an
+/// archive's, a document's, a picture's, a sound's or a video's (none of PinMAME's ROM files ends so).
+fn another_kind(ext: &str) -> bool {
+    const OTHERS: [&str; 22] = [
+        "vpx", "vpt", "fpt", "fpl", "directb2s", "res", "pov", "vpp", "ini", "vbs", "dif", "nv", "cfg", "crz", "cromc", "pal", "vni", "pac", "zip", "7z", "rar", "csv",
+    ];
+    let lists: [&[&str]; 5] = [&READ_SUFFIXES, &MEDIA_SUFFIXES, &MUSIC_SUFFIXES, &VIDEO_SUFFIXES, &PICTURE_SUFFIXES];
+    OTHERS.contains(&ext) || lists.iter().any(|l| l.contains(&ext))
+}
+
 fn ext(path: &str) -> String {
     let name = path.rsplit('/').next().unwrap_or(path);
     name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default()
@@ -203,14 +213,19 @@ pub fn analyse(listing: &Listing) -> Contents {
     let loose_music = altsound_folder.is_none() && names.iter().any(|n| ext(n) == "vpx");
     // a drop of ROM files alone, with no folders, is a ROM set (VPin Studio's `isRom`); ours: a
     // read-me beside them, anywhere, aside — Stern's code updates keep theirs in folders of their own
-    // (`projects/images/fg/12.00/FGreadme.txt` beside `fg_1200af.bin`)
+    // (`projects/images/fg/12.00/FGreadme.txt` beside `fg_1200af.bin`) — and a file PinMAME names in
+    // its sets whatever its ending (`sw0211.u17`, `ic20.lgc`, none at all: a fifth of PinMAME's
+    // sets hold one the endings miss), asked only for an ending no other kind of file has
     let rom_file = |n: &str| {
         let e = ext(n);
-        ROM_SUFFIXES.contains(&e.as_str()) || (e.len() == 2 && e.as_bytes()[1].is_ascii_digit()) || e.parse::<u32>().is_ok()
+        ROM_SUFFIXES.contains(&e.as_str())
+            || (e.len() == 2 && e.as_bytes()[1].is_ascii_digit())
+            || e.parse::<u32>().is_ok()
+            || (!another_kind(&e) && crate::roms::known_file_name(file_name(n)))
     };
-    let rom_set = names.iter().filter(|n| !READ_SUFFIXES.contains(&ext(n).as_str())).all(|n| !n.contains('/') && rom_file(n))
-        && names.iter().any(|n| rom_file(n))
-        && !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s"));
+    let rom_set = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s"))
+        && names.iter().filter(|n| !READ_SUFFIXES.contains(&ext(n).as_str())).all(|n| !n.contains('/') && rom_file(n))
+        && names.iter().any(|n| rom_file(n));
 
     let mut readme = None;
     let mut files = Vec::new();
@@ -527,6 +542,19 @@ mod tests {
     fn a_rom_set_alone() {
         let c = analyse(&listing(&["afm_113b.bin", "afm_s2.l1", "afm_s3.l1"]));
         assert!(c.files.iter().all(|(_, k)| *k == Kind::Rom));
+    }
+
+    #[test]
+    fn a_rom_set_whose_endings_say_nothing() {
+        // Sega's sound ROMs end `.u17` and `.u21`: known by PinMAME's own names for its sets' files,
+        // where PinMAME can be asked (the repository's build, or beside the program)
+        let files = ["swsedspa.400", "sw0211.u17", "sw0211.u21", "sw0219.u7", "swcpu.403"];
+        if crate::roms::all_rom_files().is_ok() {
+            assert!(analyse(&listing(&files)).files.iter().all(|(_, k)| *k == Kind::Rom));
+        }
+        // a file of another kind beside them is never one
+        assert!(!another_kind("u17") && another_kind("png") && another_kind("directb2s"));
+        assert!(analyse(&listing(&["sw0211.u17", "wheel.png"])).files.iter().all(|(_, k)| *k != Kind::Rom));
     }
 
     #[test]
