@@ -51,7 +51,7 @@ pub struct ForTable {
     pub backglass_volume: Option<i32>,
     /// 0 to 100 (VPX's 0 to 1).
     pub difficulty: Option<i32>,
-    /// VPX's tone mappers, 0 to 4 (`OwnLook`).
+    /// VPX's tone mappers, 0 to 3 (`OwnLook`): Reinhard, AgX, Filmic, Neutral (10.9 has no fifth).
     pub tone_mapper: Option<i32>,
     /// 0 to 200 (VPX's 0 to 2).
     pub exposure: Option<i32>,
@@ -259,7 +259,7 @@ fn for_table_of(entries: &[(String, String, String)]) -> ForTable {
         playfield_volume: int("Player", "SoundVolume", 0, 100),
         backglass_volume: int("Player", "MusicVolume", 0, 100),
         difficulty: share("TableOverride", "Difficulty", 1.0),
-        tone_mapper: int("TableOverride", "ToneMapper", 0, 4),
+        tone_mapper: int("TableOverride", "ToneMapper", 0, 3),
         exposure: share("TableOverride", "Exposure", 2.0),
         // as VPX 5436's menu reads the two switches: the table's own unless overridden, the sun's
         // when the day and night follow

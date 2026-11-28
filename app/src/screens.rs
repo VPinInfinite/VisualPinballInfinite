@@ -333,7 +333,7 @@ pub fn load() -> Result<ScreensView, String> {
 }
 
 /// What the settings say, by the player's own rules, its defaults for what they leave out.
-fn settings_of(entries: &[(String, String, String)], screens: &[Screen]) -> ScreenSettings {
+pub(crate) fn settings_of(entries: &[(String, String, String)], screens: &[Screen]) -> ScreenSettings {
     let displays: Vec<Display> = screens.iter().map(Screen::display).collect();
     let mut windows: Vec<WindowPlace> = Vec::new();
     for id in WindowId::ALL {
@@ -627,6 +627,97 @@ pub(crate) fn place_and_show(window: &tauri::WebviewWindow, x: i32, y: i32, widt
         place(&window, x, y, width, height);
         refit(&window);
     });
+}
+
+/// A helper window placed as `place_and_show` places it, and shown without taking the focus, in front
+/// of every window: the one in front keeps the keyboard (a game drawing in a full screen of its own,
+/// which gives way whenever its window loses the focus).
+pub(crate) fn place_and_show_quietly(window: &tauri::WebviewWindow, x: i32, y: i32, width: i32, height: i32) {
+    place(window, x, y, width, height);
+    show_quietly(window);
+    place(window, x, y, width, height);
+    let window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        place(&window, x, y, width, height);
+        // the page made to take the window's size only where it doesn't: a resize redraws it, the
+        // window's see-through parts blank for a moment
+        if !page_fills(&window) {
+            refit(&window);
+        }
+    });
+}
+
+/// A helper window shown where it is, without taking the focus, in front of every window, and its
+/// page told it shows, so it draws: its own window shown (a child's, which takes no focus), as
+/// showing the frame through Windows alone leaves the page as it was.
+pub(crate) fn show_quietly(window: &tauri::WebviewWindow) {
+    show_without_focus(window);
+    let page: &tauri::Webview = window.as_ref();
+    let _ = page.show();
+}
+
+/// A helper window hidden, its page told so (it stops drawing), the focus left where it is: through
+/// Windows itself, as a window shown through Windows alone (`show_without_focus`) is still hidden as
+/// far as its own window code knows, which then hides nothing.
+pub(crate) fn hide_quietly(window: &tauri::WebviewWindow) {
+    let page: &tauri::Webview = window.as_ref();
+    let _ = page.hide();
+    hide_without_focus(window);
+    let _ = window.hide();
+}
+
+/// A window hidden through Windows' `SetWindowPos`, no other window given the focus.
+#[cfg(windows)]
+fn hide_without_focus(window: &tauri::WebviewWindow) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowPos(hwnd: *mut std::ffi::c_void, after: isize, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
+    }
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_HIDEWINDOW: u32 = 0x0080;
+    if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: the app's own window; its place, size and order kept
+        unsafe { SetWindowPos(hwnd.0, 0, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_HIDEWINDOW) };
+    }
+}
+
+#[cfg(not(windows))]
+fn hide_without_focus(window: &tauri::WebviewWindow) {
+    let _ = window.hide();
+}
+
+/// Whether a window's page takes the whole of its inside.
+fn page_fills(window: &tauri::WebviewWindow) -> bool {
+    let page: &tauri::Webview = window.as_ref();
+    matches!((page.size(), window.inner_size()), (Ok(p), Ok(w)) if p == w)
+}
+
+/// A window shown in front of every window without being given the focus (Windows' `SetWindowPos`,
+/// not `ShowWindow`, which gives a window it shows the focus).
+#[cfg(windows)]
+fn show_without_focus(window: &tauri::WebviewWindow) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowPos(hwnd: *mut std::ffi::c_void, after: isize, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
+    }
+    const HWND_TOPMOST: isize = -1;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_SHOWWINDOW: u32 = 0x0040;
+    if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: the app's own window; its place and size kept
+        unsafe { SetWindowPos(hwnd.0, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW) };
+    }
+}
+
+#[cfg(not(windows))]
+fn show_without_focus(window: &tauri::WebviewWindow) {
+    let _ = window.show();
 }
 
 /// The page inside a window made to take the window's size again: one pixel narrower and back, as

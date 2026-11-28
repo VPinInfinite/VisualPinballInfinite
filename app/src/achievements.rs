@@ -47,6 +47,10 @@ pub fn installed() -> Vec<(PathBuf, Pack)> {
 /// Whether a pack is made for a table: its VPS game (else its name, maker and year), the VPS
 /// table files it names if it names any, and the ROM sets it names if it names any.
 pub fn fits(st: &library::State, t: &Table, pack: &Pack) -> bool {
+    // a Future Pinball table: achievements follow games in VPX
+    if ::library::future_pinball::is_table(&t.path) {
+        return false;
+    }
     let f = &pack.made_for;
     let game = match (&f.game.vps, &t.on_vps.game) {
         (Some(want), Some(have)) => want == have,
@@ -327,7 +331,7 @@ pub struct Heard {
 const NEVER_SHARED: [&str; 3] = ["part", "ballsInPlay", "script"];
 
 /// `Heard::via` where VPX 10.8.0 plays: VPX 10.8.1 would hear more.
-const OLDER: &str = "VPX 10.8.1";
+const OLDER: &str = "VPX 10.8.1 or newer";
 
 /// Why an achievement whose condition is `when` can't be earned as `heard` hears the game, in
 /// words; None where it can.
@@ -359,9 +363,9 @@ fn unheard(when: &serde_json::Value, heard: &Heard) -> Option<String> {
     if missing.iter().any(|m| NEVER_SHARED.contains(m)) {
         Some(format!("Can't be earned in VPX yet: it counts {list}, which VPX doesn't share with add-ons."))
     } else if heard.via == Some(OLDER) {
-        Some(format!("Earned only when VPX 10.8.1 plays the table (Settings › Library): it counts {list}, which VPX 10.8.0 shares with nothing."))
+        Some(format!("Earned only when VPX 10.8.1 or newer plays the table (Settings › Library): it counts {list}, which VPX 10.8.0 shares with nothing."))
     } else if missing.contains(&"light") {
-        Some(format!("Earned with a newer VPX 10.8.1, from build {LIGHTS_FROM}, which shares a table's lights with add-ons: it counts {list}."))
+        Some(format!("Earned with a newer VPX, from build {LIGHTS_FROM}, which shares a table's lights with add-ons: it counts {list}."))
     } else {
         let via = heard.via.unwrap_or("PinMAME");
         let add_ons = if via.contains(" and ") { "add-ons" } else { "add-on" };
@@ -503,7 +507,7 @@ pub fn add_from(picked: &Path) -> Result<String, String> {
             let file = std::fs::File::open(picked).map_err(|e| format!("{}: {e}", picked.display()))?;
             let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
             // the pack's own files, at its top or in the one folder it holds
-            let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+            let names: Vec<String> = zip.file_names().filter_map(Result::ok).map(|n| n.into_owned()).collect();
             let top = names.iter().find(|n| n.rsplit('/').next() == Some("achievements.json")).ok_or("It holds no achievements.json.")?;
             let prefix = top.strip_suffix("achievements.json").unwrap_or("").to_string();
             for i in 0..zip.len() {
@@ -577,7 +581,7 @@ pub fn pack_in(path: &Path) -> Option<PathBuf> {
     }
     if name.ends_with(".zip") {
         let mut zip = zip::ZipArchive::new(std::fs::File::open(path).ok()?).ok()?;
-        let entry = zip.file_names().find(|n| n.rsplit('/').next() == Some("achievements.json"))?.to_string();
+        let entry = zip.file_names().filter_map(Result::ok).find(|n| n.rsplit('/').next() == Some("achievements.json"))?.into_owned();
         let mut text = String::new();
         std::io::Read::read_to_string(&mut zip.by_name(&entry).ok()?, &mut text).ok()?;
         return ours(&text).then(|| path.to_path_buf());
@@ -633,10 +637,10 @@ mod tests {
         // a 10.8.1 from before VPX shared a table's lights
         let before = Heard { heard: vec!["game", "score", "ballsInPlay"], via: None };
         let said = unheard(&light, &before).unwrap();
-        assert!(said.starts_with("Earned with a newer VPX 10.8.1, from build 6148") && said.ends_with("it counts the table's lights."), "{said}");
+        assert!(said.starts_with("Earned with a newer VPX, from build 6148") && said.ends_with("it counts the table's lights."), "{said}");
         // VPX 10.8.0, and what no VPX shares
         let older = Heard { heard: vec!["game", "score"], via: Some(OLDER) };
-        assert!(unheard(&light, &older).unwrap().starts_with("Earned only when VPX 10.8.1 plays the table"));
+        assert!(unheard(&light, &older).unwrap().starts_with("Earned only when VPX 10.8.1 or newer plays the table"));
         let part = serde_json::json!({ "part": "Bumper1", "does": "hit" });
         assert!(unheard(&part, &newest).unwrap().starts_with("Can't be earned in VPX yet: it counts hits on the table's parts"));
     }

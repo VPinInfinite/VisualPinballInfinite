@@ -848,6 +848,75 @@
       "what": "game: each game in a folder of its own, its versions sharing it, as Visual Pinball X 10.8.1 keeps tables; empty, VPX's shared folders. The app's Library settings switch between them, moving the files."
     },
     {
+      "key": "FuturePinballFolder",
+      "label": "Future Pinball's folder",
+      "kind": "string",
+      "def": "",
+      "what": "The folder holding Future Pinball's program, its tables played in it through BAM; empty, looked for beside VPX's folder, where its installer put it, and in its usual folders. Settings › Library says where it was found."
+    },
+    {
+      "key": "FuturePinballDisableFullscreenOptimizations",
+      "label": "Fullscreen optimizations off for Future Pinball",
+      "kind": "bool",
+      "def": "0",
+      "what": "1: Windows' fullscreen optimizations turned off for Future Pinball's program and BAM's loader during its games, against stutters in its full screen, and put back after; 0, left as Windows has them."
+    },
+    {
+      "key": "VrProgram",
+      "label": "The VR program VPX plays with",
+      "kind": "string",
+      "def": "",
+      "what": "The OpenXR manifest of the VR program VPX plays VR with, for its games alone (Meta Horizon Link's, SteamVR's, Virtual Desktop's); empty, the one Windows has active. Settings › VR chooses it among those found."
+    },
+    {
+      "key": "VrResFactor.meta",
+      "label": "The headset's resolution with Meta Horizon Link",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through Meta Horizon Link: each eye drawn at the size Link recommends times this, past 0.1 and up to 10; empty, Link's own size. Settings › VR keeps one for each VR program, so one chosen for another isn't carried over."
+    },
+    {
+      "key": "VrResFactor.steamvr",
+      "label": "The headset's resolution with SteamVR",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through SteamVR: each eye drawn at the size SteamVR recommends times this, past 0.1 and up to 10; empty, SteamVR's own size. Settings › VR keeps one for each VR program."
+    },
+    {
+      "key": "VrResFactor.virtual-desktop",
+      "label": "The headset's resolution with Virtual Desktop",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through Virtual Desktop: each eye drawn at the size Virtual Desktop recommends for its graphics quality times this, past 0.1 and up to 10; empty, Virtual Desktop's own size. Settings › VR keeps one for each VR program."
+    },
+    {
+      "key": "VrResFactor.pimax",
+      "label": "The headset's resolution with Pimax Play",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through Pimax Play: each eye drawn at the size it recommends times this, past 0.1 and up to 10; empty, its own size. Settings › VR keeps one for each VR program."
+    },
+    {
+      "key": "VrResFactor.varjo",
+      "label": "The headset's resolution with Varjo Base",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through Varjo Base: each eye drawn at the size it recommends times this, past 0.1 and up to 10; empty, its own size. Settings › VR keeps one for each VR program."
+    },
+    {
+      "key": "VrResFactor.other",
+      "label": "The headset's resolution with another VR program",
+      "kind": "float",
+      "min": 0.1,
+      "max": 10,
+      "what": "VPX's [PlayerVR] ResFactor while it plays VR through any other VR program: each eye drawn at the size it recommends times this, past 0.1 and up to 10; empty, its own size. Settings › VR keeps one for each VR program."
+    },
+    {
       "key": "PlayWith",
       "label": "The VPX that plays the tables",
       "kind": "string",
@@ -1054,7 +1123,7 @@
           "`ScreenRes.txt`, `<table>.res`",
           "where B2S Server's windows go",
           "works",
-          "our windows from `[Backglass]` and `[ScoreView]`; bringing them over at setup, planned"
+          "set by the app from `[Backglass]` and `[ScoreView]` where B2S Server shows the backglasses, when Settings › Screens saves and before a table plays; bringing them over at setup, planned"
         ],
         [
           "`ArePluginsOn`, logs, screenshots",

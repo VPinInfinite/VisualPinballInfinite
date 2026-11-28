@@ -7,7 +7,7 @@ They're a download of their own beside the installer on the [releases page](http
 As VPX plays a table, not all of them can be earned yet:
 
 - those counting the table's parts (its pop bumpers, slingshots, spinners and targets) can't be earned in VPX yet, as VPX doesn't share a table's parts with add-ons;
-- those counting the balls in play, for a multiball, need a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build);
+- those counting the balls in play, for a multiball, need VPX 10.9, as Get VPX brings it, or a recent 10.8.1 build ([Which build of VPX](Installing-and-first-setup#which-build-of-vpx));
 - with VPX 10.8.0, or the classic VPinMAME or B2S Server, only those counting games and scores are counted, once the game is over.
 
 A table's page says beside each achievement when it can't be earned as the table plays, and why: see [What can be counted](Achievements#what-can-be-counted).

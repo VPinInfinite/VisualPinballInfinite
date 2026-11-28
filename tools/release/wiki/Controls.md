@@ -2,6 +2,8 @@
 
 Out of the box, the keys and buttons are VPX's own, so they work as they do in VPX. Settings › Controls lists every game action with its keys and buttons, the keyboard's and the controllers' in columns of their own, and saves them in VPX's settings, which VPX reads as a table starts. Click a key or button to change it, or **+** to add another, then press the key or button you want. **VPX's** beside an action puts back VPX's own. The page lights each action as you press it and lists the controllers connected, so it's also a live test of every button, stick and plunger. **Save** keeps your changes; **Undo changes** puts them back.
 
+Where Future Pinball is installed, the groups its games play too (**Flippers**, **Ball and cabinet**, **Coins and start**) are tagged **VPX + FP**, the others **VPX**: see [Future Pinball's games](#future-pinballs-games).
+
 ## The keyboard
 
 | Action | Key |
@@ -52,16 +54,20 @@ Any gamepad Windows knows works as soon as it's connected, in VPX's layout for g
 
 **X** and the gamepad's own **Start** do nothing until you give them an action. A gamepad rumbles where VPX's gamepads rumble.
 
-**In VPX 10.8.0**, which keeps controller settings of its own, an Xbox-style controller works as set up here too, but for its flippers: 10.8.0 can't flip with the triggers, so there they're on the shoulder buttons, and the magna-saves on the sticks' clicks. Where VPX 10.8.0's own settings already map a controller, it plays with those.
+**In VPX 10.8.0**, which keeps controller settings of its own, an Xbox-style controller plays as it's set up here, the flippers on the triggers too: the app passes its buttons and triggers to VPX 10.8.0 as its keys, from every controller connected, even one switched on mid-game, and VPX 10.8.0 reads its sticks itself. Where VPX 10.8.0's own settings already map a controller, it plays with those, and a controller of another kind, such as a cabinet's board, plays as 10.8.0's own settings set it.
+
+## Future Pinball's games
+
+Future Pinball's games play with the keys this page gives the flippers and the upper flippers, the magna-saves, launching the ball, start, coins 1 to 3 and the three nudges, set in Future Pinball for each game and put back after it. **Esc** ends the game. A controller's buttons and triggers are passed to Future Pinball as those keys, from every controller connected, while its window is in front. Its menu button opens the pause menu, or BAM's menu with **The game's own** (below). See [Future Pinball](Future-Pinball#playing).
 
 ## The pause menu
 
-**The pause menu**, on Settings › Controls, chooses what VPX's menu key opens (**F12**, or a controller's **Back**) in a game started from the app:
+**The pause menu**, on Settings › Controls, chooses what VPX's menu key opens (**F12**, or a controller's **Back**) in a game started from the app, in every VPX and in Future Pinball:
 
-- **The app's** (the usual): the app's own pause menu over the playfield, with Resume, the volume and each part of the sound, the table's rules and guide, your achievements, its controls and settings, and Quit the game; VPX's own menu is a row in it. See [Playing](Playing#the-pause-menu).
-- **VPX's own:** VPX's menu, as VPX shows it.
+- **The app's** (the usual): the app's own pause menu over the playfield, with Resume, the volume and each part of the sound, the table's rules and guide, your achievements, its controls and settings, and Quit the game; VPX's own menu, or BAM's in Future Pinball, is a row in it. In VPX 10.8.0 and in Future Pinball, it has no volume, levels or achievements. See [Playing](Playing#the-pause-menu).
+- **The game's own:** VPX's menu, or BAM's in Future Pinball, as they show it.
 
-The app's pause menu needs a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build). With an older one, VPX 10.8.0, or in a game started from a front end, F12 opens VPX's own menu.
+In an older VPX build (see [Which build of VPX](Installing-and-first-setup#which-build-of-vpx)), or in a game started from a front end, F12 opens VPX's own menu. A game played in VR shows VPX's own menu too, which VPX draws in the headset.
 
 In the app's pause menu:
 
@@ -77,7 +83,7 @@ On a cabinet, these are the keys Settings › Controls gives VPX's menu (**Menu:
 
 ## Screenshots
 
-**The key that takes one while you play:** **F9** unless you choose another (F1, F2, F4 to F8), or **None**. Each of VPX's windows is saved as it shows, into the table's screenshots on its page. VPX's own keys (F3, F10, F11 and F12) aren't offered. A table's settings can also take one by itself when a game makes the high scores (**Screenshot at a high score**). Screenshots are taken by the app's add-on in VPX 10.8.1, in games started from the app.
+**The key that takes one while you play:** **F9** unless you choose another (F1, F2, F4 to F8), or **None**. Each of VPX's windows is saved as it shows, into the table's screenshots on its page. VPX's own keys (F3, F10, F11 and F12) aren't offered. A table's settings can also take one by itself when a game makes the high scores (**Screenshot at a high score**). Screenshots are taken by the app's add-on in VPX 10.9 (or 10.8.1), in games started from the app.
 
 ## Cabinet boards
 

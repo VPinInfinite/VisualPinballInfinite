@@ -1,5 +1,6 @@
 //! What the screens need to know of a media file beyond its kind, read from the file itself and
-//! kept while the app runs (each file's facts until its length or time changes): its size as it's
+//! kept (each file's facts until its length or time changes), across runs too, in the app's data
+//! folder (`Library\media-facts.json`, `keep`), so a start reads none again: its size as it's
 //! shown — a picture's from its header, a video's from its MP4 track's header, turned as the track
 //! says — so a front end's playfield picture or video kept on its side for a cabinet's screen is
 //! shown upright, turned the way that matches an upright picture of the table; and whether a
@@ -10,8 +11,9 @@
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
-use std::time::SystemTime;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{LazyLock, Mutex, Once};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use image::GenericImageView;
 use image::imageops::FilterType;
@@ -49,6 +51,7 @@ pub fn address_stamp(path: &Path) -> String {
 
 /// `read`'s answer for `path`, read again only once the file has changed.
 fn known<T: Copy>(map: &Known<T>, path: &Path, read: impl FnOnce(&Path) -> T) -> T {
+    LOADED.call_once(load);
     let stamp = std::fs::metadata(path).map(|m| (m.len(), m.modified().ok())).unwrap_or((0, None));
     if let Some(&(len, when, value)) = map.lock().unwrap_or_else(|e| e.into_inner()).get(path)
         && (len, when) == stamp
@@ -57,7 +60,86 @@ fn known<T: Copy>(map: &Known<T>, path: &Path, read: impl FnOnce(&Path) -> T) ->
     }
     let value = read(path);
     map.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), (stamp.0, stamp.1, value));
+    LEARNED.store(true, Ordering::Relaxed);
     value
+}
+
+/// What was known when the app last ran read in, the first time a fact is asked for.
+static LOADED: Once = Once::new();
+/// Whether a fact was read since the file was last written.
+static LEARNED: AtomicBool = AtomicBool::new(false);
+
+/// A file's time as the file keeps it: seconds and nanoseconds since 1970.
+type When = Option<(u64, u32)>;
+
+fn when_of(t: Option<SystemTime>) -> When {
+    t.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| (d.as_secs(), d.subsec_nanos()))
+}
+
+fn time_of(w: When) -> Option<SystemTime> {
+    w.map(|(secs, nanos)| UNIX_EPOCH + Duration::new(secs, nanos))
+}
+
+/// The facts known, as the file keeps them: each file by its path, with its length and time then.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Kept {
+    version: u32,
+    sizes: Vec<(PathBuf, u64, When, Option<(u32, u32)>)>,
+    wheels: Vec<(PathBuf, u64, When, bool)>,
+    sounds: Vec<(PathBuf, u64, When, bool)>,
+    prints: Vec<(PathBuf, u64, When, Option<u64>)>,
+    turns: Vec<(PathBuf, PathBuf, (u64, When), (u64, When), u16)>,
+}
+
+/// The file's version: one of another reads nothing back.
+const KEPT_VERSION: u32 = 1;
+
+fn kept_file() -> Option<PathBuf> {
+    Some(crate::library::data_folder()?.join("Library").join("media-facts.json"))
+}
+
+fn load() {
+    let Some(kept) = kept_file().and_then(|f| std::fs::read(f).ok()).and_then(|b| serde_json::from_slice::<Kept>(&b).ok()).filter(|k| k.version == KEPT_VERSION) else {
+        return;
+    };
+    fn fill<T>(map: &Known<T>, from: Vec<(PathBuf, u64, When, T)>) {
+        let mut m = map.lock().unwrap_or_else(|e| e.into_inner());
+        for (path, len, when, value) in from {
+            m.entry(path).or_insert((len, time_of(when), value));
+        }
+    }
+    fill(&SIZES, kept.sizes);
+    fill(&WHEELS, kept.wheels);
+    fill(&SOUNDS, kept.sounds);
+    fill(&PRINTS, kept.prints);
+    let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
+    for (side, upright, (a, aw), (b, bw), turn) in kept.turns {
+        turns.entry((side, upright)).or_insert(((a, time_of(aw)), (b, time_of(bw)), turn));
+    }
+}
+
+/// What's known written to the app's data folder, where something was read since it was last
+/// written: each file still there, as it was when its facts were read.
+pub fn keep() {
+    if !LEARNED.swap(false, Ordering::Relaxed) {
+        return;
+    }
+    let Some(file) = kept_file() else { return };
+    fn take<T: Copy>(map: &Known<T>) -> Vec<(PathBuf, u64, When, T)> {
+        map.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|(p, _)| p.exists()).map(|(p, &(len, when, value))| (p.clone(), len, when_of(when), value)).collect()
+    }
+    let turns = TURNS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter(|((side, upright), _)| side.exists() && upright.exists())
+        .map(|((side, upright), &((a, aw), (b, bw), turn))| (side.clone(), upright.clone(), (a, when_of(aw)), (b, when_of(bw)), turn))
+        .collect();
+    let kept = Kept { version: KEPT_VERSION, sizes: take(&SIZES), wheels: take(&WHEELS), sounds: take(&SOUNDS), prints: take(&PRINTS), turns };
+    let _ = std::fs::create_dir_all(file.parent().unwrap_or(&file));
+    if let Err(e) = std::fs::write(&file, serde_json::to_vec(&kept).unwrap_or_default()) {
+        eprintln!("what's known of the media files wasn't kept: {e}");
+    }
 }
 
 /// Its size as shown, width by height: a picture's, or a video's (MP4 and its kin).
@@ -79,6 +161,7 @@ pub fn on_its_side(path: &Path, video: bool) -> bool {
 /// quarter right with nothing to match, or when either won't read (most are kept that way).
 pub fn upright_turn(side: &Path, upright: Option<&Path>) -> u16 {
     let Some(upright) = upright else { return 90 };
+    LOADED.call_once(load);
     let key = (side.to_path_buf(), upright.to_path_buf());
     let stamps = (stamp_of(side), stamp_of(upright));
     if let Some(&(a, b, turn)) = TURNS.lock().unwrap_or_else(|e| e.into_inner()).get(&key)
@@ -88,6 +171,7 @@ pub fn upright_turn(side: &Path, upright: Option<&Path>) -> u16 {
     }
     let turn = match_turn(side, upright).unwrap_or(90);
     TURNS.lock().unwrap_or_else(|e| e.into_inner()).insert(key, (stamps.0, stamps.1, turn));
+    LEARNED.store(true, Ordering::Relaxed);
     turn
 }
 

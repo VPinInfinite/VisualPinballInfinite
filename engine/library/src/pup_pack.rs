@@ -83,7 +83,7 @@ fn layout_zip(path: &Path) -> Option<Vec<(String, Vec<u8>)>> {
         if entry.is_dir() {
             continue;
         }
-        let name = entry.name().replace('\\', "/");
+        let name = crate::archive::zip_name(&entry);
         // its top only, and nothing that climbs out of it
         if name.contains('/') || name.contains("..") || entry.size() > SMALL {
             return None;

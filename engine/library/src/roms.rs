@@ -114,7 +114,7 @@ pub fn zip_files(reader: impl Read + Seek) -> Result<Vec<Found>, String> {
         if f.is_dir() {
             continue;
         }
-        let name = f.name().rsplit(['/', '\\']).next().unwrap_or(f.name()).to_string();
+        let name = crate::archive::zip_name(&f).rsplit('/').next().unwrap_or_default().to_string();
         out.push(Found { name, size: f.size(), crc: f.crc32() });
     }
     Ok(out)

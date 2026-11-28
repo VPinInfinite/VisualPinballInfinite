@@ -11,10 +11,10 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # a table's info and script, without its pictures
-vpin = "0.38"
+vpin = "0.40"
 # a download's archive, listed from its central directory; one locked with a password opened with it
 # (ZipCrypto, AES)
-zip = { version = "8", default-features = false, features = ["deflate", "aes-crypto"] }
+zip = { version = "9", default-features = false, features = ["deflate", "aes-crypto"] }
 # a ROM file's CRC, for checking a set that isn't a zip (zips keep their files' own)
 crc32fast = "1.5"
 # a download in a 7-Zip archive: reading alone, its methods in Rust (bzip2's port included), and
@@ -40,7 +40,7 @@ encoding_rs = "0.8"
 table-physics = { path = "../table-physics" }
 # PinUP Popper's game list (`PUPDatabase.db`, SQLite), its own SQLite built in (pinned: older than
 # two weeks, as every package added)
-rusqlite = { version = "=0.32.1", features = ["bundled"] }
+rusqlite = { version = "=0.41.1", features = ["bundled"] }
 # VPS's WebP pictures turned into PNGs for PinUP Popper's folders (the player's own image library)
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 

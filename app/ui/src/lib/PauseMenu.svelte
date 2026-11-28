@@ -58,10 +58,33 @@
     hideGuide();
   }
 
+  // the controllers the app reads itself while the menu shows, as XInput lists them, in the web's
+  // standard layout: what moves through the menu, whatever has the focus
+  let ownPads = [];
+
   onMount(() => {
     load();
-    const stop = startPad();
+    let stop = startPad({ pads: () => ownPads });
     const unlisten = listen('pause-menu-open', load);
+    // hidden over a game to show again (Future Pinball's): back on its first page, the controllers'
+    // presses read afresh next time, so a button held as it shows counts only once let go
+    const closed = listen('pause-menu-close', () => {
+      stop();
+      ownPads = [];
+      stop = startPad({ pads: () => ownPads });
+      reader = null;
+      page = 'main';
+      at = 0;
+    });
+    const padsHeard = listen('pads', (e) => {
+      ownPads = (e.payload || []).map((p) => ({ buttons: p.buttons.map((pressed) => ({ pressed })), axes: p.axes }));
+    });
+    // the keyboard's presses while the menu shows over a game that keeps the focus (Future
+    // Pinball's), handed over by the app as the browser names them, taken as the page's own
+    const keysHeard = listen('pause-menu-key', (e) => {
+      const { key, code } = e.payload || {};
+      if (key) window.dispatchEvent(new KeyboardEvent('keydown', { key, code, bubbles: true, cancelable: true }));
+    });
     // the guide's view shows its page once it has loaded
     const loaded = listen('pause-guide-loaded', (e) => {
       if (page === 'guide' && e.payload === guide?.pages?.[shown]?.name) viewLoaded = true;
@@ -71,6 +94,9 @@
     return () => {
       stop();
       unlisten.then((f) => f());
+      closed.then((f) => f());
+      padsHeard.then((f) => f());
+      keysHeard.then((f) => f());
       loaded.then((f) => f());
       window.removeEventListener('resize', resize);
       hideGuide();
@@ -102,17 +128,22 @@
       state?.guide && { id: 'guide', label: 'Guide', opens: true, note: 'How to play this game, from Pinball Primer' },
       state?.summary && { id: 'achievements', label: 'Achievements', opens: true, note: state.summary },
       { id: 'controls', label: 'Controls', opens: true, note: 'The keys and buttons it’s played with' },
-      t && { id: 'settings', label: 'Its settings', opens: true, note: 'VPX reads them as a table starts: they apply from your next game' },
+      // a Future Pinball table's own options are in BAM's menu
+      t && state?.program !== 'fp' && { id: 'settings', label: 'Its settings', opens: true, note: 'VPX reads them as a table starts: they apply from your next game' },
     ]
       .filter(Boolean)
       .map((r, i) => (i === 0 ? { ...r, section: 'Table' } : r));
     return [
       { id: 'resume', label: 'Resume', note: 'Play on' },
-      { id: 'volume', label: 'Volume', section: 'Sound', level: { value: volume, max: 100 }, note: 'VPX’s volume: the playfield’s and the backglass’s together, kept for your next games' },
-      ...parts.map((p) => ({ id: `part:${p.id}`, label: p.label, part: p, level: { value: Math.round(p.value * 100), max: 100 }, note: '100% is as it came, less turns it down: kept for this table' })),
+      // VPX 10.8.0 has no volume or levels the menu sets
+      ...(state?.older ? [] : [{ id: 'volume', label: 'Volume', section: 'Sound', level: { value: volume, max: 100 }, note: 'VPX’s volume: the playfield’s and the backglass’s together, kept for your next games' }]),
+      // an add-on's sound at VPX's own level for it, the same as VPX's sound settings show (up to 200%)
+      ...parts.map((p) => ({ id: `part:${p.id}`, label: p.label, part: p, level: { value: Math.round(p.value * 100), max: Math.round((p.max ?? 1) * 100) }, note: p.vpx ? 'VPX’s own level for this sound, the same as in VPX’s sound settings: kept for this table' : '100% is as it came, less turns it down: kept for this table' })),
       ...(parts.some((p) => Math.abs(p.value - 1) > 0.001) ? [{ id: 'reset', label: 'Put the parts back as they came', note: 'Every part of the sound back to as the table came' }] : []),
       ...table,
-      { id: 'vpx', label: 'VPX’s own menu', opens: true, section: '', note: 'For what only VPX changes at once: the view, the table’s options, the playfield’s and backglass’s volumes apart' },
+      state?.program === 'fp'
+        ? { id: 'vpx', label: 'BAM’s menu', opens: true, section: '', note: 'Future Pinball’s BAM: the table’s physics, lights, camera and backbox, kept for it' }
+        : { id: 'vpx', label: 'VPX’s own menu', opens: true, section: '', note: state?.older ? 'VPX 10.8.0’s menu: the table’s options, and its own way out' : 'For what only VPX changes at once: the view, the table’s options, the playfield’s and backglass’s volumes apart' },
       { id: 'quit', label: 'Quit the game', note: 'Back to the app' },
     ];
   });
@@ -231,8 +262,8 @@
     let last = 0;
     const poll = (now) => {
       frame = requestAnimationFrame(poll);
-      if (!document.hasFocus() || !viewLoaded) return;
-      const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+      if ((!ownPads.length && !document.hasFocus()) || !viewLoaded) return;
+      const pads = ownPads.length ? ownPads : navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
       let y = 0;
       for (const p of pads) {
         for (const a of [p.axes[1] ?? 0, p.axes[3] ?? 0]) if (Math.abs(a) > Math.abs(y)) y = a;

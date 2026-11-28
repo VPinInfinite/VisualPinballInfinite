@@ -4,14 +4,16 @@ Every setting is in one place: **Settings**, the sliders button at the top right
 
 VPX plays your tables, so most settings are VPX's own, under VPX's own names. The pages write them where VPX reads them, and VPX plays with them from the next table it starts:
 
-- **VPX's settings:** VPX's own settings file, `%APPDATA%\VPinballX\10.8\VPinballX.ini`. **Show the file**, on Screens and Sound, shows it in Explorer. VPX keeps a settings folder for each version: a VPX 10.9 build's is `%APPDATA%\VPinballX\10.9`, brought over from 10.8's the first time, and the pages set the settings of whichever VPX plays.
+- **VPX's settings:** VPX's own settings file, `%APPDATA%\VPinballX\10.9\VPinballX.ini` for VPX 10.9 (a 10.8.1 build's is in `10.8\`). **Show the file**, on Screens and Sound, shows it in Explorer. VPX keeps a settings folder for each version, 10.9's made from 10.8's the first time, and the pages set the settings of whichever VPX plays.
 - **The app's own few,** for what VPX has no setting of its own (where the achievement popup shows, the screenshot key and the like): `%APPDATA%\Visual Pinball Infinite\Settings.ini`.
 - **A table's own:** `<table>.ini` beside it, which VPX reads over your usual ones.
 - **The classic VPinMAME's, for each machine:** where VPinMAME keeps them, in your part of Windows' registry.
 
-**Save** writes only what changed, and the file as it was before is kept beside it (`VPinballX.previous.ini` for VPX's). VPX 10.8.0 keeps settings of its own: when it plays your tables, these pages still set VPX 10.8.1's, and a note at their top says so. Change 10.8.0's in its own Preferences.
+**Save** writes only what changed, and the file as it was before is kept beside it (`VPinballX.previous.ini` for VPX's). VPX 10.8.0 keeps settings of its own: when it plays your tables, these pages still set VPX 10.9's, and a note at their top says so. Change 10.8.0's in its own Preferences. Each game in VPX 10.8.0 still gets your controller, your sound outputs and volumes, the ball trail and the supersampling from these pages.
 
-The pages, in order: General, Library, Screens, Picture, Controls, Sound, Machines, PinUP packs, Cabinet and Advanced, with Physics sets under Advanced.
+The pages, in order: General, Library, Screens, Picture, Controls, Sound, Machines, PinUP packs, Cabinet, VR and Advanced, with Physics sets under Advanced.
+
+**Future Pinball's games** play with some of them too. Where Future Pinball is installed, each page's title, and each part of a page, says which tables it sets: **VPX**, **FP** or **VPX + FP**. Among those set for both are the windows on Settings › Screens, the speakers on Settings › Sound, and the keys for the flippers, the ball, the coins and start on Settings › Controls. See [Future Pinball](Future-Pinball#playing).
 
 ## General
 
@@ -24,11 +26,12 @@ The screenshot key is on Settings › Controls, and whether a table takes a scre
 
 ## Library
 
-- **VPX:** which VPX plays your tables, VPX 10.8.1 or VPX 10.8.0 where both are there; **How they differ** says what changes before you switch. One table can play with VPX 10.8.0 on its own, from its page's **…** menu (see [A table's page](Table-page)). **Choose VPX's folder…** chooses it by hand. **Get VPX 10.8.1** downloads build 6758, the VPX 10.8.1 build the app is made for ([Which VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build)), checks it against the checksum GitHub keeps of it, and puts it beside the VPX there, keeping every file it replaces; where your VPX 10.8.1 is an older build, it's offered in its place; **Undo Get VPX 10.8.1** takes out what it brought, to the Recycle Bin, and puts those files back.
-- **Its add-ons:** VPX 10.8.1 carries its own add-ons, and each part plays with **VPX's own** or with the classic program installed for it: **Machines' ROMs** (VPinMAME), **Backglasses** (B2S Server), **PinUP packs** (PinUP Player), **FlexDMD and UltraDMD** (FlexDMD), **Media Player's music** (Windows Media Player) and **Toys (DOF)** (DOF, through B2S Server). The first time tables play, each part gets VPX's own where no classic program is installed for it, and keeps the classic one where it is. Achievements as you play need VPX's own PinMAME and B2S add-ons. VPX 10.8.0 takes no add-ons: it plays with the classic programs.
+- **VPX:** which VPX plays your tables, VPX 10.9 or VPX 10.8.0 where both are there; **How they differ** (**VPX 10.9.0 or 10.8.0?** where only one is there) says what changes before you switch. One table can play with VPX 10.8.0 on its own, from its page's **…** menu (see [A table's page](Table-page)). **Choose VPX's folder…** chooses it by hand. **Get VPX 10.9.0** downloads build 7001, the VPX build the app is made for ([Which build of VPX](Installing-and-first-setup#which-build-of-vpx)), checks it against the checksum GitHub keeps of it, and puts it beside the VPX there, keeping every file it replaces; where your VPX is an older build of 10.8.1 or 10.9, **Get VPX 10.9.0 (build 7001)** is offered in its place. **Undo Get VPX** takes out what it brought, to the Recycle Bin, and puts those files back.
+- **Its add-ons:** VPX 10.9 carries its own add-ons, and each part plays with **VPX's own** or with the classic program installed for it: **Machines' ROMs** (VPinMAME), **Backglasses** (B2S Server), **PinUP packs** (PinUP Player), **FlexDMD and UltraDMD** (FlexDMD), **Media Player's music** (Windows Media Player) and **Toys (DOF)** (DOF, through B2S Server). The first time tables play, each part gets VPX's own where no classic program is installed for it, and keeps the classic one where it is. Achievements as you play need VPX's own PinMAME and B2S add-ons. VPX 10.8.0 takes no add-ons: it plays with the classic programs.
 - **Your settings:** settings made in an earlier version of the app that aren't in VPX's settings yet. **Bring them to VPX** copies them over once.
+- **Future Pinball:** where it is, **With BAM** or **Without BAM**. Where it isn't found, **Get Future Pinball with BAM** and **Future Pinball's site** open their makers' pages in the app's own browser, and **Look again** looks for it once it's installed. **Turn off fullscreen optimizations** turns Windows' own setting off for Future Pinball and BAM's loader during its games. See [Future Pinball](Future-Pinball).
 - **The library:** tiles or a list, what tiles show and their size, whether files dropped on a tile go to that table, a table with more than one table file shown once or each file on its own, and your ratings (whether they go in PinUP Popper's, PinballX's or PinballY's list too).
-- **Playlists:** your playlists, the smart playlists made from VPS's tags, and hidden tables.
+- **Playlists:** your playlists, the smart playlists made from VPS's tags (A to Z), and hidden tables.
 - **Folders:** what the drop window picks when a file is there already, whether each game has a folder of its own, and where each kind of file lives.
 
 Every table's media are under Tools › Media (see [Media](Media)). See [Your library](Your-library) and [Adding tables](Adding-tables).
@@ -39,7 +42,7 @@ Where each of VPX's windows goes (the playfield, the backglass, the score displa
 
 ## Picture
 
-- **The look, for every table:** the tone mapper (each table's own, or Reinhard, AgX, Filmic, Neutral or AgX Punchy for all), exposure, and the light level: each table's own, fixed, or from the sun where you are.
+- **The look, for every table:** the tone mapper (each table's own, or Reinhard, AgX, Filmic or Neutral for all), exposure, and the light level: each table's own, fixed, or from the sun where you are.
 - **On an HDR screen,** with Windows' HDR on: bright light by VPX's HDR curve or by each table's own tone mapper, and the HDR brightness.
 - **Quality:** smoothing (multisampling and supersampling), a smoothing filter (FXAA, NFAA, DLAA, SMAA or FAAA), sharpening, ambient occlusion, reflections, bloom, the balls' motion blur, sharper pictures at an angle, and the detail level. Each starts at VPX's own.
 - **The balls:** unstretch the ball, VPX's older ball trail, lighting on balls, and your own ball pictures.
@@ -72,9 +75,13 @@ How VPX's own PinUP add-on plays packs: on or off, which comes first on the back
 
 Cabinet mode's settings (what its playfield screen shows, its volume, the order its sound plays in, its screens, its picture and more), the playfield screen and where you stand, for the cabinet view, and the toys' configuration. A real DMD panel is on Picture. See [Cabinet mode](Cabinet-mode) and [Cabinet hardware](Cabinets).
 
+## VR
+
+VPX's tables in a VR headset: the VR program VPX plays with and a check of the headset, whether tables play in VR (**Off**, **When the headset is on** or **Always**), the headset's refresh rate and its resolution (kept for each VR program), what your screens show meanwhile, a backglass and sound in the headset, and the cabinet you stand at. See [VR](VR).
+
 ## Advanced
 
-Every setting: all of VPX's, VPinMAME's for every machine, and the app's own, by category, each with what it does, its default and its name in the file. A wrong value can make tables look, sound or play wrongly, so they're locked against a slip: **Unlock…** to change one, and **Lock** to lock them again.
+Every setting: all of VPX 10.9's, as VPX describes them, each add-on's sound level among them, VPinMAME's for every machine, and the app's own, by category, each with what it does, its default and its name in the file. A wrong value can make tables look, sound or play wrongly, so they're locked against a slip: **Unlock…** to change one, and **Lock** to lock them again.
 
 - Search them by name or by a word of what they do, or show **Only those set in the file**.
 - **Take it out** of the file to have its default again.

@@ -6,13 +6,15 @@ PinUP Player and Popper, VPin Studio, PinVol, table scripts, DOF, DMD Extensions
 
 Reads `vpx-build/vpinball-5436/src/core/Settings_properties.inl` and the `MSGPI_*_SETTING`
 declarations of its plugins, and our statuses from `tools/settings-map/status.json`; writes
-`docs/private/settings-map.md`, the app's catalog of every setting for its Advanced page,
-`app/ui/src/lib/settings-catalog.json` — each with its label, what it does, its kind, range,
-default and choices as VPX 5436 declares them (GPL, as the license audit reads that file), by
-category, with VPinMAME's for every machine and ours — and `docs/resources/settings.md`, the public list of
-every setting that works in ours: its name in the file, what it does, its values and its default.
-A VPX setting no status covers is listed as "not looked at yet", and `--check` fails while any is
-(run it after moving to a newer VPX). Ours.
+`docs/private/settings-map.md` and `docs/resources/settings.md`, the public list of every setting
+that works in our player: its name in the file, what it does, its values and its default. A VPX
+setting no status covers is listed as "not looked at yet", and `--check` fails while any is.
+
+The app's catalog of every setting for its Advanced page, `app/ui/src/lib/settings-catalog.json`,
+comes from the VPX the app is made for instead (`VPX_APP`, the same declarations at its build's
+commit): each setting with its label, what it does, its kind, range, default and choices as VPX
+declares them, by category, with the classic VPinMAME's for every machine and those of ours the app
+reads — no word of our player's on any. Move `VPX_APP` with the app's `MADE_FOR`. Ours.
 """
 
 import ast
@@ -25,6 +27,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 VPX = ROOT / "vpx-build" / "vpinball-5436"
+# the VPX the app is made for (library::vpx::MADE_FOR): its settings make the app's catalog, for the
+# Advanced page, while the map and the public list stay those of VPX 5436 beside our player. Its
+# source, sparse (src/core and plugins), at the build's commit: `git fetch --depth 1 --filter=blob:none`
+VPX_APP = ROOT / "vpx-build" / "vpinball-7001"
+VPX_APP_NAME = "VPX 10.9.0 build 7001"
 STATUS = pathlib.Path(__file__).resolve().parent / "status.json"
 OUT = ROOT / "docs" / "private" / "settings-map.md"
 CATALOG = ROOT / "app" / "ui" / "src" / "lib" / "settings-catalog.json"
@@ -82,16 +89,81 @@ def literal(arg):
 
 
 def section_name(group):
-    return "Plugin." + group[6:] if group.startswith("Plugin") else group
+    """A group's section in the settings file, as VPX's `GetBackwardCompatibleSection` names it."""
+    if group.startswith("Plugin"):
+        return "Plugin." + group[6:]
+    if group.startswith("DefaultProps"):
+        return "DefaultProps\\" + group[12:]
+    return group
 
 
-def vpx_core():
-    """VPX's core settings, with the heading each falls under."""
-    text = (VPX / "src" / "core" / "Settings_properties.inl").read_text(encoding="utf-8")
+# the names VPX's Windows build is made with, for the declarations' `#if`s: the BGFX build, neither
+# Android's nor Apple's
+WINDOWS_BUILD = {"ENABLE_BGFX": True, "_WIN32": True, "_WIN64": True, "__ANDROID__": False, "__APPLE__": False, "SDL_PLATFORM_ANDROID": False, "__LIBVPINBALL__": False}
+
+
+def condition(expr):
+    """A preprocessor condition, as VPX's Windows build has its names defined (unknown ones not)."""
+    known = lambda m: str(WINDOWS_BUILD.get(m.group(1), False))
+    e = re.sub(r"defined\s*\(\s*(\w+)\s*\)", known, expr)
+    e = re.sub(r"defined\s+(\w+)", known, e)
+    e = e.replace("&&", " and ").replace("||", " or ")
+    e = re.sub(r"!(?!=)", " not ", e)
+    e = re.sub(r"\b(?!True\b|False\b|and\b|or\b|not\b)([A-Za-z_]\w*)\b", known, e)
+    try:
+        return bool(eval(e, {"__builtins__": {}}))
+    except Exception:
+        return False
+
+
+def strip_comment(line):
+    """A line's code without its `//` comment, a `//` inside a string kept."""
+    quote, i = False, 0
+    while i < len(line):
+        c = line[i]
+        if quote and c == "\\":
+            i += 2
+            continue
+        if c == '"':
+            quote = not quote
+        elif not quote and line.startswith("//", i):
+            return line[:i].rstrip()
+        i += 1
+    return line
+
+
+def macros_of(root):
+    """The values VPX names its defaults by (`#define DEFAULT_TABLE_GRAVITY 0.97f`), from its physics
+    header, for the declarations that give a default by name."""
+    out = {}
+    header = root / "src" / "physics" / "physconst.h"
+    if header.is_file():
+        for m in re.finditer(r"^\s*#define\s+([A-Z_][A-Z0-9_]*)\s+([^\n/]+)", header.read_text(encoding="utf-8", errors="replace"), re.M):
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def with_macros(arg, macros):
+    """An argument with the names of known values in it replaced by those values."""
+    for _ in range(4):
+        new = re.sub(r"\b([A-Z_][A-Z0-9_]+)\b", lambda m: macros.get(m.group(1), m.group(1)), arg)
+        if new == arg:
+            break
+        arg = new
+    return arg
+
+
+def vpx_core(root=VPX):
+    """VPX's core settings, with the heading each falls under: those its Windows build declares
+    (the `#if`s' branches it takes), their defaults given by name read as their values."""
+    text = (root / "src" / "core" / "Settings_properties.inl").read_text(encoding="utf-8")
     out, heading = [], ""
-    # a comment line ends a line's code (none hold `//` inside a string)
-    lines = [re.sub(r'\s*//[^"]*$', "", l) if not l.strip().startswith("//") else l for l in text.split("\n")]
+    macros = macros_of(root)
+    # a comment ends a line's code, a `//` inside a string kept
+    lines = [strip_comment(l) if not l.strip().startswith("//") else l for l in text.split("\n")]
     i = 0
+    # the `#if`s around a line: whether each branch is taken, and whether one was
+    stack = []
     # a block of comments (preprocessor lines between them kept in it) heads what follows: its first line
     in_block = False
     while i < len(lines):
@@ -102,7 +174,29 @@ def vpx_core():
             in_block = True
             i += 1
             continue
-        if line.startswith("#") or not line:
+        if line.startswith("#"):
+            d = re.match(r"#\s*(ifdef|ifndef|if|elif|else|endif|define)\b\s*(.*)", line)
+            if d:
+                kind, rest = d.group(1), d.group(2).strip()
+                if kind in ("ifdef", "ifndef"):
+                    v = WINDOWS_BUILD.get(rest.split()[0] if rest else "", False) == (kind == "ifdef")
+                    stack.append([v, v])
+                elif kind == "if":
+                    v = condition(rest)
+                    stack.append([v, v])
+                elif kind == "elif" and stack:
+                    v = not stack[-1][1] and condition(rest)
+                    stack[-1] = [v, stack[-1][1] or v]
+                elif kind == "else" and stack:
+                    stack[-1] = [not stack[-1][1], True]
+                elif kind == "endif" and stack:
+                    stack.pop()
+                elif kind == "define" and all(s[0] for s in stack):
+                    name, _, value = rest.partition(" ")
+                    macros[name] = value.strip()
+            i += 1
+            continue
+        if not line or not all(s[0] for s in stack):
             i += 1
             continue
         in_block = False
@@ -140,8 +234,8 @@ def vpx_core():
         desc = literal(args[3]) if len(args) > 3 else ""
         if not name or not re.match(r"^\w+$", name):
             continue
-        out.append({"section": section_name(group), "key": name, "label": label, "desc": desc, "heading": heading, "kind": kind, "args": args[4:]})
-    # the same property twice under #ifdef: keep the first
+        out.append({"section": section_name(group), "key": name, "label": label, "desc": desc, "heading": heading, "kind": kind, "args": [with_macros(a, macros) for a in args[4:]]})
+    # the same property twice where no `#if` tells them apart: keep the first
     seen, unique = set(), []
     for p in out:
         k = (p["section"], p["key"])
@@ -151,10 +245,10 @@ def vpx_core():
     return unique
 
 
-def vpx_plugins():
+def vpx_plugins(root=VPX):
     """VPX's plugins' settings (`MSGPI_*_SETTING(var, "Key", "Label", "Description", ...)`)."""
     out = []
-    for cfg in sorted((VPX / "plugins").glob("*/plugin.cfg")):
+    for cfg in sorted((root / "plugins").glob("*/plugin.cfg")):
         m = re.search(r'^\s*id\s*=\s*"([^"]+)"', cfg.read_text(encoding="utf-8"), re.M)
         if not m:
             continue
@@ -244,7 +338,7 @@ def described(p):
             out = {"t": "float", "min": number(a[0]), "max": number(a[1]), "step": number(a[2]), "def": number(a[3]) if len(a) > 3 else None}
         elif m == "ENUM":
             out = {"t": "enum", "v0": number(a[0]), "def": number(a[3]) if len(a) > 3 else None, "v": p.get("values") or []}
-        elif m == "STRING":
+        elif m in ("STRING", "FOLDER", "FILE"):
             out = {"t": "string", "def": text_default(a[0]) if a else None}
     if out.get("t") == "enum" and not out.get("v"):
         out = {"t": "int", "def": out.get("def")}
@@ -369,7 +463,8 @@ def vpinmame_status(data, key):
     return None
 
 
-def catalog(rows, data):
+def entries_with_status(rows, data):
+    """Every setting with our player's word on it, for the public list: VPX 5436's, VPinMAME's, ours."""
     out = []
     for p in rows:
         st = p.get("status") or []
@@ -380,6 +475,18 @@ def catalog(rows, data):
             if len(st) > 1 and st[1]:
                 e["why"] = st[1]
         out.append(e)
+    out.extend(vpinmame_entries(data, with_status=True))
+    for v in data.get("vpi", []):
+        e = {"s": "VPI", "k": v["key"], "l": v["label"], "d": v["what"], "c": "vpi", "g": "Ours", "t": v["kind"], "st": "works"}
+        for f in ("def", "min", "max", "opts"):
+            if f in v:
+                e[f] = v[f]
+        out.append(e)
+    return out
+
+
+def vpinmame_entries(data, with_status):
+    out = []
     for key, label, kind, lo, hi, default, values in VPINMAME:
         e = {"s": "Machine.default", "k": key, "l": label, "d": "", "c": "vpinmame", "g": "VPinMAME", "t": kind}
         if lo is not None:
@@ -388,19 +495,69 @@ def catalog(rows, data):
             e["def"] = default
         if values:
             e["v"], e["v0"] = values, 0
-        st = vpinmame_status(data, key)
+        st = vpinmame_status(data, key) if with_status else None
         if st:
             e["st"], e["why"] = st[0], st[1]
         out.append(e)
+    return out
+
+
+def read_by_the_app(key):
+    """Whether the app, its library or our VPX add-on reads one of our own settings (`[VPI]` `key`):
+    those our player alone reads stay off the app's page. The shared settings crate counts too, its
+    tests not."""
+    for folder in ("app/src", "engine/library/src", "engine/vpx-addon/src", "engine/settings/src"):
+        for f in (ROOT / folder).rglob("*.rs"):
+            code = f.read_text(encoding="utf-8", errors="replace").split("#[cfg(test)]")[0]
+            if f'"{key}"' in code:
+                return True
+    return False
+
+
+# the add-ons that send VPX sound (their `AudioSource` lanes), by their IDs, as VPX's sound settings
+# name them: VPX's own and ours
+AUDIO_SOURCES = [("PinMAME", "PinMAME"), ("AltSound", "AltSound"), ("PUP", "PinUP"), ("WMP", "Windows Media Player"), ("B2S", "B2S"), ("VPIAchievements", "Achievements")]
+
+
+# the app's categories, as the catalog gives them: those VPX 5436's notes spoke of for our player
+# said of VPX itself
+APP_NOTES = {
+    "plugins": "The settings of VPX's own add-ons: its PinMAME, backglass, PinUP, DMD, colour, sound and toy add-ons.",
+    "vpi": "Ours, in the [VPI] section: what VPX hasn't.",
+    "vr": "VPX's VR and stereo 3D settings.",
+    "editor": "VPX's table editor's settings and the defaults it gives new parts.",
+    "player": "VPX's other settings: logs, debugging, its profiles, and VPinMAME's older backglass and toy switches.",
+}
+
+
+def app_catalog(data):
+    """The app's catalog for its Advanced page: every setting the VPX it's made for declares, the
+    classic VPinMAME's for every machine and ours the app reads, as each is declared, with no word of
+    our player's on them."""
+    rows = vpx_core(VPX_APP) + vpx_plugins(VPX_APP)
+    out = []
+    for p in rows:
+        e = {"s": p["section"], "k": p["key"], "l": p["label"] or p["key"], "d": p["desc"] if p["desc"] != p["label"] else "", "c": category(p), "g": p["heading"]}
+        e.update(described(p))
+        out.append(e)
+    # each add-on's sound level, which VPX registers as the add-on's sound first plays rather than
+    # declaring it (`Player::OnAudioSrcChanged`: `AudioSource.<add-on>.Gain`, 0 to 2, 1 its
+    # default, for every table or one): those of VPX's own add-ons that send it sound, and ours
+    for source, shown in AUDIO_SOURCES:
+        out.append({"s": "Player", "k": f"AudioSource.{source}.Gain", "l": f"{shown} Gain", "d": f"Volume gain applied to audio from {shown}: 0 silent, 2 twice as loud.", "c": "sound", "g": "Audio source levels", "t": "float", "min": 0, "max": 2, "step": 0.05, "def": 1})
+    out.extend(vpinmame_entries(data, with_status=False))
     for v in data.get("vpi", []):
-        e = {"s": "VPI", "k": v["key"], "l": v["label"], "d": v["what"], "c": "vpi", "g": "Ours", "t": v["kind"], "st": "works"}
+        if not read_by_the_app(v["key"]):
+            continue
+        e = {"s": "VPI", "k": v["key"], "l": v["label"], "d": v["what"], "c": "vpi", "g": "Ours", "t": v["kind"]}
         for f in ("def", "min", "max", "opts"):
             if f in v:
                 e[f] = v[f]
         out.append(e)
     doc = {
-        "about": "Every setting VPX 5436 declares (src/core/Settings_properties.inl, its plugins' MSGPI_*_SETTING declarations), VPinMAME's for every machine and ours, for the app's Advanced page. Generated by tools/settings-map/settings_map.py: edit that and tools/settings-map/status.json, not this file.",
-        "categories": [{"id": i, "label": l, "note": n} for i, l, n in CATEGORIES],
+        "about": f"Every setting {VPX_APP_NAME} declares (src/core/Settings_properties.inl, its add-ons' MSGPI_*_SETTING declarations), the classic VPinMAME's for every machine and the app's own, for the app's Advanced page. Generated by tools/settings-map/settings_map.py: edit that and tools/settings-map/status.json, not this file.",
+        "vpx": VPX_APP_NAME.removeprefix("VPX "),
+        "categories": [{"id": i, "label": l, "note": APP_NOTES.get(i, n)} for i, l, n in CATEGORIES],
         "settings": out,
     }
     CATALOG.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
@@ -636,8 +793,9 @@ def main():
 
     OUT.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(f"settings map: {len(rows)} VPX settings, {len(unknown)} not looked at yet -> {OUT.relative_to(ROOT)}")
-    entries = catalog(rows, data)
-    print(f"settings catalog: {len(entries)} settings -> {CATALOG.relative_to(ROOT)}")
+    entries = entries_with_status(rows, data)
+    app = app_catalog(data)
+    print(f"settings catalog: {len(app)} settings of {VPX_APP_NAME}'s, VPinMAME's and ours -> {CATALOG.relative_to(ROOT)}")
     print(f"settings list: {settings_list(entries)} that work -> {SETTINGS.relative_to(ROOT)}")
     if "--check" in sys.argv and unknown:
         print("not looked at yet: " + ", ".join(unknown[:40]))

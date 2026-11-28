@@ -25,7 +25,9 @@
 //! (ClarkKent, Javier15), and the table info's are also taken word by word,
 //! for a list with nothing between its names ("marty 32assassin"); and VPS's
 //! comments are compared with the table's name only for what's left of each
-//! once the game's own name, maker and year are taken out.
+//! once the game's own name, maker and year are taken out; and two names the
+//! same once their spaces and punctuation are aside are the same name (a file
+//! named `GameOfDog1.0.5` for VPS's Game Of Dog).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -167,6 +169,12 @@ pub fn name_distance(a: &str, b: &str) -> f64 {
     }
     let (a, b) = (a.to_lowercase(), b.to_lowercase());
     if a == b {
+        return 0.0;
+    }
+    // ours: the same name once its spaces and punctuation are aside ("GameOfDog", "Game Of Dog")
+    let squashed = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    let (sa, sb) = (squashed(&a), squashed(&b));
+    if !sa.is_empty() && sa == sb {
         return 0.0;
     }
     let mut distance = 10000.0f64;
@@ -637,14 +645,29 @@ const EXCLUDED_WORDS: [&str; 14] = ["mod", "vpx", "vr", "dt", "fss", "fs", "4k",
 const PLACEHOLDER_NAMES: [&str; 2] = ["visual pinball demo table", "table1"];
 
 /// The file name says something of the game (ours), letters only: it holds the game name's first
-/// word, or its initials ("TOTAN" for Tales of the Arabian Nights; two letters only at its start).
+/// word, or its initials ("TOTAN" for Tales of the Arabian Nights; two letters only at its start) —
+/// the name's as VPS gives it, or without what it adds in brackets, a model or an edition ("GOTG"
+/// for Guardians of the Galaxy (Pro)).
 pub fn relates(file_name: &str, game: &Game) -> bool {
     let letters = |s: &str| s.chars().filter(char::is_ascii_alphabetic).collect::<String>().to_lowercase();
     let file = letters(file_name);
-    let words: Vec<String> = game.name.split(|c: char| !c.is_alphanumeric()).map(letters).filter(|w| !w.is_empty()).collect();
-    let first = words.iter().find(|w| w.len() >= 3 && !["the", "and"].contains(&w.as_str()));
-    let initials: String = words.iter().filter_map(|w| w.chars().next()).collect();
-    first.is_some_and(|w| file.contains(w.as_str())) || initials.len() >= 3 && file.contains(&initials) || initials.len() == 2 && file.starts_with(&initials)
+    let says = |name: &str| {
+        let words: Vec<String> = name.split(|c: char| !c.is_alphanumeric()).map(letters).filter(|w| !w.is_empty()).collect();
+        let first = words.iter().find(|w| w.len() >= 3 && !["the", "and"].contains(&w.as_str()));
+        let initials: String = words.iter().filter_map(|w| w.chars().next()).collect();
+        first.is_some_and(|w| file.contains(w.as_str())) || initials.len() >= 3 && file.contains(&initials) || initials.len() == 2 && file.starts_with(&initials)
+    };
+    let mut bare = String::new();
+    let mut depth = 0usize;
+    for c in game.name.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => bare.push(c),
+            _ => {}
+        }
+    }
+    says(&game.name) || (bare.trim() != game.name.trim() && says(&bare))
 }
 
 /// The script's own name for its game holds the game's whole name, letters only, and is no ROM VPS
@@ -673,6 +696,9 @@ pub fn file_name_distance(game: &Game, file_name: &str) -> f64 {
 /// VPin Studio's confirming distance: a game this near a name is taken without asking.
 pub const CONFIRMING: f64 = THRESHOLD_CONFIRM;
 
+/// VPin Studio's not-found distance: a game further than this from a name isn't taken for it.
+pub const NOT_FOUND: f64 = THRESHOLD_NOTFOUND;
+
 /// A ROM's name as VPS lists it, for comparing.
 fn rom_key(rom: &str) -> String {
     let r = rom.trim().to_lowercase();
@@ -682,21 +708,35 @@ fn rom_key(rom: &str) -> String {
 /// A VPX table matched to VPS: VPin Studio's `VpsAutomatcher.autoMatch` — the game, then its
 /// table file — with ours where the module's notes say.
 pub fn match_table<'a>(db: &'a Database, clues: &Clues) -> Match<'a> {
-    const FORMATS: [&str; 1] = ["VPX"];
+    match_table_as(db, clues, &["VPX"])
+}
+
+/// A table matched to VPS among the games VPS lists table files of these formats for (`VPX`,
+/// Future Pinball's `FP`), and its table file among theirs.
+pub fn match_table_as<'a>(db: &'a Database, clues: &Clues, formats: &[&str]) -> Match<'a> {
     let mut parts = parse_filename(&clues.file_name);
-    let by_name = closest_games(&FORMATS, &parts, &db.games).first().copied();
+    let by_name = closest_games(formats, &parts, &db.games).first().copied();
     let (game, found, distance) = match by_name {
         Some((g, d)) if d <= THRESHOLD_CONFIRM => (Some(g), Found::ByFileName, d),
         _ => {
-            // the table info's name, with the file name's maker and year when it gives none; a game
-            // the file name says nothing of is left out (a table built on another's keeps its name),
-            // unless the script names it too
+            // the table info's name, with the file name's maker and year when it gives none: the
+            // nearest game the file name says something of, or the script names (a table built on
+            // another's keeps its name), short of VPin Studio's not-found distance — a nearer one
+            // the file name says nothing of passed over ("GOTG" for Guardians of the Galaxy (Pro),
+            // not the Trilogy, an original)
             let by_info = clues.info_name.as_deref().filter(|n| !PLACEHOLDER_NAMES.contains(&n.trim().to_lowercase().as_str())).and_then(|n| {
                 let mut p = parse_filename(n);
                 if p.manufacturer.is_none() && p.year < 0 {
                     (p.manufacturer, p.year) = (parts.manufacturer.clone(), parts.year);
                 }
-                closest_games(&FORMATS, &p, &db.games).first().copied().filter(|(g, _)| relates(&clues.file_name, g) || clues.rom.as_deref().is_some_and(|r| named_by_script(db, r, g)))
+                let clean_name = p.table_name.as_deref().filter(|n| !n.is_empty()).map(clean_table);
+                db.games
+                    .iter()
+                    .filter(|g| applies(formats, g))
+                    .filter(|g| relates(&clues.file_name, g) || clues.rom.as_deref().is_some_and(|r| named_by_script(db, r, g)))
+                    .map(|g| (g, game_distance(g, &p.display_name, clean_name.as_deref(), p.manufacturer.as_deref(), p.year)))
+                    .filter(|(_, d)| *d <= THRESHOLD_NOTFOUND)
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
             });
             // the games VPS lists the script's ROM for that the file name speaks of: the one whose table
             // file fits the table best (an original made on another machine's ROM lists that ROM too),
@@ -705,10 +745,10 @@ pub fn match_table<'a>(db: &'a Database, clues: &Clues) -> Match<'a> {
                 let clean_name = parts.table_name.as_deref().filter(|n| !n.is_empty()).map(clean_table);
                 db.games
                     .iter()
-                    .filter(|g| applies(&FORMATS, g) && g.rom_files.iter().any(|f| f.version.as_deref().is_some_and(|v| rom_key(v) == rom)))
+                    .filter(|g| applies(formats, g) && g.rom_files.iter().any(|f| f.version.as_deref().is_some_and(|v| rom_key(v) == rom)))
                     .filter(|g| relates(&clues.file_name, g))
                     .map(|g| {
-                        let fit = table_file_scores(g, &FORMATS, &file_query(g, &parts, clues)).iter().map(|s| s.total).fold(f64::INFINITY, f64::min);
+                        let fit = table_file_scores(g, formats, &file_query(g, &parts, clues)).iter().map(|s| s.total).fold(f64::INFINITY, f64::min);
                         (g, fit, game_distance(g, &parts.display_name, clean_name.as_deref(), parts.manufacturer.as_deref(), parts.year))
                     })
                     .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)))
@@ -731,7 +771,7 @@ pub fn match_table<'a>(db: &'a Database, clues: &Clues) -> Match<'a> {
         let q = file_query(game, &parts, clues);
         parts.extra = Some(q.name_authors.clone());
         version = q.version.clone();
-        table_file = closest_table_file(game, &FORMATS, &q);
+        table_file = closest_table_file(game, formats, &q);
         asked = Some(q);
     }
     Match { game, found, distance, table_file, version, parts, asked }
@@ -794,6 +834,10 @@ mod tests {
         let d = name_distance("terminator 2 judgment day", "terminator 2");
         let (cd, jd) = (1.0 - 2.0 / (2.0 * 2f64.sqrt()), 1.0 - 10.0 / 15.0);
         assert!((d - ((1.0 - 12.0 / 25.0) / 2.0f64).min(cd * jd)).abs() < 1e-12);
+        // ours: written without its spaces or with other punctuation, the same name
+        assert_eq!(name_distance("gameofdog", "game of dog"), 0.0);
+        assert_eq!(name_distance("AC/DC", "acdc"), 0.0);
+        assert!(name_distance("game of dogs", "game of dog") > 0.0);
     }
 
     #[test]
@@ -830,6 +874,9 @@ mod tests {
         assert!(relates("TimeLord-4.1a", &game("Time Lord", "Original", 2022)));
         assert!(relates("tz_94h", &game("Twilight Zone", "Bally", 1993)));
         assert!(!relates("JP's Arcade Physics v3.01 Rubber objects", &game("Count-Down", "Gottlieb", 1979)));
+        // the initials of the name without its edition in brackets
+        assert!(relates("GOTG_2.1.1", &game("Guardians of the Galaxy (Pro)", "Stern", 2017)));
+        assert!(!relates("TOTO 2.0", &game("Guardians of the Galaxy (Pro)", "Stern", 2017)));
     }
 
     #[test]

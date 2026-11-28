@@ -273,6 +273,114 @@ pub fn vbscript_ready() -> bool {
     true
 }
 
+/// Microsoft's page for its DirectX End-User Runtime, the web installer of the legacy DirectX
+/// SDK's libraries (D3DX 9, XInput 1.3 and the rest), which Windows doesn't carry.
+pub const DIRECTX_PAGE: &str = "https://www.microsoft.com/en-us/download/details.aspx?id=35";
+
+/// The libraries a program has Windows load as it starts (its import table's names, not those it
+/// loads only when first called), read from its file: none where it isn't a Windows program.
+pub fn imports_of(file: &[u8]) -> Vec<String> {
+    let u16_at = |at: usize| file.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
+    let u32_at = |at: usize| file.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let read = || -> Option<Vec<String>> {
+        let pe = u32_at(0x3C)? as usize;
+        if file.get(pe..pe + 4)? != b"PE\0\0" {
+            return None;
+        }
+        let sections = u16_at(pe + 6)? as usize;
+        let optional = pe + 24;
+        let optional_size = u16_at(pe + 20)? as usize;
+        // the import directory, the data directories' second: after 96 bytes in a 32-bit program's
+        // optional header, 112 in a 64-bit one's
+        let directories = match u16_at(optional)? {
+            0x10b => optional + 96,
+            0x20b => optional + 112,
+            _ => return None,
+        };
+        let imports = u32_at(directories + 8)?;
+        let table = optional + optional_size;
+        let offset_of = |rva: u32| -> Option<usize> {
+            (0..sections).find_map(|i| {
+                let s = table + i * 40;
+                let (size, va, raw_size, raw) = (u32_at(s + 8)?, u32_at(s + 12)?, u32_at(s + 16)?, u32_at(s + 20)?);
+                (rva >= va && rva < va + size.max(raw_size)).then(|| (rva - va + raw) as usize)
+            })
+        };
+        let mut names = Vec::new();
+        let mut at = offset_of(imports)?;
+        // twenty bytes for each library, its name's place the fourth word; the last all zeros
+        while names.len() < 512 {
+            let name = u32_at(at + 12)?;
+            if name == 0 {
+                break;
+            }
+            let start = offset_of(name)?;
+            let end = start + file.get(start..)?.iter().take(260).position(|&b| b == 0)?;
+            names.push(String::from_utf8_lossy(&file[start..end]).into_owned());
+            at += 20;
+        }
+        Some(names)
+    };
+    read().unwrap_or_default()
+}
+
+/// Whether a library is one of the DirectX End-User Runtime's, which Windows doesn't carry: the
+/// legacy DirectX SDK's D3DX, XInput 1.1 to 1.3, XAudio 2.0 to 2.7, X3DAudio, XAPOFX and the
+/// HLSL compilers 33 to 43 (VPX 10.8.0's programs load XInput 1.3, its Direct3D 9 one D3DX 9).
+pub fn from_directx(library: &str) -> bool {
+    let l = library.to_ascii_lowercase();
+    let numbered = |prefix: &str, range: std::ops::RangeInclusive<u32>| {
+        l.strip_prefix(prefix).and_then(|rest| rest.strip_suffix(".dll")).and_then(|n| n.parse::<u32>().ok()).is_some_and(|n| range.contains(&n))
+    };
+    ["d3dx9_", "d3dx10_", "d3dx11_", "x3daudio1_", "xapofx1_", "d3dcsx_"].iter().any(|p| l.starts_with(p))
+        || ["xinput1_1.dll", "xinput1_2.dll", "xinput1_3.dll"].contains(&l.as_str())
+        || numbered("xaudio2_", 0..=7)
+        || numbered("d3dcompiler_", 33..=43)
+}
+
+/// The libraries a program has Windows load as it starts that Windows won't find, looked for where
+/// Windows looks: beside it, in Windows' own folders (the 32-bit ones for a 32-bit program) and
+/// along `path` (PATH as the program is given it, with this app's folder where it lends
+/// Microsoft's C++ runtime). Windows' API sets (`api-ms-…`, `ext-ms-…`) are Windows' own.
+pub fn missing_libraries(program: &Path, path: Option<&std::ffi::OsStr>) -> Vec<String> {
+    let Ok(file) = std::fs::read(program) else { return Vec::new() };
+    let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    let pe = file.get(0x3C..0x40).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize).unwrap_or(0);
+    let thirty_two = file.get(pe + 4..pe + 6) == Some(&[0x4c, 0x01][..]) && windows.join("SysWOW64").is_dir();
+    let mut folders: Vec<PathBuf> = program.parent().map(Path::to_path_buf).into_iter().collect();
+    folders.push(windows.join(if thirty_two { "SysWOW64" } else { "System32" }));
+    folders.push(windows.clone());
+    if let Some(path) = path {
+        folders.extend(std::env::split_paths(path));
+    }
+    imports_of(&file)
+        .into_iter()
+        .filter(|name| {
+            let l = name.to_ascii_lowercase();
+            !(l.starts_with("api-ms-") || l.starts_with("ext-ms-")) && !folders.iter().any(|f| f.join(name).is_file())
+        })
+        .collect()
+}
+
+/// What a player is told where VPX can't start for want of libraries (`missing`, as
+/// `missing_libraries` finds them): the DirectX End-User Runtime's by name, which Microsoft's
+/// installer brings (`DIRECTX_PAGE`); any other, VPX's own install not whole.
+pub fn missing_said(vpx: &Vpx, missing: &[String]) -> Option<String> {
+    if missing.is_empty() {
+        return None;
+    }
+    let list = missing.join(", ");
+    if missing.iter().all(|m| from_directx(m)) {
+        let newer = if vpx.has_addons() { String::new() } else { format!(" Or get VPX {MADE_FOR_LINE} in Settings › Library, which doesn't need it.") };
+        return Some(format!("VPX {} needs {DIRECTX_RUNTIME}, which isn't on this PC ({list}). Install it with Microsoft's installer, then play again.{newer}", vpx.line()));
+    }
+    Some(format!("VPX couldn't start: Windows can't find {list}, which it needs. VPX's own files may be missing from its folder: installing VPX again brings them back."))
+}
+
+/// The DirectX End-User Runtime as a player is told of it, the screens offering Microsoft's page
+/// (`DIRECTX_PAGE`) where a notice names it.
+pub const DIRECTX_RUNTIME: &str = "Microsoft's DirectX End-User Runtime";
+
 /// Why VPX ended before it started, where Windows stopped it as it loaded its files: its exit
 /// code, Windows' own, told in words. None for any other ending.
 pub fn stopped_loading(code: i32) -> Option<String> {
@@ -355,19 +463,24 @@ pub fn follow(layout: &Layout) -> Option<Vpx> {
     vpx
 }
 
-/// Where VPX keeps the values a table's script saves (`SaveValue`), in the order it reads them: the
-/// table folder's `user\VPReg.stg` (10.8.1's own folder for each table), the tables folder's (the
-/// same, for a table kept in the tables folder itself), else VPX's own `User` (where VPX kept them
-/// before 10.8.1, and still reads them).
+/// Where VPX keeps the values a table's script saves (`SaveValue`), in the order it reads them:
+/// `VPReg.ini`, an ini file, where its newer builds write them (its `ScriptGlobalTable`'s
+/// `SaveValue`), then `VPReg.stg`, a compound file, where its older ones did, which it still reads a
+/// value from where the ini has none; each in the table folder's `user` (a folder of the table's
+/// own), the tables folder's (a table kept in the tables folder itself), else VPX's own `User`
+/// (where VPX kept them before 10.8.1, and its legacy layout still does).
 pub fn saved_values(layout: &Layout, table: Option<&Path>) -> Vec<PathBuf> {
-    let own = layout.vpx_folder.clone().or_else(|| layout.tables.parent().map(Path::to_path_buf)).map(|v| v.join("User").join("VPReg.stg"));
+    let own = layout.vpx_folder.clone().or_else(|| layout.tables.parent().map(Path::to_path_buf)).map(|v| v.join("User"));
     // VPX 10.8.0 keeps them in its own `User` alone
     if layout.play_with.as_deref().is_some_and(|l| l.trim() == "10.8.0") && plays_older(layout) {
-        return own.into_iter().collect();
+        return own.map(|d| d.join("VPReg.stg")).into_iter().collect();
     }
-    let mut files: Vec<PathBuf> = table.and_then(Path::parent).map(|d| d.join("user").join("VPReg.stg")).into_iter().collect();
-    files.push(layout.tables.join("user").join("VPReg.stg"));
-    files.extend(own);
+    let mut files: Vec<PathBuf> = Vec::new();
+    for name in ["VPReg.ini", "VPReg.stg"] {
+        files.extend(table.and_then(Path::parent).map(|d| d.join("user").join(name)));
+        files.push(layout.tables.join("user").join(name));
+        files.extend(own.as_ref().map(|d| d.join(name)));
+    }
     files.dedup();
     files
 }
@@ -402,29 +515,37 @@ pub struct Release {
     pub sha256: String,
 }
 
-/// The VPX 10.8.1 build the app is made and checked with. VPX 10.8.1 has no release: its builds are
-/// VPX's automatic builds of its newest code, the 10.8.1 builds on its releases page older ones it
-/// names "DO NOT USE". Its zip comes as VPX's own build made it, through nightly.link, which hands
-/// out a public project's automatic builds without a GitHub sign-in, and is checked against the
-/// checksum GitHub keeps of it. GitHub keeps an automatic build for 90 days.
-pub const MADE_FOR: u16 = 6758;
+/// The VPX build the app is made and checked with. VPX's newest code has no release: its builds are
+/// VPX's automatic builds of it (numbered 10.8.1, then 10.9.0, by the commits on its `master`), the
+/// builds on its releases page older ones it names "DO NOT USE". Its zip comes as VPX's own build
+/// made it, through nightly.link, which hands out a public project's automatic builds without a
+/// GitHub sign-in, and is checked against the checksum GitHub keeps of it. GitHub keeps an automatic
+/// build for 90 days.
+pub const MADE_FOR: u16 = 7001;
 
-/// That build, as Get VPX 10.8.1 downloads it.
+/// That build's whole version.
+pub const MADE_FOR_VERSION: [u16; 4] = [10, 9, 0, MADE_FOR];
+
+/// That build's line, the newer one the app gets and plays tables in.
+pub const MADE_FOR_LINE: &str = "10.9.0";
+
+/// That build, as Get VPX downloads it.
 pub fn made_for() -> Release {
     Release {
-        tag: "v10.8.1-6758-0af977650".into(),
-        title: "VPX 10.8.1 build 6758, an automatic build of VPX's code".into(),
+        tag: "v10.9.0-7001-a13d7625a".into(),
+        title: "VPX 10.9.0 build 7001, an automatic build of VPX's code".into(),
         prerelease: true,
-        zip: "VPinballX_BGFX-10.8.1-6758-0af977650-windows-x64-Release.zip".into(),
-        url: "https://nightly.link/vpinball/vpinball/actions/artifacts/13887182659.zip".into(),
-        size: 128_435_358,
-        sha256: "6c3e1b71c5022fb70e77c9e7ee9aa03cadeca5984667103189de0c48564f14c2".into(),
+        zip: "VPinballX_BGFX-10.9.0-7001-a13d7625a-windows-x64-Release.zip".into(),
+        url: "https://nightly.link/vpinball/vpinball/actions/artifacts/14972446842.zip".into(),
+        size: 117_581_531,
+        sha256: "f4e0ab5adde88f2eaaf06915358f5439a41055796a0709772d9321b91d9b847d".into(),
     }
 }
 
-/// Whether a VPX 10.8.1 is older than the build the app is made for.
+/// Whether a VPX with add-ons (10.8.1 or newer) is older than the build the app is made for: the
+/// builds are numbered by VPX's commits, across its lines.
 pub fn older_than_made_for(version: [u16; 4]) -> bool {
-    version[..3] == [10, 8, 1] && version[3] < MADE_FOR
+    version[..3] >= [10, 8, 1][..] && version[3] < MADE_FOR
 }
 
 /// Whether GitHub still keeps the build the app is made for, an automatic build being kept 90 days:
@@ -754,6 +875,50 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    fn a_programs_libraries_read_from_its_file_and_looked_for_as_windows_looks() {
+        let me = std::env::current_exe().unwrap();
+        let imports = imports_of(&std::fs::read(&me).unwrap());
+        assert!(imports.iter().any(|i| i.eq_ignore_ascii_case("kernel32.dll")), "{imports:?}");
+        // all of a running program's are here
+        assert_eq!(missing_libraries(&me, None), Vec::<String>::new());
+        assert!(imports_of(b"MZ, not a program").is_empty());
+        assert!(imports_of(&[]).is_empty());
+    }
+
+    #[test]
+    fn the_directx_runtimes_libraries_told_from_windows_own() {
+        for theirs in ["d3dx9_43.dll", "XINPUT1_3.dll", "xaudio2_7.dll", "X3DAudio1_7.dll", "d3dcompiler_43.dll", "d3dx11_43.dll"] {
+            assert!(from_directx(theirs), "{theirs}");
+        }
+        for windows in ["xinput1_4.dll", "xinput9_1_0.dll", "xaudio2_9.dll", "d3dcompiler_47.dll", "d3d9.dll", "FreeImage64.dll"] {
+            assert!(!from_directx(windows), "{windows}");
+        }
+        let older = Vpx { program: PathBuf::from(r"C:\VPX\VPinballX64.exe"), version: [10, 8, 0, 1983] };
+        let said = missing_said(&older, &["d3dx9_43.dll".into(), "XINPUT1_3.dll".into()]).unwrap();
+        assert!(said.starts_with("VPX 10.8.0 needs Microsoft's DirectX End-User Runtime, which isn't on this PC (d3dx9_43.dll, XINPUT1_3.dll)"), "{said}");
+        assert!(said.contains(DIRECTX_RUNTIME) && said.contains(&format!("get VPX {MADE_FOR_LINE}")), "{said}");
+        let own = missing_said(&older, &["FreeImage64.dll".into()]).unwrap();
+        assert!(own.contains("FreeImage64.dll") && !own.contains(DIRECTX_RUNTIME), "{own}");
+        assert_eq!(missing_said(&older, &[]), None);
+    }
+
+    /// What each VPX program in a folder has Windows load and what of it isn't on this PC:
+    /// `VPI_VPX_FOLDER=<VPX's folder> cargo test -p library --lib vpx_programs_libraries -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn vpx_programs_libraries() {
+        let folder = PathBuf::from(std::env::var("VPI_VPX_FOLDER").expect("VPI_VPX_FOLDER"));
+        for entry in std::fs::read_dir(&folder).unwrap().flatten() {
+            let p = entry.path();
+            if p.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) && p.file_name().is_some_and(|n| n.to_string_lossy().to_ascii_lowercase().starts_with("vpinball")) {
+                let imports = imports_of(&std::fs::read(&p).unwrap());
+                println!("{}: {} libraries, missing {:?}", p.display(), imports.len(), missing_libraries(&p, runtime_path().as_deref()));
+            }
+        }
+    }
+
+    #[test]
     fn windows_stopping_vpx_as_it_loads_told_in_words() {
         assert_eq!(stopped_loading(0xC000_0135_u32 as i32).as_deref(), Some("VPX couldn't start: a file it needs isn't on this PC (Windows' code 0xC0000135)"));
         assert!(stopped_loading(0xC000_0139_u32 as i32).is_some());
@@ -812,8 +977,12 @@ mod tests {
         assert!(artifact_of(&r.url).is_some());
         assert_eq!(r.sha256.len(), 64);
         assert!(older_than_made_for([10, 8, 1, 5436]));
-        assert!(!older_than_made_for([10, 8, 1, MADE_FOR]));
+        assert!(older_than_made_for([10, 8, 1, 6758]));
+        assert!(older_than_made_for([10, 9, 0, 6955]));
+        assert!(!older_than_made_for(MADE_FOR_VERSION));
+        assert!(!older_than_made_for([10, 9, 0, MADE_FOR + 1]));
         assert!(!older_than_made_for([10, 8, 0, 2051]));
+        assert_eq!(MADE_FOR_LINE, format!("{}.{}.{}", MADE_FOR_VERSION[0], MADE_FOR_VERSION[1], MADE_FOR_VERSION[2]));
     }
 
     #[test]
@@ -972,11 +1141,18 @@ mod tests {
         assert_eq!(memory_own, own_folder.join("pinmame").join("nvram"));
         assert_eq!(memory_flat, layout.vpinmame.join("nvram"));
         assert_eq!(machine_memory_folder(&layout, None), layout.vpinmame.join("nvram"));
-        // saved values: the table's own folder first, the tables folder's once, VPX's own last
+        // saved values: the newer builds' ini files, then the older ones' compound files; the table's
+        // own folder first, the tables folder's once, VPX's own last
+        let places = |name: &str| [own_folder.join("user").join(name), layout.tables.join("user").join(name), root.join("User").join(name)];
+        assert_eq!(saved_values(&layout, Some(&in_own)), [places("VPReg.ini"), places("VPReg.stg")].concat());
         assert_eq!(
-            saved_values(&layout, Some(&in_own)),
-            [own_folder.join("user").join("VPReg.stg"), layout.tables.join("user").join("VPReg.stg"), root.join("User").join("VPReg.stg")]
+            saved_values(&layout, Some(&flat)),
+            [
+                layout.tables.join("user").join("VPReg.ini"),
+                root.join("User").join("VPReg.ini"),
+                layout.tables.join("user").join("VPReg.stg"),
+                root.join("User").join("VPReg.stg")
+            ]
         );
-        assert_eq!(saved_values(&layout, Some(&flat)), [layout.tables.join("user").join("VPReg.stg"), root.join("User").join("VPReg.stg")]);
     }
 }

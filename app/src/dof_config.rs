@@ -99,7 +99,7 @@ pub fn import(picked: &Path) -> Result<usize, String> {
         let mut zip = zip::ZipArchive::new(std::fs::File::open(picked).map_err(|e| fail(&e))?).map_err(|e| fail(&e))?;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i).map_err(|e| fail(&e))?;
-            let name = entry.name().replace('\\', "/").rsplit('/').next().unwrap_or_default().to_string();
+            let name = ::library::archive::zip_name(&entry).rsplit('/').next().unwrap_or_default().to_string();
             if entry.is_dir() || !is_config(&name) {
                 continue;
             }

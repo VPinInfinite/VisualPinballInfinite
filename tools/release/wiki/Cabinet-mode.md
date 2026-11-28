@@ -5,7 +5,7 @@ Cabinet mode turns the app full screen across a cabinet's screens, for choosing 
 ## Its screens
 
 - **The playfield screen** shows **A wheel of their logos** over the chosen table's playfield, or **A row of their playfields** (Settings › Cabinet › **The playfield screen shows**). **Its playfield** chooses **Videos, with their sound**, or **Pictures**. A table without a video shows its picture.
-- **The backglass, score display and topper screens** show the chosen table's media where Settings › Screens puts VPX's windows, or where a preset of its own puts them (**Its screens**). The tables it starts play with that preset too, in VPX 10.8.1, while the desktop app keeps your usual screens.
+- **The backglass, score display and topper screens** show the chosen table's media where Settings › Screens puts VPX's windows, or where a preset of its own puts them (**Its screens**). The tables it starts play with that preset too, in VPX 10.9 (or 10.8.1), while the desktop app keeps your usual screens.
 
 ## The buttons
 
@@ -24,7 +24,7 @@ For a table with more than one build, a **Play …** row for each, to choose whi
 
 ## Playing from it
 
-**Start** plays the chosen table in VPX, as PLAY does, and shows "Starting …" until VPX's window is up; cabinet mode waits behind it. The pause menu works as it does from the desktop app (see [Playing](Playing#the-pause-menu)). After the game, you're back on the same table.
+**Start** plays the chosen table in VPX, as PLAY does, and shows "Starting …" until VPX's window is up; cabinet mode waits behind it. A Future Pinball table plays in Future Pinball, as its PLAY does. The pause menu works as it does from the desktop app (see [Playing](Playing#the-pause-menu)). After the game, you're back on the same table.
 
 ## When nobody plays
 

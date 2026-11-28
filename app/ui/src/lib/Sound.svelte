@@ -8,6 +8,7 @@
   import Icon from './Icon.svelte';
   import SpeakerPreview from './SpeakerPreview.svelte';
   import { notice } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
 
   let view = $state(null);
   let draft = $state(null);
@@ -77,7 +78,7 @@
     { v: 2, name: 'Surround, the rear speakers by the lockbar', text: 'A 5.1 or 7.1 set: the front pair at the table’s far end, the rear pair by you — as in a home cinema, the ball rolling toward you comes from behind.' },
     { v: 3, name: 'Surround, the front speakers by the lockbar', text: 'The same, plugged in the other way round: the front pair by you, the rear pair at the table’s far end.' },
     { v: 4, name: 'Cabinet surround (SSF), VPX’s older mixing', text: 'Speakers or shakers under the playfield: the side outputs at its far end, the rear outputs by the lockbar; the front outputs left for the backglass. Mixed as VPX’s older builds did.' },
-    { v: 5, name: 'Cabinet surround (SSF), VPX’s newer mixing', text: 'The same, mixed as VPX 10.8.1 mixes it — what most surround-sound cabinets are set up for.' },
+    { v: 5, name: 'Cabinet surround (SSF), VPX’s newer mixing', text: 'The same, mixed as VPX 10.8.1 and newer mix it — what most surround-sound cabinets are set up for.' },
   ];
   let shown = $state(null);
 
@@ -91,7 +92,7 @@
 <div class="page" data-loading={draft || problem ? undefined : ''}>
   <header>
     <div class="title">
-      <h1 class="display">Sound</h1>
+      <h1 class="display">Sound<ForTag which="both" /></h1>
       <p>Which speakers each part of a table plays through, and how loud. VPX reads these whenever a table starts; <kbd>-</kbd> and <kbd>=</kbd> change both volumes while you play.</p>
     </div>
     <div class="actions">
@@ -106,7 +107,7 @@
     <p class="soft">Looking at your sound outputs…</p>
   {:else}
     <section class="block">
-      <h2 class="section-title">Speakers</h2>
+      <h2 class="section-title">Speakers<ForTag which="both" /></h2>
       <div class="row">
         <span class="name">The playfield’s sounds</span>
         <select class="select long" value={draft.playfieldOutput || ''} onchange={(e) => (draft.playfieldOutput = e.currentTarget.value || null)}>
@@ -126,7 +127,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">Bass shaker</h2>
+      <h2 class="section-title">Bass shaker<ForTag which="vpx" /></h2>
       {#if view.haptic}
         <div class="row">
           <span class="name">Its output</span>
@@ -155,7 +156,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">The playfield’s speaker layout</h2>
+      <h2 class="section-title">The playfield’s speaker layout<ForTag which="vpx" /></h2>
       <div class="speakers">
         <div class="layouts" role="radiogroup" aria-label="The playfield’s speaker layout">
           {#each layouts as l (l.v)}
@@ -182,7 +183,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">Volumes</h2>
+      <h2 class="section-title">Volumes<ForTag which="vpx" /></h2>
       {#each volumes as [key, label, what] (key)}
         <div class="row vol">
           <span class="name">{label}</span>
@@ -194,7 +195,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">Achievements</h2>
+      <h2 class="section-title">Achievements<ForTag which="vpx" /></h2>
       <label class="check line"><input type="checkbox" bind:checked={draft.achievementSound} />Play a sound as each achievement is earned</label>
       <div class="row vol" class:off={!draft.achievementSound}>
         <span class="name">Its volume</span>
@@ -205,7 +206,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">Sound packs</h2>
+      <h2 class="section-title">Sound packs<ForTag which="vpx" /></h2>
       <label class="check line"><input type="checkbox" bind:checked={draft.altsound} />Play a game’s AltSound pack when it has one</label>
       <p class="note">AltSound packs replace a machine’s own music and sounds with remastered ones. Turned off, the machine’s own sound plays.</p>
     </section>

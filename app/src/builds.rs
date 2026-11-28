@@ -33,7 +33,9 @@ pub fn group_in(user: &User, k: &str, game: &dyn Fn(&str) -> Option<String>) -> 
 
 /// A table's machine on VPS, where it's matched surely (a guess, confirmed by none, groups nothing).
 fn sure_game(t: &Table) -> Option<String> {
-    t.on_vps.game.clone().filter(|_| t.on_vps.sure)
+    // a Future Pinball table a build of its own game's Future Pinball tables alone, apart from VPX's
+    let fp = if ::library::future_pinball::is_table(&t.path) { ":fp" } else { "" };
+    t.on_vps.game.clone().filter(|_| t.on_vps.sure).map(|g| format!("{g}{fp}"))
 }
 
 /// The group of the table `t`, as the library holds it.

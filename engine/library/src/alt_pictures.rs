@@ -28,7 +28,7 @@ pub fn copy_stem(table: &Path) -> String {
 }
 
 /// The kinds of a table's own files beside it, named for it, that a copy takes too.
-const COMPANIONS: [&str; 5] = ["directb2s", "ini", "pov", "vbs", "vpp"];
+const COMPANIONS: [&str; 6] = ["directb2s", "B2SPro", "ini", "pov", "vbs", "vpp"];
 
 /// A copy of `table` with each of `pictures` in place of the table's picture of the same name (its
 /// file's name without its ending, any case), written beside the table as `<stem>.vpx` with the

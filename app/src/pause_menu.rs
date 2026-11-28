@@ -11,6 +11,18 @@
 //! achievements, the keys and buttons it's played with — and what the menu asks of VPX — its own menu,
 //! the game ended, the volume, a part's level — goes to the add-on. The levels are kept for the table,
 //! and the volume in VPX's settings, once VPX has quit, as VPX writes its settings as it does.
+//!
+//! VPX 10.8.0 takes no add-on: there the app watches the menu's key and controller button itself, as
+//! VPX 10.8.1's settings map them, while VPX's playfield window is in front (`start_older`); a game
+//! there is given the button for no action of 10.8.0's and the key for none of its menus
+//! (`library::controller_1080`). 10.8.0 pauses as its window loses the focus to the menu's too. What
+//! the menu asks of it goes through its own close menu, with its own keys: that menu shown, or the
+//! game ended from it. Its sound has no levels the menu can set. Future Pinball's games the same way
+//! (`start_future_pinball`): its window found by its program, BAM's menu its own, Esc its way out —
+//! but Future Pinball keeps the focus while the menu shows (`open_over_future_pinball`): it draws in
+//! a full screen of its own, which gives way whenever its window loses the focus, so it's paused by
+//! its own Pause key and the menu shows over it without the focus, the keyboard the menu's while it
+//! shows (`menu_keys`).
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -57,6 +69,8 @@ struct Link {
     table_id: String,
     /// The add-on's end, once it's connected.
     stream: Option<TcpStream>,
+    /// A game in VPX 10.8.0, which takes no add-on.
+    older: Option<Older>,
     /// Where the achievements stood when the menu was last asked for.
     summary: Option<String>,
     lines: serde_json::Value,
@@ -71,6 +85,41 @@ struct Link {
     /// Each part of its sound's level, 1 as it came, and as they were when the game began.
     levels: BTreeMap<String, f64>,
     levels_then: BTreeMap<String, f64>,
+}
+
+/// What the menu works a game with that takes no add-on — VPX 10.8.0's, or Future Pinball's: the
+/// keys its own menu opens with and the game ends with, as DirectInput codes (10.8.0's Esc, where
+/// its settings leave Esc on, and its exit key, pressed twice, as it opens its close menu first;
+/// BAM's menu and Esc in Future Pinball), and VPX 10.8.1's settings as the game plays the controller
+/// they map, for the list of controls.
+struct Older {
+    own_menu: Option<u8>,
+    quit: Vec<u8>,
+    controls: Vec<(String, String, String)>,
+    /// Future Pinball's game: its window found by its program, its own menu BAM's.
+    future_pinball: bool,
+}
+
+/// Whether the game the menu watches is Future Pinball's, whose window it finds by its program.
+static FUTURE_PINBALL: AtomicBool = AtomicBool::new(false);
+
+/// Whether the menu shows over a game that keeps the focus (Future Pinball's), the game paused by its
+/// own key and the keyboard taken for the menu (`menu_keys`).
+static OVER_GAME: AtomicBool = AtomicBool::new(false);
+
+/// Where the menu's window over Future Pinball was placed and its page fitted, the game's window's
+/// place and size: none since it was made. Kept hidden between showings, it's shown again as it was
+/// while the game's window stays there, so it shows at once, its page as it was left.
+static FITTED_AT: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
+
+/// One press of Future Pinball's Pause at a time: its pausing and its playing on, each a press and a
+/// letting go, never mixed.
+static TAPPING: Mutex<()> = Mutex::new(());
+
+/// Whether the menu shows over a game that keeps the focus: a controller's buttons are the menu's
+/// then, not passed to the game as its keys.
+pub(crate) fn menu_over_game() -> bool {
+    OVER_GAME.load(Ordering::Relaxed)
 }
 
 /// What a table's file says for the menu: its own rules, and what its script reads beyond the
@@ -104,7 +153,7 @@ impl Facts {
 }
 
 /// Whether the app's own menu is asked for (`prefs.pauseMenu`, VPX's own where it's `vpx`).
-fn ours(app: &AppHandle) -> bool {
+pub(crate) fn ours(app: &AppHandle) -> bool {
     app.state::<Shared>().0.lock().unwrap().user.prefs.get("pauseMenu").and_then(serde_json::Value::as_str) != Some("vpx")
 }
 
@@ -141,6 +190,7 @@ pub fn start(app: &AppHandle, table_id: &str, played: Played) -> Option<(u16, St
     if !ours(app) {
         return None;
     }
+    FUTURE_PINBALL.store(false, Ordering::Relaxed);
     let facts = Facts::of(&played.table);
     let levels = as_kept(app.state::<Shared>().0.lock().unwrap().user.levels.get(&crate::library::key(&played.table)));
     let kept = levels_for_add_on(&levels, &facts).to_string();
@@ -149,7 +199,7 @@ pub fn start(app: &AppHandle, table_id: &str, played: Played) -> Option<(u16, St
     listener.set_nonblocking(true).ok()?;
     let ended = Arc::new(AtomicBool::new(false));
     *app.state::<PauseLink>().0.lock().unwrap() =
-        Some(Link { table_id: table_id.to_string(), stream: None, summary: None, lines: serde_json::Value::Array(Vec::new()), ended: ended.clone(), played, volume_steps: 0, facts, sources: serde_json::Value::Array(Vec::new()), levels_then: levels.clone(), levels });
+        Some(Link { table_id: table_id.to_string(), stream: None, older: None, summary: None, lines: serde_json::Value::Array(Vec::new()), ended: ended.clone(), played, volume_steps: 0, facts, sources: serde_json::Value::Array(Vec::new()), levels_then: levels.clone(), levels });
     let app = app.clone();
     std::thread::Builder::new()
         .name("pause-menu".into())
@@ -186,6 +236,305 @@ pub fn start(app: &AppHandle, table_id: &str, played: Played) -> Option<(u16, St
     Some((port, kept))
 }
 
+/// A game in VPX 10.8.0, which takes no add-on: the menu opened by the app itself, on the key and
+/// the controller button VPX 10.8.1's settings (`newer`) open VPX's menu with, pressed while VPX's
+/// playfield window is in front. `own`: 10.8.0's own settings, which the game's copy keeps its keys
+/// from.
+pub fn start_older(app: &AppHandle, table_id: &str, played: Played, newer: &[(String, String, String)], own: &[(String, String, String)]) {
+    if !ours(app) {
+        return;
+    }
+    let key = ::library::controller_1080::menu_key(newer);
+    let button = ::library::controller_1080::menu_button(newer, own);
+    let (escape, exit) = ::library::controller_1080::close_keys(own);
+    // the controller played as 10.8.1's settings map it: the app passes its buttons as keys
+    let controls = newer.to_vec();
+    let facts = Facts::of(&played.table);
+    let ended = Arc::new(AtomicBool::new(false));
+    FUTURE_PINBALL.store(false, Ordering::Relaxed);
+    *app.state::<PauseLink>().0.lock().unwrap() = Some(Link {
+        table_id: table_id.to_string(),
+        stream: None,
+        older: Some(Older { own_menu: Some(escape.unwrap_or(exit)), quit: vec![exit, exit], controls, future_pinball: false }),
+        summary: None,
+        lines: serde_json::Value::Array(Vec::new()),
+        ended: ended.clone(),
+        played,
+        volume_steps: 0,
+        facts,
+        sources: serde_json::Value::Null,
+        levels: BTreeMap::new(),
+        levels_then: BTreeMap::new(),
+    });
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("pause-menu-1080".into()).spawn(move || watch_older(&app, &ended, key, button));
+}
+
+/// The app's own menu over a game in Future Pinball, where it's asked for: as over VPX 10.8.0, which
+/// takes no add-on either — VPX's menu key and the controller's menu button, as Settings › Controls
+/// maps them, watched while Future Pinball's window is in front; BAM's menu its own (Q), Esc its way
+/// out; its controls the ones Settings › Controls gives its keys and the controller passed as them.
+pub fn start_future_pinball(app: &AppHandle, table_id: &str, table: &Path) {
+    if !ours(app) {
+        return;
+    }
+    let newer = vpi_settings::read_all();
+    let key = ::library::controller_1080::menu_key(&newer);
+    let button = ::library::controller_1080::menu_button(&newer, &[]);
+    let ended = Arc::new(AtomicBool::new(false));
+    FUTURE_PINBALL.store(true, Ordering::Relaxed);
+    let played = Played { settings: None, table_settings: table.with_extension("ini"), table: table.to_path_buf() };
+    *app.state::<PauseLink>().0.lock().unwrap() = Some(Link {
+        table_id: table_id.to_string(),
+        stream: None,
+        older: Some(Older { own_menu: Some(::library::future_pinball::BAM_MENU_KEY), quit: vec![::library::future_pinball::EXIT_KEY], controls: newer, future_pinball: true }),
+        summary: None,
+        lines: serde_json::Value::Array(Vec::new()),
+        ended: ended.clone(),
+        played,
+        volume_steps: 0,
+        // a Future Pinball table's file isn't one the table reader reads
+        facts: Facts::default(),
+        sources: serde_json::Value::Null,
+        levels: BTreeMap::new(),
+        levels_then: BTreeMap::new(),
+    });
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("pause-menu-fp".into()).spawn(move || watch_older(&app, &ended, key, button));
+}
+
+/// The menu's key and button watched while a game plays in VPX 10.8.0, until it ends: a press while
+/// VPX's playfield window is in front and the menu isn't open opens the menu; one held from before
+/// (the menu closed with it) waits for its release. The button on any controller XInput has
+/// (`pads::AllPads`). In Future Pinball, only once its window has answered Windows for a moment
+/// (`ANSWERING_FOR`), not while it still loads its table, which it takes no keys in; from then on
+/// for the rest of the game, the menu's window made then, hidden, so it shows at once when asked for.
+fn watch_older(app: &AppHandle, ended: &AtomicBool, key: Option<u8>, button: Option<u16>) {
+    let vk = key.and_then(virtual_key);
+    let mut armed = false;
+    let mut all = crate::pads::AllPads::new();
+    let mut answering_since: Option<Instant> = None;
+    let mut asked = Instant::now() - Duration::from_secs(1);
+    // Future Pinball's table loaded: its window answering for a moment
+    let mut ready = false;
+    while !ended.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(10));
+        let shown = OVER_GAME.load(Ordering::Relaxed) || app.get_webview_window(WINDOW).is_some_and(|w| w.is_visible().unwrap_or(false));
+        if shown || !vpx_in_front() {
+            armed = false;
+            continue;
+        }
+        let future_pinball = FUTURE_PINBALL.load(Ordering::Relaxed);
+        if future_pinball && !ready {
+            if asked.elapsed() >= Duration::from_millis(250) {
+                asked = Instant::now();
+                if game_window_answers() {
+                    answering_since.get_or_insert(asked);
+                } else {
+                    answering_since = None;
+                }
+            }
+            if answering_since.is_some_and(|s| s.elapsed() >= ANSWERING_FOR) {
+                ready = true;
+                let handle = app.clone();
+                let _ = app.run_on_main_thread(move || prepare_over_future_pinball(&handle));
+            }
+        }
+        let pad = button.is_some_and(|mask| all.read().iter().any(|g| g.buttons & mask != 0));
+        let down = pad || vk.is_some_and(key_down);
+        if !down {
+            armed = true;
+        } else if armed {
+            armed = false;
+            if future_pinball && !ready {
+                continue;
+            }
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || open_window(&handle));
+        }
+    }
+}
+
+/// How long Future Pinball's window has answered Windows before the menu opens over it.
+const ANSWERING_FOR: Duration = Duration::from_secs(2);
+
+/// Whether the game's playfield window answers Windows (its messages handled within a quarter of a
+/// second): Future Pinball's doesn't while it loads its table, nor when it has stopped answering.
+#[cfg(windows)]
+pub(crate) fn game_window_answers() -> bool {
+    vpx_window().is_some_and(|(hwnd, ..)| window_answers(hwnd))
+}
+
+#[cfg(not(windows))]
+pub(crate) fn game_window_answers() -> bool {
+    false
+}
+
+/// Whether a window answers Windows: a message that asks nothing (`WM_NULL`) handled within a
+/// quarter of a second, none sent to one Windows already counts as not answering.
+#[cfg(windows)]
+pub(crate) fn window_answers(hwnd: isize) -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SendMessageTimeoutW(hwnd: *mut std::ffi::c_void, msg: u32, wparam: usize, lparam: isize, flags: u32, timeout: u32, result: *mut usize) -> isize;
+    }
+    const SMTO_ABORTIFHUNG: u32 = 0x0002;
+    let mut result = 0usize;
+    // SAFETY: a window Windows found; a message that changes nothing; a number to fill
+    unsafe { SendMessageTimeoutW(hwnd as *mut std::ffi::c_void, 0, 0, 0, SMTO_ABORTIFHUNG, 250, &mut result) != 0 }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn window_answers(_hwnd: isize) -> bool {
+    false
+}
+
+/// Windows' virtual key for a DirectInput key code (a scan code; those from 0x80 the extended ones).
+#[cfg(windows)]
+fn virtual_key(dik: u8) -> Option<u32> {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn MapVirtualKeyW(code: u32, map: u32) -> u32;
+    }
+    let scan = if dik >= 0x80 { 0xE000 | u32::from(dik & 0x7F) } else { u32::from(dik) };
+    // SAFETY: a scan code to look up (MAPVK_VSC_TO_VK_EX)
+    let vk = unsafe { MapVirtualKeyW(scan, 3) };
+    (vk != 0).then_some(vk)
+}
+
+#[cfg(not(windows))]
+fn virtual_key(_dik: u8) -> Option<u32> {
+    None
+}
+
+/// Whether a key is held down now, by its virtual key.
+#[cfg(windows)]
+pub(crate) fn key_down(vk: u32) -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetAsyncKeyState(vk: i32) -> i16;
+    }
+    // SAFETY: a virtual key's state asked for
+    let state = unsafe { GetAsyncKeyState(vk as i32) };
+    state < 0
+}
+
+#[cfg(not(windows))]
+pub(crate) fn key_down(_vk: u32) -> bool {
+    false
+}
+
+/// Whether VPX's playfield window is the one in front.
+#[cfg(windows)]
+pub(crate) fn vpx_in_front() -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetForegroundWindow() -> *mut std::ffi::c_void;
+    }
+    // SAFETY: no arguments
+    let front = unsafe { GetForegroundWindow() } as isize;
+    vpx_window().is_some_and(|(hwnd, ..)| hwnd == front)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn vpx_in_front() -> bool {
+    false
+}
+
+/// Keys pressed in VPX 10.8.0 once its window has the focus back from the menu's: each pressed and let
+/// go, a moment apart, as its close menu opens as a key comes back up. On a thread of its own.
+fn press_in_vpx(keys: Vec<u8>) {
+    let _ = std::thread::Builder::new().name("pause-menu-keys".into()).spawn(move || {
+        let until = Instant::now() + Duration::from_millis(1500);
+        while !vpx_in_front() {
+            if Instant::now() > until {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        // VPX playing on before it reads keys again
+        std::thread::sleep(Duration::from_millis(200));
+        for (n, key) in keys.into_iter().enumerate() {
+            if n > 0 {
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            if !vpx_in_front() {
+                return;
+            }
+            tap(key);
+        }
+    });
+}
+
+/// A key pressed and let go in the window in front, by its DirectInput code, as a keyboard sends it.
+fn tap(dik: u8) {
+    send_key(dik, false);
+    std::thread::sleep(Duration::from_millis(60));
+    send_key(dik, true);
+}
+
+/// A key pressed (or let go, `up`) in the window in front, by its DirectInput code (a scan code;
+/// those from 0x80 the extended ones), as a keyboard sends it.
+#[cfg(windows)]
+pub(crate) fn send_key(dik: u8, up: bool) {
+    const EXTENDED: u32 = 0x0001;
+    const UP: u32 = 0x0002;
+    const SCANCODE: u32 = 0x0008;
+    let flags = SCANCODE | if dik >= 0x80 { EXTENDED } else { 0 } | if up { UP } else { 0 };
+    send_input(0, u16::from(dik & 0x7F), flags);
+}
+
+#[cfg(not(windows))]
+pub(crate) fn send_key(_dik: u8, _up: bool) {}
+
+/// One key's press or letting go sent as a keyboard sends it (`SendInput`): its virtual key, its
+/// scan code and Windows' marks for it.
+#[cfg(windows)]
+fn send_input(vk: u16, scan: u16, flags: u32) {
+    #[repr(C)]
+    struct KeybdInput {
+        vk: u16,
+        scan: u16,
+        flags: u32,
+        time: u32,
+        extra: usize,
+    }
+    #[repr(C)]
+    struct Input {
+        kind: u32,
+        ki: KeybdInput,
+        // the union's size, a mouse's input being the largest
+        rest: [u8; 8],
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SendInput(count: u32, inputs: *const Input, size: i32) -> u32;
+    }
+    const KEYBOARD: u32 = 1;
+    let input = Input { kind: KEYBOARD, ki: KeybdInput { vk, scan, flags, time: 0, extra: 0 }, rest: [0; 8] };
+    // SAFETY: one keyboard input, of the size Windows expects
+    unsafe { SendInput(1, &input, std::mem::size_of::<Input>() as i32) };
+}
+
+/// Future Pinball's Pause pressed and let go in the window in front: its own key for pausing a game
+/// and playing on, which no setting changes. Future Pinball reads the keyboard through DirectInput,
+/// which names the Pause key 0xC5 — its scan code, 0x45, marked extended — and reads 0x45 unmarked
+/// as Num Lock; so it's sent as its virtual key (`VK_PAUSE`), which Windows' own messages go by and
+/// which leaves Num Lock as it is, with that scan code marked extended.
+#[cfg(windows)]
+fn tap_pause() {
+    const VK_PAUSE: u16 = 0x13;
+    const EXTENDED: u32 = 0x0001;
+    const UP: u32 = 0x0002;
+    let _one_at_a_time = TAPPING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    send_input(VK_PAUSE, 0x45, EXTENDED);
+    std::thread::sleep(Duration::from_millis(60));
+    send_input(VK_PAUSE, 0x45, EXTENDED | UP);
+}
+
+#[cfg(not(windows))]
+fn tap_pause() {}
+
 /// The volume as the game left it kept for the games after: in the table's own settings where they
 /// set it, else in VPX's.
 fn keep_volume(table: &Path, steps: i64) {
@@ -212,19 +561,46 @@ fn keep_volume(table: &Path, steps: i64) {
     }
 }
 
+/// The add-ons' sounds' levels the menu set this game, each a share of VPX's level for it as the game
+/// began, written as VPX's own level for it in the table's own settings (`[Player]`
+/// `AudioSource.<add-on>.Gain`), which VPX's sound settings show and play the next game at.
+fn keep_gains(played: &Played, shares: &[(String, f64)]) {
+    let main = played.settings.as_ref().and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(vpi_settings::vpx_settings_text);
+    let main = vpi_settings::parse_ini(&main);
+    let text = std::fs::read(&played.table_settings).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let own = vpi_settings::parse_ini(&text);
+    let changes: Vec<vpi_settings::Change> = shares
+        .iter()
+        .map(|(id, share)| vpi_settings::Change::set("Player", &format!("AudioSource.{id}.Gain"), format!("{:.6}", (vpx_gain(&own, &main, id) * share).clamp(0.0, 2.0))))
+        .collect();
+    if let Err(e) = std::fs::write(&played.table_settings, vpi_settings::edit(&text, &changes)) {
+        eprintln!("the sound's levels weren't kept in the table's settings: {e}");
+    }
+}
+
 /// The game over: what the menu changed kept (VPX has quit, and writes its settings as it does), the
 /// link let go, the menu closed if it's open.
 pub fn end(app: &AppHandle) {
+    FUTURE_PINBALL.store(false, Ordering::Relaxed);
+    if OVER_GAME.swap(false, Ordering::SeqCst) {
+        crate::menu_keys::stop();
+    }
     if let Some(link) = app.state::<PauseLink>().0.lock().unwrap().take() {
         link.ended.store(true, Ordering::Relaxed);
         if link.volume_steps != 0 {
             keep_volume(&link.played.table, link.volume_steps);
         }
-        if link.levels != link.levels_then {
+        // an add-on's sound's level kept where VPX keeps it, in the table's own settings, so VPX's
+        // own menu has the same (a share kept by the app before taken into it)
+        let add_ons: Vec<(String, f64)> = link.levels.iter().filter(|(id, share)| *id != "table" && *id != "music" && (*share - 1.0).abs() > 0.001).map(|(id, share)| (id.clone(), *share)).collect();
+        if !add_ons.is_empty() {
+            keep_gains(&link.played, &add_ons);
+        }
+        if link.levels != link.levels_then || !add_ons.is_empty() {
             let shared = app.state::<Shared>();
             let mut st = shared.0.lock().unwrap();
             let key = crate::library::key(&link.played.table);
-            let levels: BTreeMap<String, f64> = link.levels.into_iter().filter(|(_, v)| (v - 1.0).abs() > 0.001).collect();
+            let levels: BTreeMap<String, f64> = link.levels.into_iter().filter(|(id, v)| (id == "table" || id == "music") && (v - 1.0).abs() > 0.001).collect();
             if levels.is_empty() {
                 st.user.levels.remove(&key);
             } else {
@@ -241,16 +617,21 @@ pub fn end(app: &AppHandle) {
         if let Some(w) = handle.get_webview_window(WINDOW) {
             let _ = w.close();
         }
+        *FITTED_AT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     });
 }
 
 /// The menu's window over VPX's playfield, in front and with the focus, the table seen through it;
 /// shown again, and told so, where it's open already.
 fn open_window(app: &AppHandle) {
+    if FUTURE_PINBALL.load(Ordering::Relaxed) {
+        return open_over_future_pinball(app);
+    }
     if let Some(w) = app.get_webview_window(WINDOW) {
         let _ = w.show();
-        let _ = w.set_focus();
+        crate::cabinet::focus(&w);
         let _ = app.emit_to(WINDOW, "pause-menu-open", ());
+        crate::pads::read_for(app, WINDOW);
         return;
     }
     let builder = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("index.html#pause".into()))
@@ -283,7 +664,10 @@ fn open_window(app: &AppHandle) {
             }
         }
         crate::screens::refit(&w);
-        let _ = w.set_focus();
+        // the window and the page in it, whose keys and controllers move through the menu
+        crate::cabinet::focus(&w);
+        // the controllers XInput lists, read by the app itself for the page, as VPX reads them
+        crate::pads::read_for(app, WINDOW);
         // back in front once it has the focus again (a page opened in the browser set it back), and
         // given the focus back should the guide's view ever take it
         let handle = app.clone();
@@ -295,13 +679,260 @@ fn open_window(app: &AppHandle) {
     }
 }
 
-/// The menu closed and VPX given the focus back, to play on.
+/// The menu over a game in Future Pinball, which keeps the focus: Future Pinball draws in a full
+/// screen of its own, which gives way whenever its window loses the focus — the screen's mode
+/// changed back, blank for a moment, and the sound a screen plays cut with it — so the game is
+/// paused by its own key (Pause), the menu shows over it without taking the focus, the table seen
+/// through it as over VPX, and the keyboard is the menu's while it shows (`menu_keys`), a
+/// controller's as ever (`pads`). Over its playfield window exactly.
+fn open_over_future_pinball(app: &AppHandle) {
+    let Some((_, x, y, width, height)) = vpx_window() else { return };
+    if OVER_GAME.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    // the game paused by its own key as the menu shows
+    let _ = std::thread::Builder::new().name("pause-menu-pause".into()).spawn(tap_pause);
+    let window = match app.get_webview_window(WINDOW) {
+        Some(w) => w,
+        None => match made_over_future_pinball(app, x, y, width, height) {
+            Some(w) => w,
+            None => {
+                OVER_GAME.store(false, Ordering::SeqCst);
+                let _ = std::thread::Builder::new().name("pause-menu-pause".into()).spawn(tap_pause);
+                return;
+            }
+        },
+    };
+    let at = (x, y, width, height);
+    {
+        let mut fitted = FITTED_AT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *fitted == Some(at) {
+            // shown before over the game's window where it is still: shown again as it was
+            crate::screens::show_quietly(&window);
+        } else {
+            crate::screens::place_and_show_quietly(&window, x, y, width, height);
+            *fitted = Some(at);
+        }
+    }
+    let _ = app.emit_to(WINDOW, "pause-menu-open", ());
+    crate::menu_keys::start(app, WINDOW);
+    crate::pads::read_for(app, WINDOW);
+    // kept above the game's window while it shows, as a game in a full screen of its own may put
+    // itself back on top; what happened written in the app's log
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("pause-menu-above".into()).spawn(move || keep_above_game(&app));
+}
+
+/// The menu's window over Future Pinball's playfield window (`x`, `y`, `width`, `height`), made
+/// hidden, never taking the focus, the table seen through it; none where it can't be made.
+fn made_over_future_pinball(app: &AppHandle, x: i32, y: i32, width: i32, height: i32) -> Option<tauri::WebviewWindow> {
+    let builder = WebviewWindowBuilder::new(app, WINDOW, WebviewUrl::App("index.html#pause".into()))
+        .title("Paused")
+        .decorations(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .focusable(false)
+        .visible(false)
+        .shadow(false)
+        // the table seen through what the menu doesn't cover, darkened by the page
+        .transparent(true)
+        .background_color(tauri::webview::Color(0, 0, 0, 0));
+    *FITTED_AT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    match crate::screens::made_at(builder, app, x, y, width, height).build() {
+        Ok(w) => Some(w),
+        Err(e) => {
+            eprintln!("The pause menu over Future Pinball couldn't be made: {e}");
+            None
+        }
+    }
+}
+
+/// The menu's window made ahead, hidden, once Future Pinball's table has loaded, so it shows at once,
+/// its page ready, when it's asked for. On the window thread.
+fn prepare_over_future_pinball(app: &AppHandle) {
+    if !FUTURE_PINBALL.load(Ordering::Relaxed) || OVER_GAME.load(Ordering::SeqCst) || app.get_webview_window(WINDOW).is_some() {
+        return;
+    }
+    let Some((_, x, y, width, height)) = vpx_window() else { return };
+    if made_over_future_pinball(app, x, y, width, height).is_some() {
+        eprintln!("The pause menu over Future Pinball made ahead, hidden, over its window at {x}, {y}, {width} x {height}");
+    }
+}
+
+/// The menu's window kept above Future Pinball's while it shows over it, without the focus: put back
+/// on top whenever it's found under the game's window, looked at ten times a second; what was found
+/// written in the app's log — the window in front as it opened and a moment after, how often it was
+/// put back on top.
+#[cfg(windows)]
+fn keep_above_game(app: &AppHandle) {
+    let started = Instant::now();
+    let ours = app.get_webview_window(WINDOW).and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+    let Some(ours) = ours else {
+        eprintln!("The pause menu over Future Pinball: its window wasn't found");
+        return;
+    };
+    let game = vpx_window();
+    eprintln!("The pause menu over Future Pinball opened: the game's window {:?}, in front: {}", game.map(|(_, x, y, w, h)| (x, y, w, h)), front_title());
+    let Some((game, ..)) = game else { return };
+    let mut raised = 0u32;
+    let mut said = false;
+    while OVER_GAME.load(Ordering::Relaxed) {
+        if !is_above(ours, game) {
+            raise_quietly(ours);
+            raised += 1;
+        }
+        if !said && started.elapsed() >= Duration::from_millis(700) {
+            said = true;
+            eprintln!("The pause menu over Future Pinball a moment after: in front: {}; the menu above the game: {}", front_title(), is_above(ours, game));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    eprintln!("The pause menu over Future Pinball closed after {} ms, put back above the game {raised} times", started.elapsed().as_millis());
+}
+
+#[cfg(not(windows))]
+fn keep_above_game(_app: &AppHandle) {}
+
+/// The title of the window in front, and its program's, for the app's log.
+#[cfg(windows)]
+fn front_title() -> String {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetForegroundWindow() -> *mut std::ffi::c_void;
+    }
+    // SAFETY: no arguments
+    let front = unsafe { GetForegroundWindow() } as isize;
+    let game = crate::future_pinball::in_front();
+    format!("\"{}\"{}", window_title(front), if game { " (Future Pinball)" } else { "" })
+}
+
+/// Whether window `a` is above window `b` among the desktop's windows, Windows' order of them from
+/// the top.
+#[cfg(windows)]
+fn is_above(a: isize, b: isize) -> bool {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetTopWindow(hwnd: *mut c_void) -> *mut c_void;
+        fn GetWindow(hwnd: *mut c_void, cmd: u32) -> *mut c_void;
+    }
+    const GW_HWNDNEXT: u32 = 2;
+    // SAFETY: the desktop's first window, then each one's next, as Windows lists them
+    let mut w = unsafe { GetTopWindow(std::ptr::null_mut()) };
+    for _ in 0..20_000 {
+        if w.is_null() {
+            break;
+        }
+        if w as isize == a {
+            return true;
+        }
+        if w as isize == b {
+            return false;
+        }
+        // SAFETY: a window Windows listed
+        w = unsafe { GetWindow(w, GW_HWNDNEXT) };
+    }
+    false
+}
+
+/// A window put on top of every window without the focus.
+#[cfg(windows)]
+fn raise_quietly(hwnd: isize) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowPos(hwnd: *mut std::ffi::c_void, after: isize, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
+    }
+    const HWND_TOPMOST: isize = -1;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    // SAFETY: the app's own window; its place and size kept
+    unsafe { SetWindowPos(hwnd as *mut std::ffi::c_void, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE) };
+}
+
+/// Future Pinball's playfield window brought to the front as its game starts, so the keyboard and a
+/// controller reach it from the first moment: once it answers Windows (not while it loads its table),
+/// for up to twenty seconds, until it has stayed in front for two or the game has ended; never while
+/// the app's menu is over it. Another window may hold the front as it starts (the app's own, as it
+/// gets out of the way, or a program asked something meanwhile).
+#[cfg(windows)]
+pub(crate) fn keep_future_pinball_in_front(ended: &AtomicBool) {
+    let started = Instant::now();
+    loop {
+        if ended.load(Ordering::Relaxed) || started.elapsed() > Duration::from_secs(180) {
+            return;
+        }
+        if future_pinball_window().is_some_and(|(hwnd, ..)| window_answers(hwnd)) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let answering = Instant::now();
+    let mut front_since: Option<Instant> = None;
+    let mut brought = 0u32;
+    while !ended.load(Ordering::Relaxed) && answering.elapsed() < Duration::from_secs(20) {
+        if crate::future_pinball::in_front() {
+            if front_since.get_or_insert_with(Instant::now).elapsed() >= Duration::from_secs(2) {
+                break;
+            }
+        } else if !OVER_GAME.load(Ordering::Relaxed) {
+            front_since = None;
+            if let Some((hwnd, ..)) = future_pinball_window() {
+                bring_forward(hwnd);
+                brought += 1;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    if brought > 0 {
+        eprintln!("Future Pinball's window brought to the front as its game started ({brought} times)");
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn keep_future_pinball_in_front(_ended: &AtomicBool) {}
+
+/// The menu closed and the game given its play back: VPX the focus, to play on; Future Pinball, which
+/// kept it, its keyboard and its Pause key again (`resume_over_game`), the menu's window kept hidden
+/// for the next time, its page back on its first page.
 fn close_and_resume(app: &AppHandle) {
     close_guide(app);
-    if let Some(w) = app.get_webview_window(WINDOW) {
-        let _ = w.close();
+    let over_game = OVER_GAME.swap(false, Ordering::SeqCst);
+    if over_game {
+        crate::menu_keys::stop();
     }
-    focus_vpx();
+    if let Some(w) = app.get_webview_window(WINDOW) {
+        if over_game {
+            let _ = app.emit_to(WINDOW, "pause-menu-close", ());
+            crate::screens::hide_quietly(&w);
+        } else {
+            let _ = w.close();
+        }
+    }
+    if over_game {
+        resume_over_game();
+    } else {
+        focus_vpx();
+    }
+}
+
+/// Future Pinball played on once the menu has gone: given the focus back where another window took
+/// it meanwhile, then its Pause key pressed again, on a thread of its own.
+fn resume_over_game() {
+    let _ = std::thread::Builder::new().name("pause-menu-resume".into()).spawn(|| {
+        if !vpx_in_front() {
+            bring_vpx_forward();
+        }
+        let until = Instant::now() + Duration::from_millis(1500);
+        while !vpx_in_front() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if vpx_in_front() {
+            tap_pause();
+        }
+    });
 }
 
 /// What the menu shows: the table playing (its view, as its page has it), where its achievements
@@ -315,11 +946,23 @@ fn close_and_resume(app: &AppHandle) {
 pub fn pause_menu_state(app: AppHandle, test: Option<String>) -> serde_json::Value {
     let testing = test.is_some() && crate::shot::from_args().is_some();
     let link = app.state::<PauseLink>();
-    let (table_id, summary, lines, settings, table_settings, table, steps, facts, sources, levels) = {
+    let (table_id, summary, lines, settings, table_settings, table, steps, facts, sources, levels, older) = {
         let guard = link.0.lock().unwrap();
         match guard.as_ref() {
-            Some(l) => (l.table_id.clone(), l.summary.clone(), l.lines.clone(), l.played.settings.clone(), Some(l.played.table_settings.clone()), Some(l.played.table.clone()), l.volume_steps, Some(l.facts.clone()), l.sources.clone(), l.levels.clone()),
-            None if testing => (test.clone().unwrap_or_default(), None, serde_json::Value::Array(Vec::new()), None, None, None, 0, None, example_sources(), BTreeMap::new()),
+            Some(l) => (
+                l.table_id.clone(),
+                l.summary.clone(),
+                l.lines.clone(),
+                l.played.settings.clone(),
+                Some(l.played.table_settings.clone()),
+                Some(l.played.table.clone()),
+                l.volume_steps,
+                Some(l.facts.clone()),
+                l.sources.clone(),
+                l.levels.clone(),
+                l.older.as_ref().map(|o| (o.controls.clone(), o.future_pinball)),
+            ),
+            None if testing => (test.clone().unwrap_or_default(), None, serde_json::Value::Array(Vec::new()), None, None, None, 0, None, example_sources(), BTreeMap::new(), None),
             None => return serde_json::Value::Null,
         }
     };
@@ -339,8 +982,14 @@ pub fn pause_menu_state(app: AppHandle, test: Option<String>) -> serde_json::Val
     let table = table.or(path);
     // the test mode's table, read for its picture of the menu (a game's is read as it starts)
     let facts = facts.unwrap_or_else(|| table.as_deref().map(Facts::of).unwrap_or_default());
-    let main = settings.and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(vpi_settings::vpx_settings_text);
-    let main = vpi_settings::parse_ini(&main);
+    // a game in 10.8.0: its controls as it plays them, from VPX 10.8.1's settings; no volume or
+    // levels the menu sets
+    let is_older = older.is_some();
+    let future_pinball = older.as_ref().is_some_and(|(_, fp)| *fp);
+    let main = match older {
+        Some((controls, _)) => controls,
+        None => vpi_settings::parse_ini(&settings.and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(vpi_settings::vpx_settings_text)),
+    };
     let own = table_settings.or_else(|| table.as_ref().map(|t| t.with_extension("ini"))).and_then(|p| std::fs::read(p).ok()).map(|b| vpi_settings::parse_ini(&String::from_utf8_lossy(&b))).unwrap_or_default();
     let (summary, lines) = if testing && summary.is_none() { example_achievements() } else { (summary, lines) };
     // where the table's own pictures its rules name are served, by name
@@ -350,8 +999,10 @@ pub fn pause_menu_state(app: AppHandle, test: Option<String>) -> serde_json::Val
         "pictures": pictures,
         "summary": summary,
         "lines": lines,
-        "volume": volume(&own, &main, steps),
-        "levels": level_rows(&sources, &levels, facts.music.is_some()),
+        "volume": if is_older { serde_json::Value::Null } else { serde_json::json!(volume(&own, &main, steps)) },
+        "levels": if is_older { Vec::new() } else { level_rows(&sources, &levels, facts.music.is_some(), &|id: &str| vpx_gain(&own, &main, id)) },
+        "older": is_older,
+        "program": if future_pinball { "fp" } else { "vpx" },
         "rules": facts.rules,
         "cards": facts.cards,
         "guide": guide,
@@ -400,7 +1051,7 @@ pub async fn pause_menu_guide_show(app: AppHandle, window: tauri::WebviewWindow,
             let _ = view.hide();
             view.navigate(url).map_err(|e| e.to_string())?;
         } else if place {
-            crate::screens::place_and_show(&view, at.0, at.1, at.2, at.3);
+            show_guide(&view, at);
         }
         return Ok(());
     }
@@ -436,7 +1087,7 @@ pub async fn pause_menu_guide_show(app: AppHandle, window: tauri::WebviewWindow,
                 (state.wanted, state.at, state.page.clone())
             };
             if wanted {
-                crate::screens::place_and_show(&view, at.0, at.1, at.2, at.3);
+                show_guide(&view, at);
                 focus_back_from_guide(&on_load);
             }
             let _ = on_load.emit("pause-guide-loaded", page);
@@ -500,16 +1151,31 @@ fn close_guide(app: &AppHandle) {
     }
 }
 
+/// The guide's view shown where it goes (`at`, desktop pixels): over a game that keeps the focus
+/// (Future Pinball's), without taking it.
+fn show_guide(view: &tauri::WebviewWindow, at: (i32, i32, i32, i32)) {
+    if OVER_GAME.load(Ordering::Relaxed) {
+        crate::screens::place_and_show_quietly(view, at.0, at.1, at.2, at.3);
+    } else {
+        crate::screens::place_and_show(view, at.0, at.1, at.2, at.3);
+    }
+}
+
 /// The menu given the focus back where the guide's view took it (a click in its page): VPX's keys and
-/// a controller are the menu's. Whatever else takes the focus — the user's browser, another program —
-/// keeps it.
+/// a controller are the menu's — over a game that keeps the focus, the game given it back, the
+/// keyboard the menu's all the same. Whatever else takes the focus — the user's browser, another
+/// program — keeps it.
 fn focus_back_from_guide(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         // once Windows has moved the focus
         std::thread::sleep(Duration::from_millis(80));
         let (Some(view), Some(menu)) = (app.get_webview_window(GUIDE), app.get_webview_window(WINDOW)) else { return };
-        if in_front(&view) {
+        if OVER_GAME.load(Ordering::Relaxed) {
+            if in_front(&view) || in_front(&menu) {
+                bring_vpx_forward();
+            }
+        } else if in_front(&view) {
             crate::cabinet::focus(&menu);
         }
     });
@@ -539,6 +1205,27 @@ fn in_front(_: &tauri::WebviewWindow) -> bool {
 #[tauri::command]
 pub fn pause_menu_do(app: AppHandle, what: String, steps: Option<i64>, id: Option<String>, value: Option<f64>) -> Result<Option<i64>, String> {
     let link = app.state::<PauseLink>();
+    // a game that takes no add-on: its own menu shown (VPX 10.8.0's close menu, BAM's), or the game
+    // ended (10.8.0's exit key opens its close menu and in it ends the game; Future Pinball's Esc),
+    // once its window has the focus back
+    let older = link.0.lock().unwrap().as_ref().and_then(|l| l.older.as_ref().map(|o| (o.own_menu, o.quit.clone(), o.future_pinball)));
+    if let Some((own_menu, quit, future_pinball)) = older {
+        let keys = match what.as_str() {
+            "resume" => Vec::new(),
+            "vpx-menu" => own_menu.into_iter().collect(),
+            "quit" => quit,
+            _ if future_pinball => return Err("Future Pinball sets its sound in BAM's menu.".into()),
+            _ => return Err("VPX 10.8.0 sets its sound in its own menu.".into()),
+        };
+        if future_pinball && what == "quit" {
+            crate::future_pinball::asked_to_end();
+        }
+        close_and_resume(&app);
+        if !keys.is_empty() {
+            press_in_vpx(keys);
+        }
+        return Ok(None);
+    }
     let mut now = None;
     let line = match what.as_str() {
         "resume" => None,
@@ -559,9 +1246,19 @@ pub fn pause_menu_do(app: AppHandle, what: String, steps: Option<i64>, id: Optio
         "level" => {
             let mut guard = link.0.lock().unwrap();
             let l = guard.as_mut().ok_or("VPX isn't playing any more.")?;
-            let (id, value) = (id.ok_or("Which part of the sound?")?, value.unwrap_or(1.0).clamp(0.0, 1.0));
-            l.levels.insert(id.clone(), value);
-            Some(level_line(&id, value, &l.facts))
+            let id = id.ok_or("Which part of the sound?")?;
+            // an add-on's sound at VPX's own level for it: the add-on given the share of the level VPX
+            // started the game with, which VPX's settings take at the game's end (`end`)
+            let share = if id == "table" || id == "music" {
+                value.unwrap_or(1.0).clamp(0.0, 1.0)
+            } else {
+                let main = l.played.settings.as_ref().and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_else(vpi_settings::vpx_settings_text);
+                let own = std::fs::read(&l.played.table_settings).map(|b| vpi_settings::parse_ini(&String::from_utf8_lossy(&b))).unwrap_or_default();
+                let gain = vpx_gain(&own, &vpi_settings::parse_ini(&main), &id);
+                if gain > 0.0 { value.unwrap_or(gain).clamp(0.0, 2.0) / gain } else { 1.0 }
+            };
+            l.levels.insert(id.clone(), share);
+            Some(level_line(&id, share, &l.facts))
         }
         _ => return Err(format!("The pause menu can't {what}.")),
     };
@@ -586,15 +1283,31 @@ fn level_line(id: &str, value: f64, facts: &Facts) -> serde_json::Value {
     }
 }
 
+/// VPX's own level for an add-on's sound (`[Player]` `AudioSource.<add-on>.Gain`, 0 to 2, as VPX's
+/// sound settings set it), the table's own settings over the main ones, 1 where neither sets it.
+fn vpx_gain(own: &[(String, String, String)], main: &[(String, String, String)], id: &str) -> f64 {
+    let key = format!("AudioSource.{id}.Gain");
+    vpi_settings::get(own, "Player", &key).or_else(|| vpi_settings::get(main, "Player", &key)).and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(1.0).clamp(0.0, 2.0)
+}
+
 /// The parts of the sound the menu shows levels for: the table's own sounds, its machine's, its
 /// music where its script plays some, then each other add-on with sound now, in that order, named as
-/// a player knows them; each from 0 to 1, 1 as it came.
-fn level_rows(sources: &serde_json::Value, levels: &BTreeMap<String, f64>, music: bool) -> Vec<serde_json::Value> {
+/// a player knows them. The table's own sounds and music each from 0 to 1, 1 as it came; an
+/// add-on's as VPX's own sound settings have its level (`gain`, 0 to 2, `vpx`), the share of it the
+/// menu set this game (`levels`) taken in.
+fn level_rows(sources: &serde_json::Value, levels: &BTreeMap<String, f64>, music: bool, gain: &dyn Fn(&str) -> f64) -> Vec<serde_json::Value> {
     let sources: Vec<(String, String)> = sources
         .as_array()
         .map(|a| a.iter().filter_map(|s| Some((s.get("id")?.as_str()?.to_string(), s.get("name")?.as_str()?.to_string()))).collect())
         .unwrap_or_default();
-    let row = |id: &str, label: &str| serde_json::json!({ "id": id, "label": label, "value": levels.get(id).copied().unwrap_or(1.0) });
+    let row = |id: &str, label: &str| {
+        let share = levels.get(id).copied().unwrap_or(1.0);
+        if id == "table" || id == "music" {
+            serde_json::json!({ "id": id, "label": label, "value": share, "max": 1.0 })
+        } else {
+            serde_json::json!({ "id": id, "label": label, "value": ((gain(id) * share).clamp(0.0, 2.0) * 100.0).round() / 100.0, "max": 2.0, "vpx": true })
+        }
+    };
     let known = [("PinMAME", "Machine"), ("AltSound", "Machine (AltSound)"), ("PUP", "PinUP pack"), ("WMP", "Media Player"), ("B2S", "Backglass sounds"), ("VPIAchievements", "Achievements")];
     let mut rows = vec![row("table", "Table sounds")];
     for (id, label) in &known[..2] {
@@ -897,9 +1610,13 @@ fn example_achievements() -> (Option<String>, serde_json::Value) {
     (Some("Hardcore · 1 of 3 earned · 10 of 55 points".into()), lines)
 }
 
-/// VPX's playfield window, by the title VPX gives it: its handle and where it is, in desktop pixels.
+/// The game's playfield window: VPX's by the title VPX gives it (in VR, its window on the desktop),
+/// Future Pinball's by its program (`FUTURE_PINBALL`); its handle and where it is, in desktop pixels.
 #[cfg(windows)]
 fn vpx_window() -> Option<(isize, i32, i32, i32, i32)> {
+    if FUTURE_PINBALL.load(Ordering::Relaxed) {
+        return future_pinball_window();
+    }
     #[repr(C)]
     #[derive(Default)]
     struct Rect {
@@ -913,12 +1630,14 @@ fn vpx_window() -> Option<(isize, i32, i32, i32, i32)> {
         fn FindWindowW(class: *const u16, title: *const u16) -> *mut std::ffi::c_void;
         fn GetWindowRect(hwnd: *mut std::ffi::c_void, rect: *mut Rect) -> i32;
     }
-    let title: Vec<u16> = "Visual Pinball Player".encode_utf16().chain(std::iter::once(0)).collect();
-    // SAFETY: a NUL-ended title; no class asked for
-    let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
-    if hwnd.is_null() {
-        return None;
-    }
+    // its playfield's title, or in VR its window on the desktop's, which takes the keyboard and a
+    // cabinet's buttons while it has the focus
+    let hwnd = ["Visual Pinball Player", "Visual Pinball Desktop Display"].iter().find_map(|name| {
+        let title: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: a NUL-ended title; no class asked for
+        let hwnd = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+        (!hwnd.is_null()).then_some(hwnd)
+    })?;
     let mut r = Rect::default();
     // SAFETY: a window Windows found, a rectangle to fill
     (unsafe { GetWindowRect(hwnd, &mut r) } != 0).then(|| (hwnd as isize, r.left, r.top, r.right - r.left, r.bottom - r.top))
@@ -928,6 +1647,202 @@ fn vpx_window() -> Option<(isize, i32, i32, i32, i32)> {
 fn vpx_window() -> Option<(isize, i32, i32, i32, i32)> {
     None
 }
+
+/// Future Pinball's playfield window: the largest window shown of its program's, its handle and where
+/// it is, in desktop pixels (its backbox the other, where it shows one).
+fn future_pinball_window() -> Option<(isize, i32, i32, i32, i32)> {
+    future_pinball_windows().into_iter().next()
+}
+
+/// Future Pinball's windows shown, the largest first: each one's handle and where it is, in desktop
+/// pixels.
+#[cfg(windows)]
+pub(crate) fn future_pinball_windows() -> Vec<(isize, i32, i32, i32, i32)> {
+    use std::ffi::c_void;
+    #[repr(C)]
+    #[derive(Default)]
+    struct Rect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn EnumWindows(each: unsafe extern "system" fn(*mut c_void, isize) -> i32, data: isize) -> i32;
+        fn GetWindowThreadProcessId(hwnd: *mut c_void, pid: *mut u32) -> u32;
+        fn IsWindowVisible(hwnd: *mut c_void) -> i32;
+        fn GetWindowRect(hwnd: *mut c_void, rect: *mut Rect) -> i32;
+    }
+    let pids: Vec<u32> = ::library::processes::running_with_ids().into_iter().filter(|(_, name)| name.eq_ignore_ascii_case(::library::future_pinball::PROGRAM)).map(|(pid, _)| pid).collect();
+    if pids.is_empty() {
+        return Vec::new();
+    }
+    struct Search {
+        pids: Vec<u32>,
+        found: Vec<(isize, i32, i32, i32, i32)>,
+    }
+    unsafe extern "system" fn each(hwnd: *mut c_void, data: isize) -> i32 {
+        // SAFETY: `data` is the search below, alive through EnumWindows
+        let search = unsafe { &mut *(data as *mut Search) };
+        let mut pid = 0u32;
+        // SAFETY: a window Windows lists, a number to fill
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        // SAFETY: the same window
+        if !search.pids.contains(&pid) || unsafe { IsWindowVisible(hwnd) } == 0 {
+            return 1;
+        }
+        let mut r = Rect::default();
+        // SAFETY: the same window, a rectangle to fill
+        if unsafe { GetWindowRect(hwnd, &mut r) } != 0 {
+            let (w, h) = (r.right - r.left, r.bottom - r.top);
+            if w > 0 && h > 0 {
+                search.found.push((hwnd as isize, r.left, r.top, w, h));
+            }
+        }
+        1
+    }
+    let mut search = Search { pids, found: Vec::new() };
+    // SAFETY: the callback above, handed the search for the call's length
+    unsafe { EnumWindows(each, &mut search as *mut Search as isize) };
+    search.found.sort_by_key(|(_, _, _, w, h)| std::cmp::Reverse(i64::from(*w) * i64::from(*h)));
+    search.found
+}
+
+#[cfg(not(windows))]
+pub(crate) fn future_pinball_windows() -> Vec<(isize, i32, i32, i32, i32)> {
+    Vec::new()
+}
+
+/// A window's title.
+#[cfg(windows)]
+pub(crate) fn window_title(hwnd: isize) -> String {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetWindowTextW(hwnd: *mut std::ffi::c_void, text: *mut u16, len: i32) -> i32;
+    }
+    let mut text = [0u16; 256];
+    // SAFETY: a window Windows found, a buffer of its length
+    let n = unsafe { GetWindowTextW(hwnd as *mut std::ffi::c_void, text.as_mut_ptr(), text.len() as i32) };
+    String::from_utf16_lossy(&text[..n.max(0) as usize])
+}
+
+#[cfg(not(windows))]
+pub(crate) fn window_title(_hwnd: isize) -> String {
+    String::new()
+}
+
+/// A window asked to close, as its own close button would (`WM_CLOSE`).
+#[cfg(windows)]
+pub(crate) fn close_window(hwnd: isize) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn PostMessageW(hwnd: *mut std::ffi::c_void, msg: u32, wparam: usize, lparam: isize) -> i32;
+    }
+    const WM_CLOSE: u32 = 0x0010;
+    // SAFETY: a window Windows found; the message waits in its queue
+    unsafe { PostMessageW(hwnd as *mut std::ffi::c_void, WM_CLOSE, 0, 0) };
+}
+
+#[cfg(not(windows))]
+pub(crate) fn close_window(_hwnd: isize) {}
+
+/// VPX's playfield window kept in front as a game starts, so it has the keys and the controller:
+/// VPX 10.9 no longer brings it to the front itself once it's ready, and makes its other windows
+/// after it, so the keys went elsewhere until it was clicked (SDL hands a controller only to the
+/// window with the focus). For up to twenty seconds from its showing, until it has stayed in front
+/// for three, or the game has ended. Windows lets another program's window to the front only from
+/// the program in front, so this one's input is joined to the front window's for the moment.
+pub(crate) fn keep_vpx_in_front(ended: &AtomicBool) {
+    let started = Instant::now();
+    let mut front_since: Option<Instant> = None;
+    while !ended.load(Ordering::Relaxed) && started.elapsed() < Duration::from_secs(20) {
+        if vpx_in_front() {
+            let since = *front_since.get_or_insert_with(Instant::now);
+            if since.elapsed() >= Duration::from_secs(3) {
+                return;
+            }
+        } else {
+            front_since = None;
+            bring_vpx_forward();
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// VPX's window kept in front for the whole game, until it ends: a game in VR, where no one sees the
+/// desktop, so its window losing the focus — to the headset's own programs — is never the player's
+/// doing. Looked at each second; the app's own menu, when it shows, left in front.
+pub(crate) fn keep_vpx_in_front_while(ended: &AtomicBool) {
+    while !ended.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_secs(1));
+        // only while it plays in the headset (a game left to VPX's own choice may play on the screens)
+        if vpx_in_vr() && !vpx_in_front() && !ended.load(Ordering::Relaxed) {
+            bring_vpx_forward();
+        }
+    }
+}
+
+/// Whether VPX plays in a headset now: its window on the desktop is there, which it makes only then.
+#[cfg(windows)]
+fn vpx_in_vr() -> bool {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn FindWindowW(class: *const u16, title: *const u16) -> *mut std::ffi::c_void;
+    }
+    let title: Vec<u16> = "Visual Pinball Desktop Display".encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: a NUL-ended title; no class asked for
+    !unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) }.is_null()
+}
+
+#[cfg(not(windows))]
+fn vpx_in_vr() -> bool {
+    false
+}
+
+/// VPX's playfield window brought to the front with the keyboard's focus, from any program in front.
+#[cfg(windows)]
+fn bring_vpx_forward() {
+    let Some((hwnd, ..)) = vpx_window() else { return };
+    bring_forward(hwnd);
+}
+
+/// A window brought to the front with the keyboard's focus, from any program in front.
+#[cfg(windows)]
+fn bring_forward(hwnd: isize) {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetForegroundWindow() -> *mut c_void;
+        fn GetWindowThreadProcessId(hwnd: *mut c_void, pid: *mut u32) -> u32;
+        fn AttachThreadInput(attach: u32, to: u32, on: i32) -> i32;
+        fn SetForegroundWindow(hwnd: *mut c_void) -> i32;
+        fn BringWindowToTop(hwnd: *mut c_void) -> i32;
+        fn SetFocus(hwnd: *mut c_void) -> *mut c_void;
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThreadId() -> u32;
+    }
+    let hwnd = hwnd as *mut c_void;
+    // SAFETY: windows and threads Windows names; the input joined only for the calls between
+    unsafe {
+        let front = GetForegroundWindow();
+        let theirs = if front.is_null() { 0 } else { GetWindowThreadProcessId(front, std::ptr::null_mut()) };
+        let ours = GetCurrentThreadId();
+        let joined = theirs != 0 && theirs != ours && AttachThreadInput(ours, theirs, 1) != 0;
+        SetForegroundWindow(hwnd);
+        BringWindowToTop(hwnd);
+        SetFocus(hwnd);
+        if joined {
+            AttachThreadInput(ours, theirs, 0);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn bring_vpx_forward() {}
+
 
 /// VPX's playfield window given the focus (the menu's window had it, so Windows lets it).
 fn focus_vpx() {
@@ -978,6 +1893,14 @@ mod tests {
         assert_eq!(lines[1]["keys"], "Left Shift or LT  ·  Right Shift or RT");
     }
 
+    /// VPX 10.8.0's keys, by their DirectInput codes, as Windows knows them: F12, Esc, and the right
+    /// Ctrl, an extended one.
+    #[cfg(windows)]
+    #[test]
+    fn ten_eight_zeros_keys_as_windows_knows_them() {
+        assert_eq!((virtual_key(0x58), virtual_key(0x01), virtual_key(0x9D)), (Some(0x7B), Some(0x1B), Some(0xA3)));
+    }
+
     /// VPX's menu keys, the keyboard's alone, its defaults where its settings map nothing.
     #[test]
     fn the_menu_moves_by_vpxs_menu_keys() {
@@ -994,12 +1917,21 @@ mod tests {
     #[test]
     fn the_parts_of_the_sound() {
         let sources = serde_json::json!([{ "id": "VPIAchievements", "name": "Achievements" }, { "id": "Other", "name": "Its sound" }, { "id": "PUP", "name": "PUP" }, { "id": "AltSound", "name": "AltSound" }]);
-        let levels = BTreeMap::from([("PUP".to_string(), 0.5)]);
-        let rows = level_rows(&sources, &levels, true);
+        let levels = BTreeMap::from([("PUP".to_string(), 0.5), ("table".to_string(), 0.4)]);
+        // VPX's own levels: the machine's PinUP pack at 80%, the rest as they came
+        let gain = |id: &str| if id == "PUP" { 0.8 } else { 1.0 };
+        let rows = level_rows(&sources, &levels, true, &gain);
         let labels: Vec<&str> = rows.iter().map(|r| r["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["Table sounds", "Machine (AltSound)", "Music", "PinUP pack", "Achievements", "Its sound"]);
-        assert_eq!(rows[3]["value"], 0.5);
-        assert_eq!(level_rows(&serde_json::json!([]), &BTreeMap::new(), false).len(), 1);
+        // an add-on's as VPX has it, the menu's share this game taken in, up to 200%
+        assert_eq!((rows[3]["value"].as_f64(), rows[3]["max"].as_f64(), rows[3]["vpx"].as_bool()), (Some(0.4), Some(2.0), Some(true)));
+        assert_eq!((rows[4]["value"].as_f64(), rows[4]["max"].as_f64()), (Some(1.0), Some(2.0)));
+        // the table's own sounds the app's alone, up to 100%
+        assert_eq!((rows[0]["value"].as_f64(), rows[0]["max"].as_f64(), rows[0]["vpx"].as_bool()), (Some(0.4), Some(1.0), None));
+        assert_eq!(level_rows(&serde_json::json!([]), &BTreeMap::new(), false, &gain).len(), 1);
+        let main = ini("[Player]\nAudioSource.PinMAME.Gain = 0.8\nAudioSource.PUP.Gain = 0.8\n");
+        let own = ini("[Player]\nAudioSource.PUP.Gain = 1.5\n");
+        assert_eq!((vpx_gain(&own, &main, "PinMAME"), vpx_gain(&own, &main, "PUP"), vpx_gain(&own, &main, "WMP")), (0.8, 1.5, 1.0));
     }
 
     /// A part's level told to the add-on as it takes it, a table's own by its share of what the

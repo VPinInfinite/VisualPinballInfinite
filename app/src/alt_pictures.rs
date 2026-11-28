@@ -30,7 +30,7 @@ pub async fn alt_pictures_copy(app: AppHandle, id: String) -> Result<serde_json:
         let task = crate::tasks::begin(&handle, format!("Making {short} with your pictures"), 1);
         // the copy made before, and its own files, to the Recycle Bin first
         if copy.exists() {
-            for ext in ["vpx", "directb2s", "ini", "pov", "vbs", "vpp"] {
+            for ext in ["vpx", "directb2s", "B2SPro", "ini", "pov", "vbs", "vpp"] {
                 let old = copy.with_extension(ext);
                 if old.exists() {
                     ::library::install::to_recycle_bin(&old)?;

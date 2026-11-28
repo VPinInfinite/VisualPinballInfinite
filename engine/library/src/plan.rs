@@ -31,6 +31,9 @@ pub struct Layout {
     pub vpx_folder: Option<PathBuf>,
     /// The line of VPX its tables play in where it isn't the newest found (`10.8.0`).
     pub play_with: Option<String>,
+    /// Future Pinball's folder, where it's found (`future_pinball::find`): its tables and libraries
+    /// go there.
+    pub future_pinball: Option<PathBuf>,
 }
 
 impl Layout {
@@ -49,6 +52,7 @@ impl Layout {
             per_game: false,
             vpx_folder: None,
             play_with: None,
+            future_pinball: None,
         }
     }
 
@@ -68,6 +72,7 @@ impl Layout {
             per_game: f.per_game,
             vpx_folder: f.vpx.clone(),
             play_with: f.play_with.clone(),
+            future_pinball: crate::future_pinball::find(f.future_pinball.as_deref(), Some(f.vpx.as_deref().unwrap_or(&root))).map(|i| i.folder),
         }
     }
 
@@ -84,6 +89,7 @@ impl Layout {
             per_game: false,
             vpx_folder: None,
             play_with: None,
+            future_pinball: None,
         }
     }
 }
@@ -201,10 +207,15 @@ fn alternative(path: &str) -> bool {
 /// (`<table> (1).directb2s` and on): the first number neither given already in this plan nor
 /// holding another file — one holding a file of the same size is most likely this one.
 pub(crate) fn version_place(dir: &Path, table: &str, ext: &str, size: u64, given: &mut Vec<u32>) -> PathBuf {
-    let place = |n: u32| dir.join(format!("{table} ({n}).{ext}"));
-    let n = (1..).find(|n| !given.contains(n) && std::fs::metadata(place(*n)).map_or(true, |m| m.len() == size)).expect("a free number");
+    let place = |n: u32, ext: &str| dir.join(format!("{table} ({n}).{ext}"));
+    // a backglass's versions numbered across both kinds, B2S's and B2S Pro's, as VPin Studio does
+    let low = ext.to_ascii_lowercase();
+    let others: Vec<&str> = if crate::backglass::KINDS.contains(&low.as_str()) { crate::backglass::KINDS.iter().copied().filter(|k| *k != low).collect() } else { Vec::new() };
+    let n = (1..)
+        .find(|n| !given.contains(n) && std::fs::metadata(place(*n, ext)).map_or(true, |m| m.len() == size) && others.iter().all(|o| !place(*n, o).exists()))
+        .expect("a free number");
     given.push(n);
-    place(n)
+    place(n, ext)
 }
 
 pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Option<&str>, pup: Option<&str>, helpers: &[String], layout: &Layout) -> Vec<Step> {
@@ -212,13 +223,33 @@ pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Opti
     // a table's backglasses: the one that plays named for it, the first not named as an alternative;
     // the others kept beside it as VPin Studio keeps a backglass's versions, to choose from on its page
     let backglasses: Vec<&str> = contents.files.iter().filter(|(_, k)| *k == Kind::Backglass).map(|(e, _)| e.path.as_str()).collect();
-    let playing = backglasses.iter().copied().find(|p| !alternative(p)).or(backglasses.first().copied());
+    // one of each kind plays, B2S's and B2S Pro's (which B2S Pro shows before the other)
+    let kind_of = |p: &str| p.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    let playing_of = |p: &str| {
+        let of: Vec<&str> = backglasses.iter().copied().filter(|b| kind_of(b) == kind_of(p)).collect();
+        of.iter().copied().find(|b| !alternative(b)).or(of.first().copied())
+    };
     let mut versions: Vec<u32> = Vec::new();
     // manuals named for the table, the first `<table>.pdf`, the rest numbered
     let mut manuals: Vec<u32> = Vec::new();
     let mut first_manual = true;
     let named = |path: &str| -> String { path.rsplit('/').next().unwrap_or(path).to_string() };
     let ext = |path: &str| path.rsplit_once('.').map(|(_, e)| e.to_string()).unwrap_or_default();
+    // BAM's settings for a Future Pinball table named for its table file, which BAM finds them by:
+    // the download's one table's, where the file is named as it or is the download's only one; else
+    // as it came
+    let stem = |path: &str| -> String {
+        let n = named(path);
+        n.rsplit_once('.').map_or(n.clone(), |(s, _)| s.to_string())
+    };
+    let fp_tables: Vec<&str> = contents.files.iter().filter(|(e, k)| *k == Kind::FuturePinball && ext(&e.path).eq_ignore_ascii_case("fpt")).map(|(e, _)| e.path.as_str()).collect();
+    let bam_files = contents.files.iter().filter(|(_, k)| *k == Kind::BamSettings).count();
+    let bam_name = |path: &str| -> String {
+        match fp_tables.as_slice() {
+            [table] if bam_files == 1 || stem(table).eq_ignore_ascii_case(&stem(path)) => format!("{}.cfg", stem(table)),
+            _ => named(path),
+        }
+    };
     // the front end a drop's media go in, and the name they go under in PinballX's or PinballY's
     let target = if contents.files.iter().any(|(_, k)| *k == Kind::Media) { crate::frontends::media_target(layout) } else { None };
     let other_name = match (&target, table) {
@@ -293,7 +324,7 @@ pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Opti
             Kind::Script if !table.is_some_and(|t| named(p).eq_ignore_ascii_case(&format!("{t}.vbs"))) && !named(p).contains([' ', '(', ')']) => {
                 (Some(layout.scripts.join(named(p))), Some("a script file tables load, put with VPX's scripts".into()))
             }
-            Kind::Backglass if table.is_some() && backglasses.len() > 1 && playing != Some(p) => {
+            Kind::Backglass if table.is_some() && backglasses.len() > 1 && playing_of(p) != Some(p) => {
                 let to = version_place(&layout.tables, table.unwrap_or_default(), &ext(p), entry.size, &mut versions);
                 let kept = to.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 (Some(to), Some(format!("another backglass for it, kept beside it as “{kept}”: which one plays is chosen on its page")))
@@ -367,6 +398,11 @@ pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Opti
             }
             Kind::Nvram => (Some(layout.data.join("PinMAME").join("nvram").join(named(p))), Some("the machine's memory: its scores and settings replaced".into())),
             Kind::PinmameSettings => (Some(layout.data.join("PinMAME").join("cfg").join(named(p))), None),
+            // where BAM keeps a table's own settings, beside those it makes as a table's first played
+            Kind::BamSettings => match &layout.future_pinball {
+                Some(fp) => (Some(fp.join("BAM").join("cfg").join(bam_name(p))), Some("BAM's settings for the table, as its author set them: its camera, lighting and BAM's own options".into())),
+                None => (None, Some("BAM's settings for a Future Pinball table: Future Pinball isn't found on this PC".into())),
+            },
             // a VPU patch makes the modded table beside its original, which stays as it is
             Kind::Patch => match table {
                 Some(t) => {
@@ -403,7 +439,13 @@ pub fn plan(contents: &Contents, source: &Source, table: Option<&str>, rom: Opti
                 (_, None, _) => (None, Some("front-end media: no front end's media folder is there (PinUP Popper's, PinballX's or PinballY's)".into())),
                 (_, _, None) => (None, Some("front-end media: which screen it's for, to choose".into())),
             },
-            Kind::OldTable | Kind::FuturePinball => (None, Some("not a table ours plays".into())),
+            // Future Pinball's own, where Future Pinball is: its tables, and the libraries they load
+            Kind::FuturePinball => match &layout.future_pinball {
+                Some(fp) if ext(p).eq_ignore_ascii_case("fpl") => (Some(fp.join("Libraries").join(named(p))), Some("a library Future Pinball's tables load, put with its others".into())),
+                Some(fp) => (Some(fp.join("Tables").join(named(p))), Some("a Future Pinball table, played in Future Pinball: Settings › Library".into())),
+                None => (None, Some("a Future Pinball file: Future Pinball isn't found on this PC".into())),
+            },
+            Kind::OldTable => (None, Some("a Visual Pinball 9 table, which the app doesn't play".into())),
             Kind::InnerArchive => (None, Some("an archive inside: drop it by itself".into())),
             Kind::Readme if crate::analysis::PICTURE_SUFFIXES.contains(&ext(p).to_lowercase().as_str()) => (None, Some("a picture of its instructions, not installed".into())),
             Kind::Readme => (None, Some("shown, not installed".into())),

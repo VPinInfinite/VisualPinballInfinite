@@ -4,15 +4,17 @@ Click a table in the library to open its page. The arrow keys, or a controller's
 
 ## PLAY
 
-**PLAY** starts the table in VPX, with its backglass, score display and PinUP pack where Settings › Screens puts them. The app steps aside once VPX's window shows, and comes back when the game ends, on the same table. While it plays in a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build), F12 or a controller's menu button opens the app's [pause menu](Playing#the-pause-menu) (Settings › Controls › **The pause menu** can give it back to VPX's own). With VPX 10.8.1 in your library, a ROM machine VPX has never run is started once first, out of sight, so it restores its factory settings before your game rather than in it; a notice says so. See [Playing](Playing).
+**PLAY** starts the table in VPX, with its backglass, score display and PinUP pack where Settings › Screens puts them. The app steps aside once VPX's window shows, and comes back when the game ends, on the same table. While it plays, F12 or a controller's menu button opens the app's [pause menu](Playing#the-pause-menu), in VPX 10.9 and VPX 10.8.0 alike (Settings › Controls › **The pause menu** can give it back to the game's own). With VPX 10.9 in your library, a ROM machine VPX has never run is started once first, out of sight, so it restores its factory settings before your game rather than in it; a notice says so. See [Playing](Playing).
+
+**Play it in VR**, in its **…** menu, plays one game in a VR headset, whatever Settings › VR says: see [VR](VR).
 
 For a table with achievements, PLAY says whether it plays **Hardcore**, as its author made it, or **Softcore**, and why (point at it to see). Its **▾** plays one game either way on purpose: **Play Hardcore** leaves your table settings, script edits and physics changes out for that game (your screens, sound and controls stay yours), and **Play Softcore** keeps its achievements as softcore, for a guest, say. See [Achievements](Achievements#hardcore-and-softcore).
 
 ## The VPX it plays with
 
-Tables play in the VPX Settings › Library chooses: VPX 10.8.1, or VPX 10.8.0 where both are in your library (see [Settings](Settings#library)). To play one table in VPX 10.8.0 while the rest play in 10.8.1, choose **Play it with VPX 10.8.0** in its **…** menu. Its achievements then count once each game is over, as VPX 10.8.0 takes no add-ons. Its page then says **Plays with VPX 10.8.0, for this table alone**, with **Play it with Settings › Library's VPX again**.
+Tables play in the VPX Settings › Library chooses: VPX 10.9, or VPX 10.8.0 where both are in your library (see [Settings](Settings#library)). To play one table in VPX 10.8.0 while the rest play in 10.9, choose **Play it with VPX 10.8.0** in its **…** menu. Its achievements then count once each game is over, as VPX 10.8.0 takes no add-ons. Its page then says **Plays with VPX 10.8.0, for this table alone**, with **Play it with Settings › Library's VPX again**.
 
-The same choice is offered where a table stops in VPX 10.8.1: on its test, and in the notes after a game. Each newer VPX 10.8.1 build your library gets tries such a table again by itself, out of sight. Once one plays there, its page says **It plays in VPX 10.8.1 now**: **Play it with VPX 10.8.1**, or **Keep VPX 10.8.0** until a newer build tries it again. See [Playing](Playing#which-vpx-plays-it).
+The same choice is offered where a table stops in VPX 10.9: on its test, and in the notes after a game. Each newer VPX build your library gets tries such a table again by itself, out of sight. Once one plays there, its page says **It plays in VPX 10.9.0 now**: **Play it with VPX 10.9.0**, or **Keep VPX 10.8.0** until a newer build tries it again. See [Playing](Playing#which-vpx-plays-it).
 
 ## After a game
 
@@ -23,6 +25,7 @@ What VPX's log says of the game that you can do something about shows on the tab
 - **VPX ran short of graphics memory:** it skipped some pictures it needed, which shows as a pink or empty picture. Where supersampling is above 1×, **Set supersampling to 1×** frees a lot of memory; **Open Settings › Picture** has the rest.
 - **Its script stopped with an error:** the line and what VPX said, with **Play it with VPX 10.8.0** where VPX 10.8.0 is in your library, and **Report it**.
 - **VPX couldn't find the screen "…":** which screen VPX used instead, with **Open Settings › Screens**. Where the settings named the screen the way older VPX builds did, the app names it as your VPX needs and marks it **Fixed**: it's right from the next game.
+- **VPX tried to play it in VR, and couldn't:** with **Turn VR off**, and **Report it**. See [VR](VR).
 
 See [Playing](Playing#after-a-game).
 
@@ -33,7 +36,7 @@ The big picture shows its playfield video or picture; the arrows on it step thro
 - **Choosing the one shown.** Open a stack and pick **Show this one**: the one with the blue check shows on its tile, its page and in cabinet mode. It's for browsing only: it doesn't change the table, or what it shows when you play. **PinUP Popper shows this one** marks the one in Popper's own folder (and the same for PinballX and PinballY). **Put it in PinUP Popper's folder** puts yours there: see [Media](Media#media-for-pinup-popper).
 - **Right-click** a picture or video to turn it a quarter right or left, or **Show it as its file has it**. Turning only changes how the app shows it; the file stays as it is. The same menu offers **Hide it from this page** for VPS's pictures, or **Show the file** in its folder and **Delete…** to the Recycle Bin for the rest. VPS's pictures can only be hidden; **Show them again** brings them back.
 - **Sound:** a video with sound plays muted; the speaker at its bottom right turns the sound on, for every video until the app closes.
-- **Make media** (the film button beside PLAY) has the app draw its playfield, backglass and score display, a preview video and a wheel, with no window: see [Media](Media#making-media).
+- **Make media** (the film button beside PLAY) has the app draw its playfield, backglass and score display, a preview video and a wheel, with no window; a Future Pinball table's are recorded from the game instead. See [Media](Media#making-media).
 
 ## Its facts
 
@@ -48,6 +51,7 @@ Every file it plays with, each checked: its table file, backglass, ROM, PinUP pa
 - **Its builds:** where the library shows a table with several table files once, a tab for each sits at the top: see [Your library](Your-library#a-table-with-several-table-files). A table file saved twice is asked about here too.
 - **Show** opens a file's folder. For something missing, **Find** looks for it among VPS's files.
 - **The backglass row:** its file, how many more are kept beside it with **Change…**, and **Score display…**: see [Its backglass](#its-backglass).
+- **The B2S Pro backglass row:** a B2S Pro backglass (`.B2SPro`) named as the table, beside its `.directb2s`. It plays only where B2S Pro is installed, before the `.directb2s`; VPX's own backglass add-on and B2S Server play the `.directb2s`.
 - **The ROM row:** its check, file by file, and **Change** to choose another ROM. See [ROM machines](ROM-machines).
 - **The PinUP pack row:** its layout, **Layout…** and an **Enable** switch that turns the pack off for this table alone. A pack there under a name its script doesn't ask for says **Named wrong**, and **Fix** renames it (**Rename it**). A pack renamed for this table has **Undo rename**. See [PinUP packs](PinUP-packs).
 - **The AltSound row:** its pack's check, and **Listen** for a pack made from its ROM. For a machine without one, **Make one from its ROM…** See [AltSound](AltSound).
@@ -76,7 +80,7 @@ A read-me or manual kept beside the table and named for it, such as a PDF manual
 
 **Table settings** (the sliders button beside PLAY) holds the settings for this table alone, over your usual ones:
 
-- **Its own options:** the options its author built into its script.
+- **Its own options:** the options its author built into its script, each in its own unit (a percentage, or degrees).
 - **On VPS:** its VPS match, with **Change…**. A table renamed to VPS's name has **Put the names back**.
 - **View:** your usual, **Desktop**, **Cabinet** or **Full single screen**. **Custom…** opens the Screens page for this table alone (see [Screens](Screens#a-tables-own-screens)).
 - **Its screens:** your usual screens, or one of your screen presets.
@@ -100,9 +104,9 @@ The drop window asks the same when a table comes with a settings file that sets 
 
 ## Its backglass
 
-When a table has more than one backglass, its **Backglass** row says how many more are kept, and **Change…** shows a picture of each. **Play this one** makes it the one that plays; **Play none** keeps them all beside the table and plays none (a table with a PinUP pack shows that instead).
+When a table has more than one backglass, its **Backglass** row says how many more are kept, and **Change…** shows a picture of each. **Play this one** makes it the one that plays; **Play none** keeps them all beside the table and plays none (a table with a PinUP pack shows that instead). A B2S Pro backglass (`.B2SPro`) is among them, marked **B2S Pro**: it plays only where B2S Pro is installed, before the `.directb2s`, while VPX's own backglass add-on and B2S Server play the `.directb2s`. Both kinds are numbered together, so either program sees the same.
 
-**The score display on the backglass.** [Newer VPX 10.8.1 builds](Installing-and-first-setup#which-vpx-1081-build) keep the score display's place in each backglass file. With those, while Settings › Screens › **The score display in it** is **Found in its picture**, the app places it by itself in every backglass made for a DMD that has a window for it, keeping each file as it came first. **Score display…** on the Backglass row places it by hand: drag the box onto the window in the backglass picture and its corner to size it (or type its **Left**, **Top**, **Width** and **Height**), with **Find it in the picture** and **Undo changes** to help. **Save** writes it into the backglass file, as VPX's own menu does: VPX shows it there from the table's next game, and the app leaves a place you set as it is. See [Score displays](Score-displays#over-the-backglass).
+**The score display on the backglass.** VPX 10.9 keeps the score display's place in each backglass file, as VPX 10.8.1 does from build 6267 (see [Which build of VPX](Installing-and-first-setup#which-build-of-vpx)). With those, while Settings › Screens › **The score display in it** is **Found in its picture**, the app places it by itself in every backglass made for a DMD that has a window for it, keeping each file as it came first. **Score display…** on the Backglass row places it by hand: drag the box onto the window in the backglass picture and its corner to size it (or type its **Left**, **Top**, **Width** and **Height**), with **Find it in the picture** and **Undo changes** to help. **Save** writes it into the backglass file, as VPX's own menu does: VPX shows it there from the table's next game, and the app leaves a place you set as it is. See [Score displays](Score-displays#over-the-backglass).
 
 ## Your pictures in a copy of the table
 
@@ -131,8 +135,12 @@ The window says when the table plays `autovpp.vpp`, the physics file for every t
 
 ## Test it
 
-**Test it** runs the table in VPX for about 10 seconds, unseen and unheard: its script, and its machine for a ROM table. Its page then says how it went: it plays in VPX, its script stopped with an error (and where), its machine didn't start, or VPX or the table showed a message as it started. **Test again** runs it again. Where its script stopped in VPX 10.8.1 and VPX 10.8.0 is in your library, **Play it with VPX 10.8.0** is offered beside it. Tests run in VPX 10.8.1, so it needs to be in your library (Settings › Library gets it).
+**Test it** runs the table in VPX for about 10 seconds, unseen and unheard: its script, and its machine for a ROM table. Its page then says how it went: it plays in VPX, its script stopped with an error (and where), its machine didn't start, or VPX or the table showed a message as it started. **Test again** runs it again. Where its script stopped in VPX 10.9 and VPX 10.8.0 is in your library, **Play it with VPX 10.8.0** is offered beside it. Tests run in VPX 10.9 (or 10.8.1), so it needs to be in your library (Settings › Library gets it).
 
 ## The buttons beside PLAY
 
-**Favourite** (the heart), **Edit its details**, **Table settings**, **Edit its script**, **Show its files**, **Make media**, **Its achievements** (the trophy), and **…**, which holds **Add to a playlist…**, **Open on VPS's site**, **Make media…**, **Open in the table inspector**, **Show VPX's last log**, **Play it with VPX 10.8.0** (or **Play it with Settings › Library's VPX**), **Report a problem with it…**, **Copy where its file is** and **Remove from library…**. Its screenshots open from its pictures, under **Screenshots**.
+**Favourite** (the heart), **Edit its details**, **Table settings**, **Edit its script**, **Show its files**, **Make media** (the film), **Its achievements** (the trophy), and **…**, which holds **Add to a playlist…**, **Open on VPS's site**, **Play it in VR**, **Open in the table inspector**, **Show VPX's last log**, **Play it with VPX 10.8.0** (or **Play it with Settings › Library's VPX**), **Report a problem with it…**, **Copy where its file is** and **Remove from library…**. Its screenshots open from its pictures, under **Screenshots**.
+
+## A Future Pinball table's page
+
+A Future Pinball table's page shows what works for it, and says where BAM's own options are: in BAM's menu during a game (**Q** or **~**). Its PinUP pack has a row of its own in **What it holds**, with **Layout…**. **Make media** records its media from the game itself. What the app does for VPX's tables alone isn't there: **Table settings**, **Edit its script**, Test it, high scores and achievements. See [Future Pinball](Future-Pinball#its-page).

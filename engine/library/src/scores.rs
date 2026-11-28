@@ -186,6 +186,32 @@ pub fn values_in_ini(file: &Path, name: &str) -> BTreeMap<String, String> {
     vpi_settings::parse_ini(&text).into_iter().filter(|(s, _, _)| s.eq_ignore_ascii_case(name)).map(|(_, k, v)| (k.to_lowercase(), v)).collect()
 }
 
+/// Whether one of VPX's files of saved values is its newer builds' ini file (`VPReg.ini`) rather than
+/// its older compound file (`VPReg.stg`).
+fn is_ini(file: &Path) -> bool {
+    file.extension().is_some_and(|x| x.eq_ignore_ascii_case("ini"))
+}
+
+/// The values kept under `name` in one of VPX's files of saved values, by value name in lower case:
+/// its newer builds' `VPReg.ini`, kept as our player keeps them, or its older `VPReg.stg`; None when
+/// it keeps none under it.
+pub fn values_in_vpx(file: &Path, name: &str) -> Result<Option<BTreeMap<String, String>>, String> {
+    if is_ini(file) {
+        let values = values_in_ini(file, name);
+        return Ok((!values.is_empty()).then_some(values));
+    }
+    values_in_stg(file, name)
+}
+
+/// The values kept under `name` in VPX's `VPReg.ini`, with the name and value names as it keeps them;
+/// None when it keeps none under it.
+fn ini_values(file: &Path, name: &str) -> Option<StgValues> {
+    let text = std::fs::read(file).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let entries = vpi_settings::parse_ini(&text);
+    let under = entries.iter().find(|(s, _, _)| s.eq_ignore_ascii_case(name))?.0.clone();
+    Some((under.clone(), entries.into_iter().filter(|(s, _, _)| *s == under).map(|(_, k, v)| (k, v)).collect()))
+}
+
 /// The values kept under `name` in VPX's `VPReg.stg`, by value name in lower case; None when it
 /// keeps none under it.
 pub fn values_in_stg(file: &Path, name: &str) -> Result<Option<BTreeMap<String, String>>, String> {
@@ -223,7 +249,7 @@ pub fn names_in_stg(file: &Path) -> Result<Vec<(String, usize)>, String> {
 
 /// The high scores a table's script keeps among its values, under the first of `names` that holds
 /// any: as our player keeps them (`ours`, its `VPReg.ini`) and as VPX does (each of `vpx`, its
-/// `VPReg.stg` files, the first that holds them).
+/// `VPReg.ini` and `VPReg.stg` files, the first that holds them).
 pub fn of_values(names: &[String], ours: &Path, vpx: &[PathBuf]) -> HighScores {
     let mut out = HighScores { kind: "script", ..Default::default() };
     for name in names {
@@ -232,7 +258,7 @@ pub fn of_values(names: &[String], ours: &Path, vpx: &[PathBuf]) -> HighScores {
             kept.push(k);
         }
         for file in vpx.iter().filter(|f| f.is_file()) {
-            match values_in_stg(file, name) {
+            match values_in_vpx(file, name) {
                 Ok(Some(values)) => {
                     if let Some(k) = from_values("vpx", file, &values) {
                         kept.push(k);
@@ -314,7 +340,8 @@ pub fn start_from_vpx(layout: &crate::plan::Layout, table: Option<&Path>, rom_se
     }
     for file in crate::vpx::saved_values(layout, table).into_iter().filter(|f| f.is_file()) {
         for name in saved_under {
-            let Some((under, values)) = stg_values(&file, name)? else { continue };
+            let found = if is_ini(&file) { ini_values(&file, name) } else { stg_values(&file, name)? };
+            let Some((under, values)) = found else { continue };
             let changes: Vec<vpi_settings::Change> = values.iter().filter(|(k, _)| !k.contains(['=', '\r', '\n'])).map(|(k, v)| vpi_settings::Change::set(&under, k, v.replace(['\r', '\n'], " "))).collect();
             let after = vpi_settings::edit(&before, &changes);
             if let Some(dir) = ours.parent() {
@@ -350,7 +377,7 @@ pub fn carry_to_vpx(layout: &crate::plan::Layout, table: &Path, rom_set: Option<
     // VPX's own for the name, wherever it keeps them: nothing carried over
     for file in crate::vpx::saved_values(layout, Some(table)).iter().filter(|f| f.is_file()) {
         for name in saved_under {
-            if values_in_stg(file, name)?.is_some() {
+            if values_in_vpx(file, name)?.is_some() {
                 return Ok(false);
             }
         }
@@ -358,7 +385,8 @@ pub fn carry_to_vpx(layout: &crate::plan::Layout, table: &Path, rom_set: Option<
     let ours = layout.data.join("VPReg.ini");
     let kept = vpi_settings::parse_ini(&std::fs::read(&ours).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default());
     let Some(under) = saved_under.iter().find(|n| kept.iter().any(|(s, _, _)| s.eq_ignore_ascii_case(n))) else { return Ok(false) };
-    let Some(file) = crate::vpx::saved_values(layout, Some(table)).into_iter().next() else { return Ok(false) };
+    // VPX's newer builds read a value from the compound file where their ini file has none
+    let Some(file) = crate::vpx::saved_values(layout, Some(table)).into_iter().find(|f| !is_ini(f)) else { return Ok(false) };
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
@@ -508,6 +536,37 @@ mod tests {
         assert_eq!(s.kept.iter().map(|k| (k.by, k.scores[0].score)).collect::<Vec<_>>(), [("vpx", Some(2_400_000))]);
         assert!(without_the_table.kept.is_empty());
         assert!(took && copied == b"its own");
+    }
+
+    /// VPX's newer builds keep a script's values in `VPReg.ini` in the table's user folder — the
+    /// tables folder's, for a table kept in it — read before an older `VPReg.stg` beside it, and
+    /// taken as ours to start from as well.
+    #[test]
+    fn what_vpxs_newer_builds_keep_in_their_ini_file_read() {
+        use std::io::Write as _;
+        let root = std::env::temp_dir().join(format!("vpi-scores-ini-{}", std::process::id()));
+        let layout = crate::plan::Layout::under(&root);
+        let table = layout.tables.join("Leprechaun King (Orbital 2020).vpx");
+        let user = layout.tables.join("user");
+        std::fs::create_dir_all(&user).unwrap();
+        std::fs::create_dir_all(&layout.data).unwrap();
+        std::fs::write(user.join("VPReg.ini"), "[Leprechaun]\nHighScore1 = 3100000\nHighScore1Name = NEW\n[other]\nA = 1\n").unwrap();
+        // what an older build kept, which the newer file comes before
+        let mut stg = cfb::create(user.join("VPReg.stg")).unwrap();
+        stg.create_storage("/Leprechaun").unwrap();
+        for (name, value) in [("HighScore1", "900000"), ("HighScore1Name", "OLD")] {
+            let units: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
+            stg.create_stream(format!("/Leprechaun/{name}")).unwrap().write_all(&units).unwrap();
+        }
+        drop(stg);
+        let names = ["leprechaun".to_string()];
+        let s = for_table(&layout, Some(&table), None, &names);
+        let took = start_from_vpx(&layout, Some(&table), None, &names).unwrap();
+        let ours = std::fs::read_to_string(layout.data.join("VPReg.ini")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(s.kept.iter().map(|k| (k.by, k.scores[0].initials.as_str(), k.scores[0].score)).collect::<Vec<_>>(), [("vpx", "NEW", Some(3_100_000))]);
+        assert!(s.kept[0].file.ends_with("VPReg.ini"));
+        assert!(took && ours.contains("[Leprechaun]") && ours.contains("HighScore1Name = NEW"), "{ours}");
     }
 
     #[test]

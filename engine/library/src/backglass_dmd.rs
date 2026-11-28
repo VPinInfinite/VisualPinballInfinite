@@ -754,7 +754,7 @@ mod tests {
     #[ignore]
     fn vpx_draws_the_score_display_where_its_placed() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         println!("VPX {:?}", vpx.version);

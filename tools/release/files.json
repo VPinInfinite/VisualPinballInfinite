@@ -8,7 +8,7 @@
     { "file": "vpi-dmddevice.exe", "from": "cargo", "package": "dmddevice-host", "what": "Shows the score display through a display device a cabinet already uses (its DmdDevice64.dll)" },
     { "file": "vpi-dof.exe", "from": "cargo", "package": "dof-host", "what": "Drives a cabinet's toys (lights, solenoids, shakers) through libdof" },
     { "file": "vpi-headless.exe", "from": "cargo", "package": "headless", "what": "Runs a table with no window, for the app's Test it and a table's options" },
-    { "file": "vpi_vpx_addon.dll", "from": "cargo", "package": "vpx-addon", "what": "The achievements add-on for VPX 10.8.1: follows a table's achievements while VPX plays it, put in VPX's plugins folder by the app" }
+    { "file": "vpi_vpx_addon.dll", "from": "cargo", "package": "vpx-addon", "what": "The achievements add-on for VPX 10.9 and 10.8.1's builds: follows a table's achievements while VPX plays it, put where VPX loads its add-ons by the app" }
   ],
   "libraries": [
     { "file": "pinmame64.dll", "from": "vpx-build/pinmame-5436/build/Release", "what": "PinMAME, which emulates the machines' computers (loaded by vpi-pinmame)", "licence": "BSD-3-Clause and the old MAME terms, file by file", "licenceFiles": ["vpx-build/pinmame-5436/LICENSE"], "name": "PinMAME" },

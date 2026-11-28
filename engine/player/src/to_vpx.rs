@@ -39,6 +39,11 @@ fn hand_over(table: &Path, args: Vec<OsString>) -> Result<i32, String> {
         layout.play_with = Some(line);
     }
     let vpx = library::vpx::to_play(&layout).ok_or("Visual Pinball X wasn't found beside the library's tables")?;
+    // VPX starts in its own folder: a path the front end gave from its own made whole first
+    let args = match std::env::current_dir() {
+        Ok(from) => with_whole_paths(args, &from),
+        Err(_) => args,
+    };
     #[cfg(windows)]
     os::let_go_of_console();
     let mut child = command(&vpx, args).spawn().map_err(|e| format!("Visual Pinball X couldn't be started ({}): {e}", vpx.program.display()))?;
@@ -53,6 +58,34 @@ fn hand_over(table: &Path, args: Vec<OsString>) -> Result<i32, String> {
 /// A VPX switch's word, lower case (`-Play`, `/play`: `play`).
 fn switch(arg: &OsString) -> Option<String> {
     arg.to_str().and_then(crate::vpx_switch)
+}
+
+/// VPX's switches followed by a file or a folder, by their words, lower case, with how many paths
+/// follow each (`-TournamentFile` takes the table's and the tournament file's).
+const PATH_SWITCHES: [(&str, usize); 9] = [("play", 1), ("edit", 1), ("povedit", 1), ("pov", 1), ("extractvbs", 1), ("ini", 1), ("tableini", 1), ("tournamentfile", 2), ("prefpath", 1)];
+
+/// A front end's command line with each path after one of VPX's switches made whole from `from`,
+/// the folder the front end started this program in: VPX is started in its own folder, and puts the
+/// folder it was started in before any path not starting with a drive's letter, so a path the front
+/// end gave from its own folder would point into VPX's. The rest left as it came.
+fn with_whole_paths(args: Vec<OsString>, from: &Path) -> Vec<OsString> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut paths_left = 0usize;
+    for arg in args {
+        if paths_left > 0 {
+            paths_left -= 1;
+            let path = Path::new(&arg);
+            // a path with its drive's letter, or a network share's, as it came; else made whole
+            let whole = path.is_absolute() || arg.to_string_lossy().starts_with("\\\\");
+            out.push(if whole { arg } else { std::path::absolute(from.join(path)).unwrap_or_else(|_| from.join(path)).into_os_string() });
+            continue;
+        }
+        if let Some(word) = switch(&arg) {
+            paths_left = PATH_SWITCHES.iter().find(|(w, _)| *w == word).map_or(0, |(_, n)| *n);
+        }
+        out.push(arg);
+    }
+    out
 }
 
 /// VPX started as the front end would start it: its own command line, in VPX's folder; 10.8.0
@@ -231,6 +264,27 @@ mod tests {
 
     fn args(of: &[&str]) -> Vec<OsString> {
         of.iter().map(OsString::from).collect()
+    }
+
+    /// A front end's paths given from its own folder made whole from it, as VPX starts in its own;
+    /// whole paths, a network share's and the other switches' words as they came.
+    #[test]
+    fn a_front_ends_paths_made_whole_from_its_own_folder() {
+        let from = Path::new(r"C:\vPinball");
+        let out: Vec<String> = with_whole_paths(
+            args(&["-minimized", "-play", r"VisualPinball\Tables\Attack from Mars.vpx", "-Ini", r"C:\vPinball\VisualPinball\VPinballX.ini", "-TableIni", r"\\cabinet\share\afm.ini", "-LessCPUthreads", "2"]),
+            from,
+        )
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+        assert_eq!(
+            out,
+            vec!["-minimized", "-play", r"C:\vPinball\VisualPinball\Tables\Attack from Mars.vpx", "-Ini", r"C:\vPinball\VisualPinball\VPinballX.ini", "-TableIni", r"\\cabinet\share\afm.ini", "-LessCPUthreads", "2"]
+        );
+        // the tournament switch takes two paths; a path from the drive's top keeps its drive
+        let out: Vec<String> = with_whole_paths(args(&["/TournamentFile", "afm.vpx", r"Results\afm.txt", "-play", r"\Tables\x.vpx"]), from).iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        assert_eq!(out, vec!["/TournamentFile", r"C:\vPinball\afm.vpx", r"C:\vPinball\Results\afm.txt", "-play", r"C:\Tables\x.vpx"]);
     }
 
     fn given(command: &Command) -> Vec<String> {

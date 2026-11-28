@@ -467,6 +467,9 @@ pub struct LibraryFolders {
     pub per_game: bool,
     /// VPX's own folder, where it isn't the one above the tables (`[VPI]` `VPXFolder`).
     pub vpx: Option<PathBuf>,
+    /// Future Pinball's folder, where it's named (`[VPI]` `FuturePinballFolder`): else it's looked
+    /// for beside VPX's.
+    pub future_pinball: Option<PathBuf>,
     /// The line of VPX the tables play in where it isn't the newest found (`[VPI]` `PlayWith`,
     /// `10.8.0`): VPX's release before 10.8.1, kept beside it.
     pub play_with: Option<String>,
@@ -484,6 +487,7 @@ pub fn library_folders(entries: &[(String, String, String)]) -> Option<LibraryFo
         pinbally: path("VPI", "PinballYFolder"),
         per_game: get(entries, "VPI", "LibraryLayout").map(vpx_trim).is_some_and(|v| v.eq_ignore_ascii_case("game")),
         vpx: path("VPI", "VPXFolder"),
+        future_pinball: path("VPI", "FuturePinballFolder"),
         play_with: get(entries, "VPI", "PlayWith").map(vpx_trim).filter(|v| !v.is_empty()).map(str::to_string),
     })
 }

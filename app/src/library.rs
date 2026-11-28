@@ -79,6 +79,7 @@ pub struct Status {
 }
 
 /// A table installed.
+#[derive(Clone)]
 pub struct Table {
     pub id: String,
     pub path: PathBuf,
@@ -289,7 +290,8 @@ pub struct Tested {
 /// (`library::vpx_test`), with the add-ons it plays with — whichever VPX plays the tables, as only
 /// 10.8.1 runs quietly.
 pub fn test_path(layout: Option<&Layout>, path: &Path) -> Result<Tested, String> {
-    let vpx = layout.and_then(::library::vpx::find).filter(|v| v.has_addons()).ok_or("Tables are tested in VPX 10.8.1, which runs them out of sight; it wasn't found for this library: Settings › Library gets it.")?;
+    vpx_table(path, "Testing")?;
+    let vpx =layout.and_then(::library::vpx::find).filter(|v| v.has_addons()).ok_or("Tables are tested in VPX 10.8.1 or newer, which runs them out of sight; none was found for this library: Settings › Library gets one.")?;
     crate::addons::decide_first()?;
     if let Some(l) = layout
         && let Err(e) = crate::addons::set_folders(l)
@@ -298,6 +300,16 @@ pub fn test_path(layout: Option<&Layout>, path: &Path) -> Result<Tested, String>
     }
     let by = vpx.version.iter().map(u16::to_string).collect::<Vec<_>>().join(".");
     Ok(Tested { at: now_ms(), report: ::library::vpx_test::test(&vpx, path, &vpi_settings::vpx_settings_text()), by: Some(by) })
+}
+
+/// What works on VPX's tables alone — a test, the inspector, the script editor, a table's own
+/// settings, the pictures our player draws — refused in words for a Future Pinball table, which
+/// plays in Future Pinball.
+pub fn vpx_table(path: &Path, what: &str) -> Result<(), String> {
+    if ::library::future_pinball::is_table(path) {
+        return Err(format!("{what} is for VPX's tables, and this one plays in Future Pinball."));
+    }
+    Ok(())
 }
 
 /// A test's findings kept with the user's own; in the test mode, for the page alone.
@@ -449,7 +461,7 @@ pub fn id_of(path: &Path) -> String {
     format!("{hash:016x}")
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
@@ -526,6 +538,7 @@ fn load(app: &AppHandle) -> Result<(), String> {
             problem = Some(format!("VPS's database couldn't be fetched, so tables show without its facts and pictures ({e})."));
         }
     }
+    let read_from = std::time::Instant::now();
     let db = Database::load(&vps_path).ok().map(Arc::new);
     let fetched = modified_ms(&vps_path);
 
@@ -546,11 +559,28 @@ fn load(app: &AppHandle) -> Result<(), String> {
     if let Err(e) = remembered.save(&remembered_path) {
         eprintln!("the library's reads weren't kept: {e}");
     }
+    let files_read = read_from.elapsed();
     let (tables, chosen) = {
         let shared = app.state::<Shared>();
         let st = shared.0.lock().unwrap();
         (build(&layout, db.as_deref(), &st.user, &added::load(), found), st.user.pup_layouts.clone())
     };
+    let built = read_from.elapsed();
+    // the tables shown at once, as they're read; their packs' checks, their music and the rest
+    // follow a moment later
+    {
+        let around = ::library::installed::Around::read(&layout);
+        let shared = app.state::<Shared>();
+        let mut st = shared.0.lock().unwrap();
+        st.vps_pictures = db.as_deref().map(vps_pictures).unwrap_or_default();
+        st.db = db;
+        st.tables = tables.clone();
+        st.popper_names = around.popper_names;
+        st.fronts = around.fronts;
+        st.front_ratings = around.ratings;
+        st.status = Status { phase: "ready", problem, vps_fetched: fetched, ..Default::default() };
+    }
+    let _ = app.emit("library-changed", ());
     // each table's music, for cabinet mode
     let tunes: HashMap<String, PathBuf> = tables.iter().filter_map(|t| Some((key(&t.path), crate::tunes::of(&t.holds)?))).collect();
     // each table's PinUP pack checked, its layouts read, before the library's held
@@ -563,14 +593,16 @@ fn load(app: &AppHandle) -> Result<(), String> {
             (k, facts)
         })
         .collect();
+    // each AltSound pack checked, as libaltsound reads it
+    let alt_checks = tables.iter().filter_map(|t| t.holds.altsound.as_ref()).map(|p| (key(p), ::library::altsound::check(p))).map(|(k, (look, text))| (k, (look.to_string(), text))).collect();
+    let alt_made = tables.iter().filter_map(|t| t.holds.altsound.as_ref()).filter(|p| crate::altsound_make::made_from_rom(p)).map(|p| key(p)).collect();
+    // what's checked handed to the library, its tables as they stand (a choice made on one since
+    // they showed kept)
     {
         let shared = app.state::<Shared>();
         let mut st = shared.0.lock().unwrap();
-        st.vps_pictures = db.as_deref().map(vps_pictures).unwrap_or_default();
-        st.db = db;
-        // each AltSound pack checked, as libaltsound reads it
-        st.alt_checks = tables.iter().filter_map(|t| t.holds.altsound.as_ref()).map(|p| (key(p), ::library::altsound::check(p))).map(|(k, (look, text))| (k, (look.to_string(), text))).collect();
-        st.alt_made = tables.iter().filter_map(|t| t.holds.altsound.as_ref()).filter(|p| crate::altsound_make::made_from_rom(p)).map(|p| key(p)).collect();
+        st.alt_checks = alt_checks;
+        st.alt_made = alt_made;
         // the tables updated in place since their scripts were edited here
         st.script_updates = tables
             .iter()
@@ -579,12 +611,6 @@ fn load(app: &AppHandle) -> Result<(), String> {
             .collect();
         st.pup_checks = pup_checks;
         st.tunes = tunes;
-        st.tables = tables;
-        let around = ::library::installed::Around::read(&layout);
-        st.popper_names = around.popper_names;
-        st.fronts = around.fronts;
-        st.front_ratings = around.ratings;
-        st.status = Status { phase: "ready", problem, vps_fetched: fetched, ..Default::default() };
         // ratings a front end didn't take when they were set, put in now while the user wants that
         if ratings_to_fronts(&st.user.prefs) && !st.user.ratings_unsent.is_empty() {
             let keys: Vec<String> = st.user.ratings_unsent.iter().cloned().collect();
@@ -599,6 +625,14 @@ fn load(app: &AppHandle) -> Result<(), String> {
     fit_roms(app);
     set_status(app, |_| {});
     let _ = app.emit("library-changed", ());
+    eprintln!(
+        "the library read: {} tables, their files in {} ms, built in {} ms more, checked in {} ms more ({} ms after the app started)",
+        st_tables(app),
+        files_read.as_millis(),
+        (built - files_read).as_millis(),
+        (read_from.elapsed() - built).as_millis(),
+        crate::started().elapsed().as_millis()
+    );
     // every table's ROM checked, those checked before shown at once
     crate::rom_checks::start(app);
     // tables chosen to play with VPX 10.8.0 tried again in a newer 10.8.1 the library has
@@ -629,6 +663,11 @@ fn load(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// How many tables the library holds.
+fn st_tables(app: &AppHandle) -> usize {
+    app.state::<Shared>().0.lock().unwrap().tables.len()
+}
+
 fn build(layout: &Layout, db: Option<&Database>, user: &User, record: &added::Added, found: Vec<(PathBuf, Read)>) -> Vec<Table> {
     let aliases = installed::Aliases::load(&layout.vpinmame);
     let media = installed::media_folders(layout);
@@ -652,6 +691,27 @@ fn build(layout: &Layout, db: Option<&Database>, user: &User, record: &added::Ad
     let claimed: std::collections::HashSet<PathBuf> = tables.iter().filter_map(|t| t.holds.pup_pack.clone()).collect();
     for t in &mut tables {
         t.holds.pup_misnamed = installed::misnamed_pack(layout, &t.path, &t.read, &t.holds, &claimed);
+    }
+    // Future Pinball's tables, where it's installed, in line with VPX's: each matched among VPS's
+    // Future Pinball table files (the user's own word on a match first); of what VPX's tables hold
+    // beside them, only a PinUP pack named as the table (a PinEvent table's backglass and display)
+    if let Some(install) = layout.future_pinball.as_deref().and_then(::library::future_pinball::Install::at) {
+        for path in ::library::future_pinball::tables(&install) {
+            let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let meta = std::fs::metadata(&path).ok();
+            let read = Read { size: meta.as_ref().map_or(0, |m| m.len()), modified: meta.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as i64), ..Default::default() };
+            let on_vps = match user.vps.get(&key(&path)) {
+                Some(choice) => choice.on_vps(),
+                None => db
+                    .and_then(|db| ::library::future_pinball::matched(db, &path))
+                    .map(|(g, f)| OnVps { game: Some(g.id.clone()), table_file: f.map(|f| f.id.clone()), found: Some("by its file's name, among VPS's Future Pinball tables"), sure: false })
+                    .unwrap_or_default(),
+            };
+            let added = std::fs::metadata(&path).and_then(|m| m.created()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(read.modified, |d| d.as_millis() as i64);
+            let pack = layout.pup_videos.join(&stem);
+            let holds = Holds { pup_pack: pack.join("screens.pup").is_file().then_some(pack), ..Holds::default() };
+            tables.push(Table { id: id_of(&path), path, stem, read, on_vps, holds, added, other: Vec::new() });
+        }
     }
     tables
 }
@@ -857,6 +917,8 @@ fn docs_of(t: &Table) -> Vec<Doc> {
 #[serde(rename_all = "camelCase")]
 pub struct TableView<'a> {
     pub id: &'a str,
+    /// What plays it: `vpx`, or `fp` for a Future Pinball table, played in Future Pinball.
+    pub format: &'static str,
     /// Its table file's path in lower case, as the user's own lists keep it.
     pub key: String,
     pub path: &'a Path,
@@ -1097,9 +1159,10 @@ pub fn view<'a>(st: &'a State, t: &'a Table) -> TableView<'a> {
     // VPS's pictures, but those the user hid from this table
     let hidden = st.user.hidden.get(&key(&t.path));
     let vps_picture = |id: &str| (st.vps_pictures.contains_key(id) && !hidden.is_some_and(|h| h.contains(id))).then(|| format!("{base}v/{id}"));
-    let game_tables = |g: &Game| -> Option<String> {
-        g.table_files.iter().filter(|f| f.table_format.as_deref().is_none_or(|x| x == "VPX")).find_map(|f| vps_picture(&f.id))
-    };
+    // its own kind's table files on VPS: Future Pinball's for one of its tables, else VPX's
+    let fp = ::library::future_pinball::is_table(&t.path);
+    let same_format = move |f: &&::library::vps::TableFile| if fp { f.table_format.as_deref() == Some(::library::future_pinball::FORMAT) } else { f.table_format.as_deref().is_none_or(|x| x == "VPX") };
+    let game_tables = |g: &Game| -> Option<String> { g.table_files.iter().filter(same_format).find_map(|f| vps_picture(&f.id)) };
     // the pictures our player made of it, each marked with when, so a new one shows at once
     let own = |kind: &str| crate::own_pictures::made(&t.id, kind).map(|(_, when)| format!("{base}o/{}/{kind}?v={when}", t.id));
     // every picture and video it has, by kind, each kind's first as they were chosen before there
@@ -1131,7 +1194,7 @@ pub fn view<'a>(st: &'a State, t: &'a Table) -> TableView<'a> {
     let turns = st.user.turns.get(&key(&t.path));
     let upright = file
         .filter(|f| st.vps_pictures.contains_key(&f.id))
-        .or_else(|| game.and_then(|g| g.table_files.iter().filter(|f| f.table_format.as_deref().is_none_or(|x| x == "VPX")).find(|f| st.vps_pictures.contains_key(&f.id))))
+        .or_else(|| game.and_then(|g| g.table_files.iter().filter(same_format).find(|f| st.vps_pictures.contains_key(&f.id))))
         .and_then(|f| st.vps_pictures.get(&f.id))
         .and_then(|url| pictures::vps_on_pc(url))
         .or_else(|| crate::own_pictures::made(&t.id, "playfield").map(|(path, _)| path));
@@ -1256,6 +1319,7 @@ pub fn view<'a>(st: &'a State, t: &'a Table) -> TableView<'a> {
     let group = crate::builds::group_of(st, t);
     TableView {
         id: &t.id,
+        format: if ::library::future_pinball::is_table(&t.path) { "fp" } else { "vpx" },
         key: key.clone(),
         path: &t.path,
         file: &t.stem,
@@ -1368,6 +1432,12 @@ fn links(urls: &[vps::Link]) -> Vec<String> {
     urls.iter().filter(|l| l.broken != Some(true) && (l.url.starts_with("https://") || l.url.starts_with("http://"))).map(|l| l.url.clone()).collect()
 }
 
+/// A YouTube video's page by its ID, where the ID is one (letters, digits, `-` and `_`).
+fn youtube_link(id: &str) -> Option<String> {
+    let id = id.trim();
+    (!id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then(|| format!("https://www.youtube.com/watch?v={id}"))
+}
+
 /// Every file VPS lists for a table's game, by kind, the newest first.
 pub fn vps_files(st: &State, t: &Table) -> Vec<VpsKind> {
     let Some(db) = st.db.as_deref().filter(|_| t.on_vps.sure) else { return Vec::new() };
@@ -1454,6 +1524,9 @@ fn game_files(st: &State, game: &Game, file: Option<&TableFile>) -> Vec<VpsKind>
                 let mut links = links(&a.urls);
                 if let Some(u) = a.url.as_ref().filter(|u| u.starts_with("https://") || u.starts_with("http://")) {
                     links.push(u.clone());
+                }
+                if let Some(u) = a.youtube_id.as_deref().and_then(youtube_link).filter(|_| links.is_empty()) {
+                    links.push(u);
                 }
                 VpsFile {
                     id: a.id.clone(),
@@ -1654,6 +1727,10 @@ pub fn vps_names(st: &State, id: &str, game: &str) -> Result<Renames, String> {
     let layout = st.layout.clone().ok_or("The library isn't read yet.")?;
     if name.eq_ignore_ascii_case(&t.stem) {
         return Ok(Renames { name, files: Vec::new(), popper: None, blocked: None });
+    }
+    // the rename follows VPX's files and the front ends' VPX lists
+    if ::library::future_pinball::is_table(&t.path) {
+        return Ok(Renames { name, files: Vec::new(), popper: None, blocked: Some("A Future Pinball table keeps its file's name: renaming for every program is for VPX's tables.".into()) });
     }
     Ok(match ::library::rename::plan(&layout, &t.path, &name) {
         Ok(p) => {
@@ -2430,6 +2507,122 @@ pub fn turn_media(st: &mut State, id: &str, pick: &str, turn: u16) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// How long the library takes to read on this PC, step by step, as the app reads it at start,
+    /// and then each table's view as the screens ask for them, twice: `cargo test -p app --release
+    /// the_library_read_timed_on_this_pc -- --ignored --nocapture`. Nothing written, no window.
+    #[test]
+    #[ignore]
+    fn the_library_read_timed_on_this_pc() {
+        use std::time::Instant;
+        let clock = Instant::now();
+        let layout = Layout::from_folders(&vpi_settings::library_folders_now().expect("the library's folders"));
+        let user = User::load();
+        let db = Database::load(&vps::default_path().expect("APPDATA")).ok().map(Arc::new);
+        println!("VPS's database: {:?}", clock.elapsed());
+        let step = Instant::now();
+        let mut remembered = Remembered::load(&Remembered::default_path().expect("APPDATA"));
+        let found = installed::scan(&layout.tables, &mut remembered, |_, _, _| {}).expect("the tables");
+        println!("{} table files read (remembered): {:?}", found.len(), step.elapsed());
+        let step = Instant::now();
+        let tables = build(&layout, db.as_deref(), &user, &added::load(), found);
+        println!("{} tables built: {:?}", tables.len(), step.elapsed());
+        let step = Instant::now();
+        let pup_checks: HashMap<String, crate::pup_packs::Facts> = tables.iter().filter_map(|t| t.holds.pup_pack.as_ref()).map(|p| (key(p), crate::pup_packs::facts(p, None))).collect();
+        println!("{} PinUP packs checked: {:?}", pup_checks.len(), step.elapsed());
+        let step = Instant::now();
+        let alt: usize = tables.iter().filter_map(|t| t.holds.altsound.as_ref()).map(|p| ::library::altsound::check(p)).count();
+        println!("{alt} AltSound packs checked: {:?}", step.elapsed());
+        let step = Instant::now();
+        let around = ::library::installed::Around::read(&layout);
+        println!("the front ends' lists: {:?}", step.elapsed());
+        let mut st = State { layout: Some(layout), user, tables, pup_checks, popper_names: around.popper_names, fronts: around.fronts, front_ratings: around.ratings, ..Default::default() };
+        st.vps_pictures = db.as_deref().map(vps_pictures).unwrap_or_default();
+        st.db = db;
+        println!("read, before the views: {:?}", clock.elapsed());
+        for pass in ["first", "again"] {
+            let step = Instant::now();
+            let mut slowest: Vec<(std::time::Duration, String, usize)> = st
+                .tables
+                .iter()
+                .map(|t| {
+                    let at = Instant::now();
+                    let v = view(&st, t);
+                    (at.elapsed(), v.name.clone(), v.media.len())
+                })
+                .collect();
+            println!("views, {pass}: {:?}", step.elapsed());
+            slowest.sort_by(|a, b| b.0.cmp(&a.0));
+            for (took, name, media) in slowest.iter().take(if pass == "first" { 8 } else { 0 }) {
+                println!("  {took:?}  {name} ({media} media)");
+            }
+        }
+        let step = Instant::now();
+        let views: Vec<TableView> = st.tables.iter().map(|t| view(&st, t)).collect();
+        let text = serde_json::to_string(&views).unwrap_or_default();
+        println!("the screens' copy, {} KB: {:?}", text.len() / 1024, step.elapsed());
+    }
+
+    /// The library's tables made for VR on this PC — VPS's VR, Hybrid or MR tags on their table
+    /// file, or VR in their file's name — and what each holds: `cargo test -p app --release
+    /// vr_tables_on_this_pc -- --ignored --nocapture`. Nothing written, no window.
+    #[test]
+    #[ignore]
+    fn vr_tables_on_this_pc() {
+        let layout = Layout::from_folders(&vpi_settings::library_folders_now().expect("the library's folders"));
+        let user = User::load();
+        let db = Database::load(&vps::default_path().expect("APPDATA")).ok().map(Arc::new);
+        let mut remembered = Remembered::load(&Remembered::default_path().expect("APPDATA"));
+        let found = installed::scan(&layout.tables, &mut remembered, |_, _, _| {}).expect("the tables");
+        let tables = build(&layout, db.as_deref(), &user, &added::load(), found);
+        let mut st = State { layout: Some(layout), user, tables, ..Default::default() };
+        st.vps_pictures = db.as_deref().map(vps_pictures).unwrap_or_default();
+        st.db = db;
+        let vr_tag = |f: &str| ["vr", "hybrid", "mr", "mixed reality"].contains(&f.to_lowercase().as_str());
+        let mut rows: Vec<String> = Vec::new();
+        for t in &st.tables {
+            let v = view(&st, t);
+            let tags: Vec<&String> = v.features.iter().filter(|f| vr_tag(f)).collect();
+            let named = t.stem.to_lowercase().split(|c: char| !c.is_alphanumeric()).any(|w| w == "vr");
+            if tags.is_empty() && !named {
+                continue;
+            }
+            let h = &t.holds;
+            let rom = match (&h.rom_set, &h.rom) {
+                (None, _) => "no ROM needed".to_string(),
+                (Some(set), Some(_)) => format!("ROM {set} here"),
+                (Some(set), None) => format!("ROM {set} MISSING"),
+            };
+            let missing: Vec<String> = h.helpers.iter().filter(|x| x.path.is_none()).map(|x| format!("script {} missing", x.name)).chain(h.folders_missing.iter().map(|f| format!("folder {f} missing"))).chain(h.music_missing.iter().take(1).map(|_| "music missing".to_string())).collect();
+            rows.push(format!(
+                "{} | {} | {} | {} | {} | backglass {} | PinUP {} | {}{}",
+                v.name,
+                t.stem,
+                if tags.is_empty() { "name says VR".to_string() } else { tags.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ") },
+                if v.on_vps.sure { "matched" } else if v.guess.is_some() { "guess" } else { "not on VPS" },
+                rom,
+                if h.backglass.is_some() { "yes" } else { "no" },
+                if h.pup_pack.is_some() { "yes" } else { "no" },
+                if missing.is_empty() { "nothing missing".to_string() } else { missing.join("; ") },
+                if t.read.error.is_some() { " | READ ERROR" } else { "" }
+            ));
+        }
+        rows.sort();
+        println!("{} tables for VR:", rows.len());
+        for r in rows {
+            println!("{r}");
+        }
+    }
+
+    #[test]
+    fn a_tutorial_given_by_its_youtube_id_alone_gets_its_link() {
+        assert_eq!(youtube_link(" dQw4w9WgXcQ ").as_deref(), Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ"));
+        assert_eq!(youtube_link("a-b_c1"), Some("https://www.youtube.com/watch?v=a-b_c1".into()));
+        // nothing that isn't an ID
+        assert_eq!(youtube_link(""), None);
+        assert_eq!(youtube_link("x&list=y"), None);
+        assert_eq!(youtube_link("https://example.com/"), None);
+    }
 
     #[test]
     fn a_tables_packs_follow_its_rom() {

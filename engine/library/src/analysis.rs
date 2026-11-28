@@ -19,7 +19,7 @@ pub enum Kind {
     Table,
     /// A Visual Pinball 9 table (`.vpt`), which ours doesn't play.
     OldTable,
-    /// A Future Pinball table or library (`.fpt`, `.fpl`), which ours doesn't play.
+    /// A Future Pinball table or library (`.fpt`, `.fpl`), played in Future Pinball itself.
     FuturePinball,
     Backglass,
     /// B2S Server's window places for the table (`.res`).
@@ -48,6 +48,9 @@ pub enum Kind {
     Nvram,
     /// PinMAME's settings for the game (`.cfg`).
     PinmameSettings,
+    /// BAM's settings for a Future Pinball table (`.cfg`, in a download holding the table): its
+    /// camera, lighting and BAM's own options, as its author set them (ours).
+    BamSettings,
     /// Front-end media: wheel, backglass and playfield pictures and videos.
     Media,
     /// A picture named as one of its table's own (`backdrop2.png` for its picture `backdrop2`), which
@@ -79,7 +82,7 @@ impl Kind {
         match self {
             Kind::Table => "table",
             Kind::OldTable => "Visual Pinball 9 table (not played)",
-            Kind::FuturePinball => "Future Pinball file (not played)",
+            Kind::FuturePinball => "Future Pinball table or library",
             Kind::Backglass => "backglass",
             Kind::BackglassPlaces => "backglass window places",
             Kind::Pov => "table views (POV)",
@@ -98,6 +101,7 @@ impl Kind {
             Kind::Music => "music",
             Kind::Nvram => "machine memory (NVRAM)",
             Kind::PinmameSettings => "PinMAME settings",
+            Kind::BamSettings => "BAM settings for the table",
             Kind::Media => "front-end media",
             Kind::TablePicture => "picture for the table",
             Kind::Manual => "manual",
@@ -156,8 +160,8 @@ pub(crate) fn looks_like_rom_set(name: &str) -> bool {
 /// An ending a kind of file other than a ROM's has: a table's, its companions', a pack's, an
 /// archive's, a document's, a picture's, a sound's or a video's (none of PinMAME's ROM files ends so).
 fn another_kind(ext: &str) -> bool {
-    const OTHERS: [&str; 22] = [
-        "vpx", "vpt", "fpt", "fpl", "directb2s", "res", "pov", "vpp", "ini", "vbs", "dif", "nv", "cfg", "crz", "cromc", "pal", "vni", "pac", "zip", "7z", "rar", "csv",
+    const OTHERS: [&str; 23] = [
+        "vpx", "vpt", "fpt", "fpl", "directb2s", "b2spro", "res", "pov", "vpp", "ini", "vbs", "dif", "nv", "cfg", "crz", "cromc", "pal", "vni", "pac", "zip", "7z", "rar", "csv",
     ];
     let lists: [&[&str]; 5] = [&READ_SUFFIXES, &MEDIA_SUFFIXES, &MUSIC_SUFFIXES, &VIDEO_SUFFIXES, &PICTURE_SUFFIXES];
     OTHERS.contains(&ext) || lists.iter().any(|l| l.contains(&ext))
@@ -253,9 +257,17 @@ pub fn analyse(listing: &Listing) -> Contents {
             || e.parse::<u32>().is_ok()
             || (!another_kind(&e) && crate::roms::known_file_name(file_name(n)))
     };
-    let rom_set = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s"))
-        && names.iter().filter(|n| !READ_SUFFIXES.contains(&ext(n).as_str())).all(|n| !n.contains('/') && rom_file(n))
-        && names.iter().any(|n| rom_file(n));
+    // ours too: a merged set, MAME's way of keeping a game's every version in one zip — the parent's
+    // files at its top, each clone's own in a folder named for the clone (`sfightii.zip`, MAME's name
+    // for PinMAME's `sfight2`, holding `sfightiia/gprom1.bin`)
+    let in_clone_folder = |n: &str| folder(n).is_some_and(|f| !f.contains('/') && looks_like_rom_set(f));
+    let rom_set = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s" | "b2spro"))
+        && names.iter().filter(|n| !READ_SUFFIXES.contains(&ext(n).as_str())).all(|n| (!n.contains('/') || in_clone_folder(n)) && rom_file(n))
+        && names.iter().any(|n| !n.contains('/') && rom_file(n));
+
+    // a download holding a Future Pinball table: its `.cfg` is BAM's settings for it, not PinMAME's
+    // (ours)
+    let future_pinball = names.iter().any(|n| ext(n) == "fpt");
 
     let mut readme = None;
     let mut files = Vec::new();
@@ -276,7 +288,7 @@ pub fn analyse(listing: &Listing) -> Contents {
                 "vpx" => Kind::Table,
                 "vpt" => Kind::OldTable,
                 "fpt" | "fpl" => Kind::FuturePinball,
-                "directb2s" => Kind::Backglass,
+                "directb2s" | "b2spro" => Kind::Backglass,
                 "res" => Kind::BackglassPlaces,
                 "pov" => Kind::Pov,
                 "vpp" => Kind::Physics,
@@ -284,6 +296,7 @@ pub fn analyse(listing: &Listing) -> Contents {
                 "vbs" => Kind::Script,
                 "dif" => Kind::Patch,
                 "nv" => Kind::Nvram,
+                "cfg" if future_pinball => Kind::BamSettings,
                 "cfg" => Kind::PinmameSettings,
                 "crz" | "cromc" => Kind::Colouring(Colouring::Serum),
                 "pal" | "vni" => Kind::Colouring(Colouring::Pin2dmd),
@@ -293,8 +306,9 @@ pub fn analyse(listing: &Listing) -> Contents {
                 "zip" if lower.contains("rom") || looks_like_rom_set(file_name(p)) => Kind::Rom,
                 "zip" | "7z" | "rar" => Kind::InnerArchive,
                 // every text file outside the packs is something to read (ours: VPin Studio's read-me
-                // is one named so; a media pack's `INSTALLATION INSTRUCTIONS.txt` went unsorted)
-                "txt" | "nfo" | "md" => Kind::Readme,
+                // is one named so; a media pack's `INSTALLATION INSTRUCTIONS.txt` went unsorted), a web
+                // page too (a ROM set's `readme.html` left unsorted had its set placed file by file)
+                "txt" | "nfo" | "md" | "htm" | "html" => Kind::Readme,
                 "pdf" => Kind::Manual,
                 _ if music_folder.as_deref().is_some_and(|f| below(f, p)) && MUSIC_SUFFIXES.contains(&x.as_str()) => Kind::Music,
                 _ if loose_music && !p.contains('/') && MUSIC_SUFFIXES.contains(&x.as_str()) => Kind::Music,
@@ -332,7 +346,7 @@ pub fn analyse(listing: &Listing) -> Contents {
 /// with no table or backglass there, tell a pack zipped from inside its folder — the drop itself
 /// the pack, its top folder empty.
 fn pup_root(names: &[&str], folders: &[&str]) -> Option<String> {
-    let whole_drop_may_be = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s"));
+    let whole_drop_may_be = !names.iter().any(|n| matches!(ext(n).as_str(), "vpx" | "vpt" | "fpt" | "directb2s" | "b2spro"));
     let mut best: Option<String> = None;
     for n in names {
         if !pup_marker(n) {
@@ -481,6 +495,14 @@ mod tests {
     }
 
     #[test]
+    fn b2s_pros_backglass_a_backglass() {
+        let c = analyse(&listing(&["Twister (Sega 1996).vpx", "Twister (Sega 1996).B2SPro", "Twister (Sega 1996).directb2s"]));
+        let kind = |p: &str| c.files.iter().find(|(e, _)| e.path == p).map(|(_, k)| *k);
+        assert_eq!(kind("Twister (Sega 1996).B2SPro"), Some(Kind::Backglass));
+        assert_eq!(kind("Twister (Sega 1996).directb2s"), Some(Kind::Backglass));
+    }
+
+    #[test]
     fn a_table_download_sorted_out() {
         let c = analyse(&listing(&[
             "Attack from Mars (Bally 1995) 6.0.vpx",
@@ -590,6 +612,57 @@ mod tests {
     }
 
     #[test]
+    fn future_pinballs_tables_and_libraries_put_in_its_folders() {
+        let c = analyse(&listing(&["RetroFlair (Original 2012) 2.2.fpt", "Libraries/RetroFlair.fpl"]));
+        let mut layout = crate::plan::Layout::under(std::path::Path::new("V-no-such-folder"));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), None, None, None, &[], &layout);
+        assert!(steps.iter().all(|s| s.to.is_none()), "nowhere to put them without Future Pinball");
+        layout.future_pinball = Some(std::path::PathBuf::from(r"V-no-such-folder\FuturePinball"));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), None, None, None, &[], &layout);
+        let to = |p: &str| steps.iter().find(|s| s.from == p).and_then(|s| s.to.clone());
+        let fp = layout.future_pinball.clone().unwrap();
+        assert_eq!(to("RetroFlair (Original 2012) 2.2.fpt"), Some(fp.join("Tables").join("RetroFlair (Original 2012) 2.2.fpt")));
+        assert_eq!(to("Libraries/RetroFlair.fpl"), Some(fp.join("Libraries").join("RetroFlair.fpl")));
+    }
+
+    #[test]
+    fn a_future_pinball_tables_bam_settings_named_for_it_in_bams_folder() {
+        let c = analyse(&listing(&["RetroFlair (Original 2012) 2.2.fpt", "RetroFlair.cfg"]));
+        assert!(c.files.iter().any(|(e, k)| e.path == "RetroFlair.cfg" && *k == Kind::BamSettings));
+        let mut layout = crate::plan::Layout::under(std::path::Path::new("V-no-such-folder"));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), None, None, None, &[], &layout);
+        assert!(steps.iter().all(|s| s.to.is_none()), "nowhere to put them without Future Pinball");
+        layout.future_pinball = Some(std::path::PathBuf::from(r"V-no-such-folder\FuturePinball"));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), None, None, None, &[], &layout);
+        let to = |p: &str| steps.iter().find(|s| s.from == p).and_then(|s| s.to.clone());
+        let fp = layout.future_pinball.clone().unwrap();
+        // the download's one table's: named for its table file, which BAM finds it by
+        assert_eq!(to("RetroFlair.cfg"), Some(fp.join("BAM").join("cfg").join("RetroFlair (Original 2012) 2.2.cfg")));
+        // two, one named as the table: that one the table's, the other as it came
+        let c = analyse(&listing(&["Tron.fpt", "Tron.cfg", "Tron cabinet.cfg"]));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), None, None, None, &[], &layout);
+        let to = |p: &str| steps.iter().find(|s| s.from == p).and_then(|s| s.to.clone());
+        assert_eq!(to("Tron.cfg"), Some(fp.join("BAM").join("cfg").join("Tron.cfg")));
+        assert_eq!(to("Tron cabinet.cfg"), Some(fp.join("BAM").join("cfg").join("Tron cabinet.cfg")));
+        // a VPX table's download: its .cfg is PinMAME's
+        let c = analyse(&listing(&["Attack from Mars.vpx", "afm_113b.cfg"]));
+        assert!(c.files.iter().any(|(e, k)| e.path == "afm_113b.cfg" && *k == Kind::PinmameSettings));
+    }
+
+    #[test]
+    fn b2s_pros_backglass_named_for_the_table_beside_b2ss_versions_numbered_together() {
+        let c = analyse(&listing(&["Twister.directb2s", "Twister Alt.directb2s", "Twister.B2SPro", "Twister Alt.B2SPro"]));
+        let layout = crate::plan::Layout::under(std::path::Path::new("V-no-such-folder"));
+        let steps = crate::plan::plan(&c, &Source::Folder("x".into()), Some("Twister"), None, None, &[], &layout);
+        let to = |p: &str| steps.iter().find(|s| s.from == p).and_then(|s| s.to.clone());
+        // one of each kind plays, named for the table; the alternatives numbered across both kinds
+        assert_eq!(to("Twister.directb2s"), Some(layout.tables.join("Twister.directb2s")));
+        assert_eq!(to("Twister.B2SPro"), Some(layout.tables.join("Twister.B2SPro")));
+        assert_eq!(to("Twister Alt.directb2s"), Some(layout.tables.join("Twister (1).directb2s")));
+        assert_eq!(to("Twister Alt.B2SPro"), Some(layout.tables.join("Twister (2).B2SPro")));
+    }
+
+    #[test]
     fn a_physics_file_goes_beside_its_table_named_for_it() {
         let c = analyse(&listing(&["nFozzy physics.vpp"]));
         assert_eq!(c.files[0].1, Kind::Physics);
@@ -628,6 +701,40 @@ mod tests {
         // a file of another kind beside them is never one
         assert!(!another_kind("u17") && another_kind("png") && another_kind("directb2s"));
         assert!(analyse(&listing(&["sw0211.u17", "wheel.png"])).files.iter().all(|(_, k)| *k != Kind::Rom));
+    }
+
+    #[test]
+    fn a_rom_sets_web_page_read_me_leaves_the_set_whole() {
+        // a Stargate set as it came: its files beside a `readme.html`
+        let zipped = Listing {
+            source: Source::Archive(crate::archive::Archive { format: crate::archive::Format::Zip, parts: vec!["C:/Downloads/stargatp.zip".into()], passwords: Vec::new() }),
+            entries: ["arom1.bin", "drom1.bin", "dsprom.bin", "gprom.bin", "readme.html", "yrom1.bin"].iter().map(|p| Entry { path: p.to_string(), size: 1, modified: None }).collect(),
+        };
+        let c = analyse(&zipped);
+        assert_eq!(c.files.iter().find(|(e, _)| e.path == "readme.html").map(|(_, k)| *k), Some(Kind::Readme));
+        // the zip goes in whole, never its files one by one
+        let layout = crate::plan::Layout::under(std::path::Path::new("V"));
+        let steps = crate::plan::plan(&c, &zipped.source, None, None, None, &[], &layout);
+        assert_eq!(steps.len(), 1, "{steps:?}");
+        assert_eq!(steps[0].to, Some(layout.vpinmame.join("roms").join("stargatp.zip")));
+    }
+
+    #[test]
+    fn a_merged_set_with_its_clones_in_folders() {
+        // MAME's merged set: the parent's files at its top, each clone's own in a folder of its name
+        let merged = ["arom1.bin", "gprom.bin", "sfightiia/dsprom2.bin", "sfightiia/gprom1.bin", "sfightiib/gprom2.bin", "yrom1.bin"];
+        let zipped = Listing {
+            source: Source::Archive(crate::archive::Archive { format: crate::archive::Format::Zip, parts: vec!["C:/Downloads/sfightii.zip".into()], passwords: Vec::new() }),
+            entries: merged.iter().map(|p| Entry { path: p.to_string(), size: 1, modified: None }).collect(),
+        };
+        let c = analyse(&zipped);
+        assert!(c.files.iter().all(|(_, k)| *k == Kind::Rom), "{:?}", c.files);
+        assert_eq!(c.rom_set.as_deref(), Some("sfightii"));
+        // the clones' folders alone, a folder further down, or one named as no set is: none
+        let none = |paths: &[&str]| analyse(&listing(paths)).files.iter().all(|(_, k)| *k != Kind::Rom);
+        assert!(none(&["sfightiia/gprom1.bin", "sfightiib/gprom2.bin"]));
+        assert!(none(&["gprom.bin", "roms/sfightiia/gprom1.bin"]));
+        assert!(none(&["gprom.bin", "Street Fighter II/gprom1.bin"]));
     }
 
     #[test]

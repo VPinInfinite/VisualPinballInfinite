@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use vpi_settings::Change;
 
 /// The sections these pages may write.
-const SECTIONS: [&str; 15] = ["Player", "TableOverride", "VPI", "Plugin.UpscaleDMD", "Plugin.ScoreView", "Plugin.Nixie", "Plugin.Serum", "Plugin.VNI", "Plugin.DMDUtil", "Alpha", "DMD", "Plugin.PUP", "Backglass", "ScoreView", "Plugin.PinMAME"];
+const SECTIONS: [&str; 16] = ["Player", "PlayerVR", "TableOverride", "VPI", "Plugin.UpscaleDMD", "Plugin.ScoreView", "Plugin.Nixie", "Plugin.Serum", "Plugin.VNI", "Plugin.DMDUtil", "Alpha", "DMD", "Plugin.PUP", "Backglass", "ScoreView", "Plugin.PinMAME"];
 
 /// An add-on VPX's later builds call by another name: the score view's, `ScoreView` before, `Nixie`
 /// after. The pages name the earlier; its setting is read from the later where that's set, and

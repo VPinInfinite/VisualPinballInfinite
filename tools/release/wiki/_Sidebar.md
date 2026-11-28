@@ -16,6 +16,10 @@
 - [Sound](Sound)
 - [Controls](Controls)
 
+**Future Pinball and VR**
+- [Future Pinball](Future-Pinball)
+- [VR](VR)
+
 **Tables' extras**
 - [ROM machines](ROM-machines)
 - [AltSound](AltSound)

@@ -6,13 +6,13 @@
 # beside the player, so PinMAME's older terms stay outside the engine.
 #
 #   1. Clones rom2altsound at that release, with its PinMAME, into vpx-build\rom2altsound (git-ignored).
-#   2. Builds its command line alone (not its window program) with Cargo, CMake and Visual Studio:
+#   2. Builds its command line alone (rom2altsound-cli, not its window program) with Cargo, CMake and Visual Studio:
 #      the crates its lock file pins, and the user's folder and the repository's taken out of what's
 #      compiled in, as tools\release\stage.ps1 builds our own. Microsoft's C runtime is the DLL its
 #      PinMAME is built against, which the installer carries beside the app.
 #
 # The app finds rom2altsound.exe there, else beside itself. Safe to re-run: an existing copy is
-# rebuilt, not cloned again.
+# rebuilt, not cloned again, and one at an earlier release moved to this one first.
 
 param(
     [string]$BuildRoot = (Join-Path $PSScriptRoot '..\..\vpx-build'),
@@ -21,7 +21,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$tag = 'v0.4.0'
+$tag = 'v0.7.0'
 $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $src = Join-Path $BuildRoot 'rom2altsound'
@@ -35,7 +35,19 @@ if (-not (Test-Path $src)) {
     git -C $src submodule update -q --init --depth 1
     if ($LASTEXITCODE -ne 0) { throw 'its PinMAME could not be cloned' }
 } else {
-    Write-Host "Source already at $src, skipping clone."
+    # a copy at an earlier release moved to this one, its PinMAME with it
+    $at = git -C $src describe --tags --exact-match 2>$null
+    if ($at -ne $tag) {
+        Write-Host "Moving rom2altsound from $at to $tag ..."
+        git -C $src fetch -q --depth 1 origin tag $tag
+        if ($LASTEXITCODE -ne 0) { throw "fetching $tag failed" }
+        git -C $src -c advice.detachedHead=false checkout -q $tag
+        if ($LASTEXITCODE -ne 0) { throw "checking out $tag failed" }
+        git -C $src submodule update -q --init --depth 1
+        if ($LASTEXITCODE -ne 0) { throw 'its PinMAME could not be brought to that release' }
+    } else {
+        Write-Host "Source already at $src ($tag), skipping clone."
+    }
 }
 
 # rustc's flags one per entry (paths with spaces in them): the folders remapped, the debug file
@@ -55,7 +67,7 @@ try {
     # PinMAME configured afresh: CMake reads a toolchain file only into a new build folder
     cargo clean --release -p rom2altsound
     # low priority: gentle on the machine
-    cmd /c "start `"`" /b /wait /low cargo build --release --locked -p rom2altsound -j $Jobs"
+    cmd /c "start `"`" /b /wait /low cargo build --release --locked -p rom2altsound-cli -j $Jobs"
     if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 } finally {
     Pop-Location

@@ -12,6 +12,7 @@
   const parts = [
     {
       name: 'Start-up',
+      for: 'both',
       rows: [
         { label: 'First setup', kind: 'custom', name: 'again' },
         { label: 'The app’s window', kind: 'custom', name: 'appWindow' },
@@ -20,6 +21,7 @@
     },
     {
       name: 'Where you are',
+      for: 'vpx',
       note: 'For the light of day: a table’s lighting can follow the sun where you are (Picture › Light level, From the sun). Only the place’s latitude and longitude are kept.',
       rows: [
         { label: 'Find your place', kind: 'custom', name: 'locate', keys: ['Player/Latitude', 'Player/Longitude'] },
@@ -29,6 +31,7 @@
     },
     {
       name: 'VPX’s readout',
+      for: 'vpx',
       rows: [
         {
           label: 'Frame rate and timings',
@@ -98,7 +101,7 @@
   {/if}
 {/snippet}
 
-<IniPage title="General" lead="The app’s own choices: its window, where you are for the light of day, and VPX’s readout while playing." {parts} custom={{ again, locate, appWindow, opensOn }} after={about} />
+<IniPage title="General" tag="both" lead="The app’s own choices: its window, where you are for the light of day, and VPX’s readout while playing." {parts} custom={{ again, locate, appWindow, opensOn }} after={about} />
 
 <style>
   .seg { display: inline-flex; border: 1px solid var(--control-line); border-radius: 8px; overflow: hidden; }

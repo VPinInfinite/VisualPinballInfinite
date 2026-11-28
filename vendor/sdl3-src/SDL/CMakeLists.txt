@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.4.18")
+project(SDL3 LANGUAGES C VERSION "3.4.20")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_MAINPROJECT ON)
@@ -19,7 +19,7 @@ endif()
 add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 
-# Visual Pinball Infinite: altered from SDL 3.4.18. Visual Studio's compiler has no __FILE_NAME__,
+# Visual Pinball Infinite: altered from SDL 3.4.20. Visual Studio's compiler has no __FILE_NAME__,
 # so SDL_FILE is __FILE__, the full path of each file as built, which SDL's assertions carry into
 # the program; /d1trimfile records the paths from SDL's own folder down instead, leaving out the
 # folder of the PC it was built on.
@@ -28,7 +28,7 @@ if(MSVC AND NOT CMAKE_C_COMPILER_ID STREQUAL "Clang")
   add_compile_options("/d1trimfile:${sdl_trimmed_prefix}")
 endif()
 
-# Visual Pinball Infinite: altered from SDL 3.4.18. cmake-rs hands Visual Studio's Release
+# Visual Pinball Infinite: altered from SDL 3.4.20. cmake-rs hands Visual Studio's Release
 # configuration flags of its own, which leave out CMake's /O2 /Ob2 /DNDEBUG, so SDL was built
 # unoptimised, its debug assertions on; they're added back (its pictures the same on every table).
 if(MSVC)
@@ -1631,7 +1631,7 @@ if(ANDROID)
       get_property(sdl3_jar_location TARGET SDL3-jar PROPERTY JAR_FILE)
       set_property(TARGET SDL3__Jar PROPERTY JAR_FILE "${sdl3_jar_location}")
       set(javasourcesjar "${SDL3_BINARY_DIR}/SDL3-${SDL3_VERSION}-sources.jar")
-      string(REGEX REPLACE "${android_java_sources_root}/" "" sdl_relative_java_sources "${SDL_JAVA_SOURCES}")
+      string(REPLACE "${android_java_sources_root}/" "" sdl_relative_java_sources "${SDL_JAVA_SOURCES}")
       add_custom_command(
         OUTPUT "${javasourcesjar}"
         COMMAND ${Java_JAR_EXECUTABLE} cf "${javasourcesjar}" ${sdl_relative_java_sources}

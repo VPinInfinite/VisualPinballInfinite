@@ -1,14 +1,15 @@
 <script>
-  // Settings › Advanced: every setting VPX 5436 declares, VPinMAME's for every machine and ours, from the
-  // settings catalog (`settings-catalog.json`, made by the settings map's tool from VPX's own
-  // declarations), by category or searched, each with what it does, VPX's default and what ours does
-  // with it; changed, or taken out for its default again. What the file holds that the catalog
+  // Settings › Advanced: every setting the VPX the app is made for declares, the classic VPinMAME's for
+  // every machine and ours, from the settings catalog (`settings-catalog.json`, made by the settings
+  // map's tool from VPX's own declarations), by category or searched, each with what it does and VPX's
+  // default; changed, or taken out for its default again. What the file holds that the catalog
   // hasn't, under "Others in the file", any added there by its section and name. A PIN2DMD key shows
   // only as set. Locked until unlocked, on a word; locked again when the page is left.
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
   import { app, notice } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
 
   let locked = $state(true);
   let asking = $state(false);
@@ -95,7 +96,7 @@
   const cats = $derived.by(() => {
     if (!catalog) return [];
     const out = catalog.categories.map((c) => ({ ...c, n: 0, set: 0 }));
-    out.push({ id: OTHERS, label: 'Others in the file', note: 'In the settings file but not among VPX 5436’s or ours: the controls’ mappings, older names, ones added by hand. Kept as they are.', n: 0, set: 0 });
+    out.push({ id: OTHERS, label: 'Others in the file', note: 'In the settings file but not among VPX’s or ours: the controls’ mappings, older names, ones added by hand. Kept as they are.', n: 0, set: 0 });
     for (const e of everything) {
       const c = out.find((x) => x.id === e.c);
       if (!c) continue;
@@ -109,7 +110,7 @@
   // what shows: the category's, or every category's when searching
   const shown = $derived.by(() => {
     const q = query.trim().toLowerCase();
-    let list = q ? everything.filter((e) => `${e.l} ${e.s} ${e.k} ${e.d} ${e.why || ''} ${e.g || ''}`.toLowerCase().includes(q)) : everything.filter((e) => e.c === cat);
+    let list = q ? everything.filter((e) => `${e.l} ${e.s} ${e.k} ${e.d} ${e.g || ''}`.toLowerCase().includes(q)) : everything.filter((e) => e.c === cat);
     if (onlySet) list = list.filter(isSet);
     return list.slice(0, 600);
   });
@@ -123,14 +124,6 @@
     }
     return out;
   });
-
-  const STATUS = {
-    works: ['Works in VPI', 'good'],
-    later: ['Not in VPI yet', 'later'],
-    'not-ours': ['Not VPI’s', 'not'],
-    'own-file': ['Its own file', 'not'],
-  };
-
   const shownNumber = (v) => (typeof v === 'number' ? String(Math.round(v * 1e4) / 1e4) : v);
 
   /** A setting's default, in words. */
@@ -172,8 +165,8 @@
 <div class="page" data-loading={locked || file || problem ? undefined : ''}>
   <header>
     <div class="title">
-      <h1 class="display">Advanced</h1>
-      <p>Every setting VPX 5436 has, VPinMAME’s for every machine and ours, by category: what each does, its default, and what VPI does with it. The other pages change the same settings.</p>
+      <h1 class="display">Advanced<ForTag which="vpx" /></h1>
+      <p>Every setting VPX {catalog?.vpx ?? ''} has, the classic VPinMAME’s for every machine and ours, by category: what each does and its default. The other pages change the same settings.</p>
     </div>
     {#if !locked && file}
       <div class="actions">
@@ -232,11 +225,9 @@
             {#if g.name}<h2>{g.name}</h2>{/if}
             {#each g.rows as e (e.s + '/' + e.k)}
               {@const v = now(e)}
-              {@const st = STATUS[e.st]}
               <div class="row" class:set={v !== null} class:changed={changed(e)}>
                 <div class="who">
                   <span class="label">{e.l}</span>
-                  {#if st}<span class="pill {st[1]}" title={e.why || ''}>{st[0]}</span>{/if}
                   <span class="key">[{e.s === 'Machine.default' ? 'Machine settings.ini › default' : e.s}] {e.k}</span>
                 </div>
                 <div class="ctl">
@@ -264,8 +255,8 @@
                     <button type="button" class="btn small ghost" onclick={() => set(e, null)} title="Out of the file: its default again">Take it out</button>
                   {/if}
                 </div>
-                {#if e.d || e.why}
-                  <p class="what">{e.d}{#if e.why}<span class="ours">{e.d ? ' · ' : ''}In VPI: {e.why}</span>{/if}</p>
+                {#if e.d}
+                  <p class="what">{e.d}</p>
                 {/if}
               </div>
             {/each}
@@ -334,11 +325,6 @@
   .text { flex: 1 1 260px; min-width: 0; }
   .def { font-size: 12px; color: var(--faint); }
   .what { flex: 1 1 100%; margin: 0 0 0 346px; color: var(--faint); font-size: 12.5px; line-height: 1.45; }
-  .ours { color: #8d97a8; }
-  .pill { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .pill.good { background: #143024; color: var(--good); }
-  .pill.later { background: #2a2414; color: #ffd27a; }
-  .pill.not { background: #1d2230; color: var(--faint); }
   .add { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
   .add input { height: 32px; width: 200px; }
   @media (max-width: 1100px) { .what { margin-left: 0; } .who { flex-basis: 100%; } }

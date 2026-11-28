@@ -483,7 +483,7 @@ mod tests {
 
     /// The balls in play heard in VPX through a line of the table's own script, unseen and silent:
     /// Attack from Mars in a test library of VPX's newer build (`VPI_TEST_LIBRARY`, else
-    /// `vpx-build\vpx-test-6758`) in VPX's capture mode on a desktop never shown, its sound off, a
+    /// `vpx-build\vpx-test-7001`) in VPX's capture mode on a desktop never shown, its sound off, a
     /// copy of its sample pack given an achievement for a ball in play. VPX plays only with its
     /// window focused, which a desktop never shown never gives, and its capture mode takes no input
     /// and races the machine past a coin's pulse; so a line of a check's own moves one of the
@@ -496,7 +496,7 @@ mod tests {
     #[ignore]
     fn balls_in_play_are_heard_in_vpx() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.has_addons(), "{:?}", vpx.version);
@@ -596,7 +596,7 @@ mod tests {
     }
 
     /// A table's lights heard in VPX, unseen and silent: Leprechaun King, a table with no ROM, in a
-    /// test library of VPX's newer build (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`) in
+    /// test library of VPX's newer build (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`) in
     /// VPX's capture mode, a pack reading three of its lights by name followed. VPX shares a table's
     /// lights with add-ons from build 6148; our add-on reads those a pack names and tells the
     /// achievements each change. Lines of a check's own set the shoot-again light blinking, then
@@ -608,7 +608,7 @@ mod tests {
     #[ignore]
     fn a_tables_lights_are_heard_in_vpx() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.version >= [10, 8, 1, 6148], "{:?} shares no lights", vpx.version);
@@ -688,7 +688,7 @@ mod tests {
     }
 
     /// The add-on on its own, as in a VPX with no app beside it, unseen and silent: Attack from Mars
-    /// in a test library of VPX's newer build (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`)
+    /// in a test library of VPX's newer build (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`)
     /// in VPX's capture mode, no game's packs handed over (`VPI_ACHIEVEMENTS` unset), its sample pack
     /// copied into the `achievements` folder of VPX's preferences folder for this run. The add-on
     /// finds it by the game's name and year in the table file's name (the pack names no ROM set),
@@ -699,7 +699,7 @@ mod tests {
     #[ignore]
     fn the_addon_plays_on_its_own_in_vpx() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.has_addons(), "{:?}", vpx.version);
@@ -778,7 +778,7 @@ mod tests {
     }
 
     /// The app's pause menu on VPX's menu key, unseen and silent: Attack from Mars in a test library
-    /// (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`) in VPX's capture mode for 12 s, the
+    /// (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`) in VPX's capture mode for 12 s, the
     /// add-on on its own with its sample pack, a port of this test's standing for the app's
     /// (`VPI_MENU_PORT`). Four seconds in, VPX's menu action is pressed as a player's F12 would be
     /// (`VPI_MENU_CHECK_PRESS_AT_MS`): the add-on keeps it from VPX and asks for the menu with where
@@ -790,7 +790,7 @@ mod tests {
     fn the_pause_menu_takes_vpxs_menu_key_in_vpx() {
         use std::io::{BufRead, Write};
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.has_addons(), "{:?}", vpx.version);
@@ -907,7 +907,7 @@ mod tests {
 
     /// A hardcore game turned softcore when a setting that makes a game softcore changes in a
     /// settings file it plays with, unseen and silent: Attack from Mars in a test library
-    /// (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`) in VPX's capture mode, its sample pack
+    /// (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`) in VPX's capture mode, its sample pack
     /// followed hardcore, a table settings file of the game's own watched (`hardcoreFiles`), a table
     /// option written into it a few seconds in, as VPX's menu would keep one: the add-on says so and
     /// the game ends softcore. `cargo build --release -p vpx-addon`, then `cargo test --release -p
@@ -916,7 +916,7 @@ mod tests {
     #[ignore]
     fn a_hardcore_game_turns_softcore_in_vpx() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.has_addons(), "{:?}", vpx.version);
@@ -987,7 +987,7 @@ mod tests {
     /// What VPX says it was never given back as it closes (its plugin manager's "was not released"
     /// lines), with our add-on off, on with nothing to follow, and on following a pack that counts
     /// the balls in play: Attack from Mars (or the table whose folder `VPI_TEST_TABLE` names) in a
-    /// test library (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`) in VPX's capture mode,
+    /// test library (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`) in VPX's capture mode,
     /// unseen and silent, each run in a scratch preferences folder of its own. Our add-on adds
     /// nothing to what's left: every message id it asks for goes back, VPX's own GetAPI's, 0,
     /// among them. `cargo build --release -p vpx-addon`, then `cargo test --release -p library
@@ -996,7 +996,7 @@ mod tests {
     #[ignore]
     fn vpx_is_given_back_all_of_ours() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let lib = std::fs::canonicalize(lib).unwrap();
         let vpx = crate::vpx::newest_in(std::slice::from_ref(&lib)).unwrap();
         assert!(vpx.has_addons(), "{:?}", vpx.version);

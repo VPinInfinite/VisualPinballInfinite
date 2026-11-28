@@ -50,7 +50,7 @@ SOURCES = {
     'hidapi': 'https://github.com/libusb/hidapi',
     'libftdi': 'https://github.com/jsm174/libftdi',
     'libarchive': 'https://github.com/libarchive/libarchive',
-    'rom2altsound': 'https://github.com/Le-Syl21/rom2altsound (v0.4.0; its PinMAME from https://github.com/Le-Syl21/pinmame, branch bsmt2000-lle)',
+    'rom2altsound': 'https://github.com/Le-Syl21/rom2altsound (v0.7.0; its PinMAME from https://github.com/Le-Syl21/pinmame, branch bsmt2000-lle)',
     'Microsoft Visual C++ runtime': 'Visual Studio\'s redistributable files',
 }
 
@@ -60,6 +60,24 @@ LGPL21 = ROOT / 'vendor' / 'ffmpeg' / 'COPYING.LGPLv2.1'
 # what's built into the programs that isn't a Rust crate: code ported from other projects, fonts,
 # pictures and data, each with its licence and the files carrying its notice in this repository
 BUILT_IN = [
+    {
+        'name': 'CED tiny (in rom2altsound)',
+        'by': "Xiaomi, the CED audio taggers (mispeech); exported to ONNX by rom2altsound's author",
+        'licence': 'Apache-2.0',
+        'what': 'The small audio tagger rom2altsound names and types the sounds nobody named with, built into rom2altsound.exe',
+        'source': 'https://huggingface.co/mispeech/ced-tiny',
+        'texts': [],
+        'note': "The Apache License 2.0's text is in licenses/rust-rom2altsound, among the tract crates' own.",
+    },
+    {
+        'name': "AudioSet ontology's class names (in rom2altsound)",
+        'by': 'Google',
+        'licence': 'CC-BY-4.0',
+        'what': "The names of AudioSet's 527 sound classes, in the order of the tagger's outputs, built into rom2altsound.exe",
+        'source': 'https://research.google.com/audioset/ontology/index.html',
+        'texts': [],
+        'note': 'Creative Commons Attribution 4.0 International: https://creativecommons.org/licenses/by/4.0/',
+    },
     {
         'name': 'Visual Pinball X',
         'by': 'the Visual Pinball development team and contributors',
@@ -424,7 +442,8 @@ def main():
     # rom2altsound's own Rust crates, from its own workspace
     r2a = ROOT / 'vpx-build' / 'rom2altsound'
     if any(l['name'] == 'rom2altsound' for l in listing['libraries']) and r2a.is_dir():
-        crates = rust_crates(r2a, ['rom2altsound'])
+        # its command line's: the program (rom2altsound-cli) with its engine and its audio tagger
+        crates = rust_crates(r2a, ['rom2altsound-cli'])
         (lic / 'rust-rom2altsound').mkdir(parents=True, exist_ok=True)
         out += ['BUILT INTO ROM2ALTSOUND: RUST CRATES', '=' * 36, '', f'{len(crates)} crates, each under the licence its package states; their licence files are in', 'licenses/rust-rom2altsound.', '']
         out += crate_lines(crates, lic, 'rust-rom2altsound')

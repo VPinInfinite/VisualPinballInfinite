@@ -6,18 +6,23 @@
   // page does (`ini_page.rs`). A page lists its rows as data, so moving a setting is moving a line:
   //   choice  — options, each the settings it sets ({ 'Player/MSAASamples': '1' }; null: taken out;
   //             a list: any of them counts as it, the first written), or `read`/`write` of its own
+  //             (`read(get)`, the option shown; `write(i, set, get)`), its `keys` read with the rest
   //   toggle  — `key`, on unless set when `def`, `invert` for VPX's Force…Off switches
   //   slider  — `key`, `min`, `max`, `step`, `def`; `unset` names VPX's own (the table's)
   //   number, text — `key`; checks — `key`, its `options`, all of them when unset
   //   custom  — a snippet of the page's own, given `get` and `set`, its `keys` read with the rest
-  // A row may show only `when` the others say so, and one still to build is `later`.
+  // A row's `what` may be said from the settings (`what(get)`). A row may show only `when` the
+  // others say so, and one still to build is `later`. A part says
+  // which tables it sets (`for`: vpx, fp, both), and the page too (`tag`), shown where Future
+  // Pinball is found.
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
+  import ForTag from './ForTag.svelte';
   import { notice } from './store.svelte.js';
 
   // `kept`: where its settings are kept, said in place of the settings file's place
-  let { title, lead, parts, custom = {}, after = null, kept = null } = $props();
+  let { title, lead, parts, custom = {}, after = null, kept = null, tag = null } = $props();
 
   let view = $state(null);
   let draft = $state(null);
@@ -87,7 +92,7 @@
     return r.options.findIndex(matches);
   }
   function choose(r, i) {
-    if (r.write) return r.write(i, set);
+    if (r.write) return r.write(i, set, get);
     for (const [k, want] of Object.entries(r.options[i].set)) set(k, Array.isArray(want) ? want[0] : want);
   }
   // shown on or off: unset, as VPX's own default (`def`); set, as the file says, a Force…Off
@@ -111,7 +116,7 @@
 <div class="page" data-loading={draft || problem ? undefined : ''}>
   <header>
     <div class="title">
-      <h1 class="display">{title}</h1>
+      <h1 class="display">{title}{#if tag}<ForTag which={tag} />{/if}</h1>
       <p>{lead}</p>
     </div>
     {#if draft}
@@ -129,7 +134,7 @@
   {:else}
     {#each parts as part (part.name)}
       <section class="part" aria-label={part.name}>
-        <h2 class="partname">{part.name}</h2>
+        <h2 class="partname">{part.name}{#if part.for}<ForTag which={part.for} />{/if}</h2>
         {#if part.note}<p class="note">{part.note}</p>{/if}
         <div class="rows">
           {#each part.rows.filter((r) => !r.when || r.when(get)) as r (r.label)}
@@ -170,7 +175,7 @@
                   <span class="val">{r.text}</span>
                 {/if}
               </span>
-              {#if r.what || r.vpx}<span class="what">{r.what ?? ''}{#if r.vpx}<span class="vpx">{r.vpx}</span>{/if}</span>{/if}
+              {#if r.what || r.vpx}<span class="what">{typeof r.what === 'function' ? r.what(get) : (r.what ?? '')}{#if r.vpx}<span class="vpx">{r.vpx}</span>{/if}</span>{/if}
             </div>
           {/each}
         </div>
@@ -192,7 +197,7 @@
   .problem { padding: 14px 16px; border-radius: 12px; background: #2a1820; border: 1px solid #5a2a3a; display: flex; gap: 12px; align-items: center; }
   /* each part under a thin line, with its name (as the side panel's divider) */
   .part { display: flex; flex-direction: column; gap: 10px; padding-top: 22px; border-top: 1px solid var(--line); }
-  .partname { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--fg); }
+  .partname { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: var(--fg); display: flex; align-items: center; gap: 10px; }
   .note { margin: -4px 0 0; color: var(--faint); font-size: 13px; max-width: 760px; }
   .rows { display: flex; flex-direction: column; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 0; border-top: 1px solid var(--line-soft); }

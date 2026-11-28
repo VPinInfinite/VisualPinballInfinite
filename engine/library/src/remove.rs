@@ -113,11 +113,18 @@ pub fn plan(layout: &Layout, table: &Seen, others: &[Seen]) -> Vec<Item> {
     let mut out = Vec::new();
     out.extend(Item::recycle("table", "The table", vec![table.path.to_path_buf()], Vec::new()));
     // its own files beside it, named for it
-    for (key, what, path) in [("backglass", "Its backglass", &h.backglass), ("settings", "Its settings", &h.settings), ("pov", "Its POV", &h.pov), ("script", "Its script", &h.script)] {
+    for (key, what, path) in [("backglass", "Its backglass", &h.backglass), ("backglassPro", "Its B2S Pro backglass", &h.backglass_pro), ("settings", "Its settings", &h.settings), ("pov", "Its POV", &h.pov), ("script", "Its script", &h.script)] {
         out.extend(path.clone().and_then(|p| Item::recycle(key, what, vec![p], Vec::new())));
     }
     // its other backglasses, kept beside it to choose from, and the pictures kept for it
     out.extend(Item::recycle("backglasses", "Its other backglasses", h.backglasses.clone(), Vec::new()));
+    // VPX 10.9's cache of its pictures, beside it (`cache\<table>`), which VPX makes again
+    if let (Some(dir), Some(stem)) = (table.path.parent(), table.path.file_stem()) {
+        let cache = dir.join("cache").join(stem);
+        if cache.is_dir() {
+            out.extend(Item::recycle("cache", "VPX's cache of its pictures", vec![cache], Vec::new()));
+        }
+    }
     if let Some(folder) = h.own_media.first().and_then(|p| p.parent()) {
         out.extend(Item::recycle("own-media", "Its media", vec![folder.to_path_buf()], Vec::new()));
     }
@@ -318,7 +325,7 @@ mod tests {
     }
 
     fn layout(top: &Path) -> Layout {
-        Layout { tables: top.join("Tables"), scripts: top.join("Scripts"), vpinmame: top.join("VPinMAME"), pup_videos: top.join("PUPVideos"), data: top.join("data"), front_ends: Vec::new(), media_front: None, per_game: false, vpx_folder: None, play_with: None }
+        Layout { tables: top.join("Tables"), scripts: top.join("Scripts"), vpinmame: top.join("VPinMAME"), pup_videos: top.join("PUPVideos"), data: top.join("data"), front_ends: Vec::new(), media_front: None, per_game: false, vpx_folder: None, play_with: None, future_pinball: None }
     }
 
     fn touch(p: &Path, bytes: usize) {

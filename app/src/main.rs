@@ -10,11 +10,13 @@ mod altsound_make;
 mod cabinet;
 mod achievements;
 mod achievements_editor;
+mod b2s_screen;
 mod backglass_dmd;
 mod colouring;
 mod controls;
 mod dof_config;
 mod drop;
+mod future_pinball;
 mod hardcore;
 mod game_notes;
 mod ini_page;
@@ -30,11 +32,15 @@ mod pause_menu;
 mod machines;
 mod main_window;
 mod media_facts;
+mod menu_keys;
 mod own_pictures;
 mod own_screens;
+mod pad_keys;
+mod pads;
 mod physics;
 mod pick;
 mod pictures;
+mod pinup_screens;
 mod placement;
 mod play;
 mod popper_media;
@@ -56,6 +62,7 @@ mod tasks;
 mod tunes;
 mod updates;
 mod vpx_setup;
+mod vr;
 mod web_view;
 
 use serde::Serialize;
@@ -79,16 +86,48 @@ struct LibraryReply<'a> {
     packed: Vec<String>,
 }
 
-/// The library as it stands, with how far its reading has come.
+/// The library as it stands, with how far its reading has come: made off the window's own thread,
+/// so the window draws on meanwhile; what was learned of the media files on the way kept for the
+/// next start (`media_facts::keep`); the first one's time told in the app's log.
 #[tauri::command]
-fn library(shared: State<'_, Shared>) -> serde_json::Value {
-    let st = shared.0.lock().unwrap();
-    let popper = st.layout.as_ref().and_then(::library::installed::pop_media).is_some();
-    // the tables an achievement pack is made for: their tiles' tag, the library's filter
-    let packs = achievements::installed();
-    let packed = st.tables.iter().filter(|t| packs.iter().any(|(_, p)| achievements::fits(&st, t, p))).map(|t| t.id.clone()).collect();
-    let reply = LibraryReply { status: &st.status, tables: st.tables.iter().map(|t| library::view(&st, t)).collect(), playlists: &st.user.playlists, popper, rating_fronts: library::rating_fronts(&st), packed };
-    serde_json::to_value(reply).unwrap_or_default()
+async fn library(app: AppHandle) -> serde_json::Value {
+    tauri::async_runtime::spawn_blocking(move || {
+        let made = std::time::Instant::now();
+        let value = {
+            let shared = app.state::<Shared>();
+            let st = shared.0.lock().unwrap();
+            let popper = st.layout.as_ref().and_then(::library::installed::pop_media).is_some();
+            // the tables an achievement pack is made for: their tiles' tag, the library's filter
+            let packs = achievements::installed();
+            let packed = st.tables.iter().filter(|t| packs.iter().any(|(_, p)| achievements::fits(&st, t, p))).map(|t| t.id.clone()).collect();
+            let reply = LibraryReply { status: &st.status, tables: st.tables.iter().map(|t| library::view(&st, t)).collect(), playlists: &st.user.playlists, popper, rating_fronts: library::rating_fronts(&st), packed };
+            let first = st.status.phase == "ready" && !FIRST_VIEWS.swap(true, std::sync::atomic::Ordering::Relaxed);
+            if first {
+                eprintln!("the library's {} tables handed to the screens in {} ms, {} ms after the app started", st.tables.len(), made.elapsed().as_millis(), started().elapsed().as_millis());
+            }
+            serde_json::to_value(reply).unwrap_or_default()
+        };
+        media_facts::keep();
+        value
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Whether the screens have had the library once it was read, for the log's start-up times.
+static FIRST_VIEWS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// When the app started, for the log's start-up times.
+pub fn started() -> std::time::Instant {
+    static AT: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+    *AT
+}
+
+/// A moment of the page's start told in the app's log, with the time since the app started (the
+/// library's first tiles shown).
+#[tauri::command]
+fn page_moment(what: String) {
+    eprintln!("the page: {} ({} ms after the app started)", what.chars().take(200).collect::<String>(), started().elapsed().as_millis());
 }
 
 /// A table rated (none: cleared); what went wrong putting it in a front end's list, in words.
@@ -557,9 +596,14 @@ async fn front_ends(shared: State<'_, Shared>) -> Result<(Vec<FrontEnd>, Option<
     .map_err(|e| e.to_string())
 }
 
-/// PLAY; `mode`, `hardcore` (Play Hardcore) or `softcore` (Play Softcore), else as it stands.
+/// PLAY; `mode`, `hardcore` (Play Hardcore), `softcore` (Play Softcore) or `vr` (Play in VR), else as
+/// it stands.
 #[tauri::command]
 fn play(app: AppHandle, id: String, preset: Option<String>, stay: Option<bool>, mode: Option<String>) -> Result<(), String> {
+    // in a VR headset, this game alone
+    if mode.as_deref() == Some("vr") {
+        return play::play_vr(&app, &id, stay.unwrap_or(false));
+    }
     let asked = match mode.as_deref() {
         Some("hardcore") => achievements::Asked::Hardcore,
         Some("softcore") => achievements::Asked::Softcore,
@@ -589,6 +633,7 @@ fn show_file(shared: State<'_, Shared>, id: String, what: String) -> Result<(), 
         let found = match what.as_str() {
             "table" => Some(t.path.clone()),
             "backglass" => h.backglass.clone(),
+            "backglassPro" => h.backglass_pro.clone(),
             "rom" => h.rom.clone(),
             "pupPack" => h.pup_pack.clone(),
             "altSound" => h.altsound.clone(),
@@ -764,6 +809,7 @@ async fn table_settings(app: AppHandle, id: String) -> Result<table_settings::Vi
         let t = st.tables.iter().find(|t| t.id == id).ok_or("That table isn't in the library any more.")?;
         (t.path.clone(), t.read.game_name.clone().filter(|_| t.read.pinmame), library::layout_for(&st, &t.path))
     };
+    library::vpx_table(&path, "A table's own settings file")?;
     tauri::async_runtime::spawn_blocking(move || {
         let classic = layout.as_ref().is_some_and(table_settings::classic_pinmame);
         let vpinmame = layout.as_ref().map(|l| l.vpinmame.clone()).unwrap_or_default();
@@ -848,6 +894,8 @@ async fn make_pictures(app: AppHandle, id: String, wanted: own_pictures::Wanted)
     if !wanted.kinds.iter().any(|k| k != "wheel") {
         return Ok(());
     }
+    // the screens draw a wheel for any table; the rest our player draws from a VPX table
+    library::vpx_table(&path, "Drawing its playfield, backglass, score display and video")?;
     let name = table_name(&app, &id);
     // one table's made at a time (`own_pictures::turn`), the others said as waiting
     let task = tasks::waiting(&app, format!("Waiting to make {name}'s media"));
@@ -875,6 +923,18 @@ async fn make_pictures(app: AppHandle, id: String, wanted: own_pictures::Wanted)
     // what it made that's used, put where PinUP Popper shows it, when that's on (the wheel once drawn)
     popper_media::after(&app, &made, None, false);
     Ok(())
+}
+
+/// A Future Pinball table's media recorded from Future Pinball itself, on the user's screens: its
+/// playfield's picture and video, its backglass's and score display's pictures where it shows them
+/// (`future_pinball::record_media`); the screens told once it's done (`media-recorded`).
+#[tauri::command]
+fn record_media(app: AppHandle, id: String) -> Result<(), String> {
+    let path = table_path(&app, &id)?;
+    if !::library::future_pinball::is_table(&path) {
+        return Err("Recording a table's media is for Future Pinball's tables: the app draws VPX's itself, with no window.".into());
+    }
+    future_pinball::record_media(&app, &id, &path)
 }
 
 /// A picture our player made of a table, by its kind, addressed with when it was made; None where
@@ -1099,6 +1159,7 @@ async fn script_open(app: AppHandle, id: String) -> Result<script_editor::Doc, S
         let t = st.tables.iter().find(|t| t.id == id).ok_or("That table isn't in the library any more.")?;
         (t.path.clone(), t.read.game_name.clone())
     };
+    library::vpx_table(&path, "The script editor")?;
     tauri::async_runtime::spawn_blocking(move || script_editor::open(&path, rom)).await.map_err(|e| e.to_string())?
 }
 
@@ -1115,25 +1176,29 @@ fn script_with_options(text: String, changes: Vec<(String, String)>) -> Result<S
 }
 
 /// The script saved beside the table, which then plays in its own's place; the library read again.
-/// A table's backglasses to choose from: the one that plays, then those kept beside it, each with
-/// its file's name and size and the address of a small picture of it (`pictures`' `b/<id>/<n>`).
+/// A table's backglasses to choose from: the one that plays, B2S Pro's that plays (`n` -1), then
+/// those kept beside it, each with its file's name, size and kind (`b2spro` for B2S Pro's own) and
+/// the address of a small picture of it (`pictures`' `b/<id>/<n>`, `p` for B2S Pro's playing).
 #[tauri::command]
 fn backglass_choices(shared: State<'_, Shared>, id: String) -> Result<serde_json::Value, String> {
     let st = shared.0.lock().unwrap();
     let t = st.tables.iter().find(|t| t.id == id).ok_or("That table isn't in the library any more.")?;
-    let one = |n: usize, p: &std::path::Path| {
+    let one = |n: i64, p: &std::path::Path| {
         let bytes = std::fs::metadata(p).map_or(0, |m| m.len());
+        let at = if n < 0 { "p".to_string() } else { n.to_string() };
         serde_json::json!({
             "n": n,
             "name": p.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(),
             "bytes": bytes,
+            "kind": ::library::backglass::kind_of(p).unwrap_or("directb2s"),
             // the file as it is in the address too: the picture at a place changes when another is chosen
-            "picture": format!("{}b/{}/{n}?v={}", pictures::base(), t.id, media_facts::address_stamp(p)),
+            "picture": format!("{}b/{}/{at}?v={}", pictures::base(), t.id, media_facts::address_stamp(p)),
         })
     };
     let playing = t.holds.backglass.iter().map(|p| one(0, p));
-    let kept = t.holds.backglasses.iter().enumerate().map(|(i, p)| one(i + 1, p));
-    Ok(serde_json::Value::Array(playing.chain(kept).collect()))
+    let pro = t.holds.backglass_pro.iter().map(|p| one(-1, p));
+    let kept = t.holds.backglasses.iter().enumerate().map(|(i, p)| one(i as i64 + 1, p));
+    Ok(serde_json::Value::Array(playing.chain(pro).chain(kept).collect()))
 }
 
 /// The backglass that plays for a table: one of those kept beside it (`version`, its place among
@@ -1211,7 +1276,7 @@ async fn script_save(app: AppHandle, id: String, text: String, crlf: bool) -> Re
 async fn script_check(app: AppHandle, id: String, text: String, crlf: bool) -> Result<script_editor::Checked, String> {
     let path = table_path(&app, &id)?;
     let layout = app.state::<library::Shared>().0.lock().unwrap().layout.clone();
-    let vpx = layout.as_ref().and_then(::library::vpx::find).filter(|v| v.has_addons()).ok_or("Scripts are checked in VPX 10.8.1, which runs them out of sight; it wasn't found for this library: Settings › Library gets it.")?;
+    let vpx = layout.as_ref().and_then(::library::vpx::find).filter(|v| v.has_addons()).ok_or("Scripts are checked in VPX 10.8.1 or newer, which runs them out of sight; none was found for this library: Settings › Library gets one.")?;
     tauri::async_runtime::spawn_blocking(move || script_editor::check(&vpx, &path, &text, crlf)).await.map_err(|e| e.to_string())?
 }
 
@@ -1220,6 +1285,7 @@ async fn script_check(app: AppHandle, id: String, text: String, crlf: bool) -> R
 #[tauri::command]
 async fn inspect_table(app: AppHandle, id: String) -> Result<inspector::Inspected, String> {
     let path = table_path(&app, &id)?;
+    library::vpx_table(&path, "The table inspector")?;
     tauri::async_runtime::spawn_blocking(move || inspector::open(&path)).await.map_err(|e| e.to_string())?
 }
 
@@ -1365,6 +1431,9 @@ async fn save_screens(app: AppHandle, settings: screens::ScreenSettings, table: 
             screens::save(&settings)?;
             // the backglasses' score displays placed or taken out as the page now asks
             backglass_dmd::start(&app);
+            // B2S Server's own screen file the same, where B2S Server shows the backglasses
+            let tables = app.state::<Shared>().0.lock().unwrap().layout.as_ref().map(|l| l.tables.clone());
+            b2s_screen::after_save(tables.as_deref())?;
             Ok(())
         }
     }
@@ -1423,6 +1492,12 @@ async fn remove_from_drop(app: AppHandle, index: usize) -> Result<serde_json::Va
 #[tauri::command]
 async fn unlock_drop(app: AppHandle, index: usize, password: String) -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(move || drop::unlock(&app, index, password)).await.map_err(|e| e.to_string())?
+}
+
+/// One of the page's own errors, written to the app's log, where a problem's cause is looked for.
+#[tauri::command]
+fn page_problem(text: String) {
+    eprintln!("the page: {}", text.chars().take(4000).collect::<String>());
 }
 
 #[tauri::command]
@@ -1501,6 +1576,8 @@ fn settled(app: AppHandle, shot: State<'_, Option<Shot>>) -> Result<(), String> 
 }
 
 fn main() {
+    // the start's moment, for the log's start-up times
+    started();
     let shot = shot::from_args();
     // the app's own log, beside the player's; not for the test mode's runs, which would push the
     // user's last log aside
@@ -1521,6 +1598,14 @@ fn main() {
         .manage(tasks::Tasks::default())
         .register_asynchronous_uri_scheme_protocol("pic", pictures::handle)
         .invoke_handler(tauri::generate_handler![
+            page_problem,
+            page_moment,
+            future_pinball::fp_state,
+            future_pinball::fp_set_no_optimizations,
+            record_media,
+            vr::vr_state,
+            vr::vr_set_program,
+            vr::vr_check,
             library,
             vps_files,
             vps_game,
@@ -1794,8 +1879,12 @@ fn main() {
             if let Err(e) = hardcore::put_back() {
                 eprintln!("{e}");
             }
-            // and VPX 10.8.0's shared scripts, where they were lent for a game
+            // and VPX 10.8.0's shared scripts, where they were lent for a game, a machine's volume
+            // lowered for one, and Future Pinball's screens set for one
             scripts_1080::take_back();
+            machines::put_volume_back();
+            future_pinball::put_screens_back();
+            future_pinball::put_scaling_back();
             // the passwords that opened locked downloads, tried on the next ones
             archive_passwords::load();
             library::start(app.handle().clone());

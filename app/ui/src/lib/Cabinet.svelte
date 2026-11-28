@@ -14,6 +14,7 @@
   const parts = [
     {
       name: 'The playfield screen and you',
+      for: 'vpx',
       note: 'For the cabinet view, VPX’s window mode: the table drawn at its real size behind the glass.',
       rows: [
         { label: 'The screen’s width', kind: 'number', key: 'Player/ScreenWidth', min: 10, max: 300, step: 0.01, placeholder: 'The screen’s own', unit: 'cm, its picture’s width', what: 'Unset: the screen’s own, as it reports it.', vpx: '[Player] ScreenWidth' },
@@ -23,9 +24,10 @@
         { label: 'Your eyes, up', kind: 'number', key: 'Player/ScreenPlayerZ', min: 0, max: 300, step: 0.5, placeholder: '70', unit: 'cm above it', vpx: '[Player] ScreenPlayerZ' },
       ],
     },
-    { name: 'Boards and sensors', note: 'VPX reads Pinscape, Open Pinball Device and other cabinet boards, nudge sensors and plungers itself: their buttons, nudge and plunger are set on Settings › Controls, and further sensors on Settings › Advanced, under Controls, nudging and plunger.', rows: [] },
+    { name: 'Boards and sensors', for: 'vpx', note: 'VPX reads Pinscape, Open Pinball Device and other cabinet boards, nudge sensors and plungers itself: their buttons, nudge and plunger are set on Settings › Controls, and further sensors on Settings › Advanced, under Controls, nudging and plunger.', rows: [] },
     {
       name: 'Toys (DOF)',
+      for: 'vpx',
       note: 'With VPX’s own DOF add-on (Settings › Library), your DOF Config Tool files are read from the directoutputconfig folder in VPX’s settings folder; the classic DOF, run by B2S Server, reads DOF’s own folder. Import your configuration, or bring over one kept elsewhere.',
       rows: [{ label: 'Its configuration', kind: 'custom', name: 'dof' }],
     },
@@ -56,7 +58,7 @@
   <span class="dof">
     <span class="where">
       {#if !dof}Looking…
-      {:else if dof.found}{dof.found.whose === 'VPX' ? 'VPX’s' : dof.found.whose === 'ours' ? 'Where our own player read it, which VPX doesn’t' : 'VPX 10.8.0’s, which VPX 10.8.1 doesn’t read'}, {dof.found.files} {dof.found.files === 1 ? 'file' : 'files'}: {dof.found.folder}
+      {:else if dof.found}{dof.found.whose === 'VPX' ? 'VPX’s' : dof.found.whose === 'ours' ? 'Where our own player read it, which VPX doesn’t' : 'VPX 10.8.0’s, which newer VPX doesn’t read'}, {dof.found.files} {dof.found.files === 1 ? 'file' : 'files'}: {dof.found.folder}
       {:else}None found yet: the toys stay off until there is one.{/if}
     </span>
     <span class="buttons">
@@ -72,7 +74,7 @@
   </span>
 {/snippet}
 
-<IniPage title="Cabinet" lead="The real cabinet: its playfield screen and where you stand at it, its boards and sensors, and its toys. A real DMD panel is on the Picture page." {parts} custom={{ dof: dofRow }} />
+<IniPage title="Cabinet" tag="both" lead="The real cabinet: its playfield screen and where you stand at it, its boards and sensors, and its toys. A real DMD panel is on the Picture page." {parts} custom={{ dof: dofRow }} />
 
 <style>
   .dof { display: flex; flex-direction: column; gap: 8px; }

@@ -59,10 +59,10 @@ impl Sound {
     }
 }
 
-/// VPX's `dequantizeSignedPercent`: -100..100 percent to -1..1. vpin keeps
-/// the stored 32-bit value as is, so negative settings arrive wrapped.
-fn signed_percent(raw: u32) -> f32 {
-    (raw as i32 as f32 / 100.0).clamp(-1.0, 1.0)
+/// VPX's `dequantizeSignedPercent`: -100..100 percent to -1..1, as vpin keeps
+/// the stored value, signed.
+fn signed_percent(raw: i32) -> f32 {
+    (raw as f32 / 100.0).clamp(-1.0, 1.0)
 }
 
 /// The extension of a sound's stored path; a path without one is WAV, as

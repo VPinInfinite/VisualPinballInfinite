@@ -15,7 +15,8 @@ use crate::library::Shared;
 
 /// The app's own messages into `Logs\app.log` from here on, the last run's kept as
 /// `app.previous.log`: what it writes to its error output, which a windowed program otherwise
-/// loses.
+/// loses. A run that wrote nothing but its start isn't kept over the one before, so a restart or
+/// two leave the last run that said something.
 pub fn log_to_file() {
     let Some(dir) = crate::library::data_folder().map(|d| d.join("Logs")) else { return };
     if std::fs::create_dir_all(&dir).is_err() {
@@ -23,7 +24,12 @@ pub fn log_to_file() {
     }
     let log = dir.join("app.log");
     if log.exists() {
-        let _ = std::fs::rename(&log, dir.join("app.previous.log"));
+        let said = std::fs::read_to_string(&log).map_or(true, |t| t.lines().filter(|l| !l.trim().is_empty()).count() > 1);
+        if said {
+            let _ = std::fs::rename(&log, dir.join("app.previous.log"));
+        } else {
+            let _ = std::fs::remove_file(&log);
+        }
     }
     let Ok(file) = std::fs::OpenOptions::new().create(true).append(true).open(&log) else { return };
     #[cfg(windows)]
@@ -177,6 +183,72 @@ fn this_pc() -> String {
     String::new()
 }
 
+/// VPinMAME's folders and files as it keeps them for every game (`HKEY_CURRENT_USER\Software\
+/// Freeware\Visual PinMame\globals`), those a game's machine is found and kept by first: where it
+/// looks for ROMs, samples, settings and memory, and the rest of its folders.
+const VPINMAME_FOLDERS: [&str; 12] = [
+    "rompath",
+    "nvram_directory",
+    "cfg_directory",
+    "samplepath",
+    "hiscore_directory",
+    "memcard_directory",
+    "input_directory",
+    "state_directory",
+    "artwork_directory",
+    "snapshot_directory",
+    "diff_directory",
+    "wave_directory",
+];
+
+/// Where VPX and VPinMAME are on this PC, in a few lines: the VPX the tables play in and every VPX
+/// found beside them, the library's folders, and the classic VPinMAME VPX 10.8.0 plays a machine
+/// with — the program Windows has registered for it (`VPinMAME.Controller`) and its folders as it
+/// keeps them, where they're set (else VPinMAME takes its own folder's).
+fn pinball_programs(app: &AppHandle) -> String {
+    let mut lines = Vec::new();
+    let layout = app.state::<Shared>().0.lock().unwrap().layout.clone();
+    let shown = |v: &::library::vpx::Vpx| format!("{} ({}.{}.{}.{})", v.program.display(), v.version[0], v.version[1], v.version[2], v.version[3]);
+    match layout.as_ref() {
+        Some(l) => {
+            match ::library::vpx::to_play(l) {
+                Some(v) => lines.push(format!("VPX the tables play in: {}", shown(&v))),
+                None => lines.push("VPX the tables play in: none found".into()),
+            }
+            for v in ::library::vpx::all_for(l) {
+                lines.push(format!("VPX found: {}", shown(&v)));
+            }
+            lines.push(format!("Tables: {}", l.tables.display()));
+            lines.push(format!("Scripts: {}", l.scripts.display()));
+            lines.push(format!("VPinMAME's folder: {}", l.vpinmame.display()));
+        }
+        None => lines.push("No table library is set up.".into()),
+    }
+    lines.extend(vpinmame_lines());
+    lines.join("\n")
+}
+
+/// The classic VPinMAME, for a report: the program Windows has registered for it, and its folders
+/// as it keeps them, where they're set.
+#[cfg(windows)]
+fn vpinmame_lines() -> Vec<String> {
+    use crate::b2s_screen::{registry_text, HKEY_CLASSES_ROOT, HKEY_CURRENT_USER};
+    let program = registry_text(HKEY_CLASSES_ROOT, r"VPinMAME.Controller\CLSID", "").and_then(|clsid| registry_text(HKEY_CLASSES_ROOT, &format!(r"CLSID\{}\InprocServer32", clsid.trim()), ""));
+    let mut lines = vec![format!("VPinMAME registered: {}", program.as_deref().unwrap_or("none"))];
+    if program.is_some() {
+        for name in VPINMAME_FOLDERS {
+            let value = registry_text(HKEY_CURRENT_USER, r"Software\Freeware\Visual PinMame\globals", name);
+            lines.push(format!("VPinMAME {name}: {}", value.as_deref().unwrap_or("not set (its own folder's)")));
+        }
+    }
+    lines
+}
+
+#[cfg(not(windows))]
+fn vpinmame_lines() -> Vec<String> {
+    Vec::new()
+}
+
 /// The VPX that plays the library's tables, as Settings › Library chooses.
 fn playing_vpx(app: &AppHandle) -> Option<::library::vpx::Vpx> {
     let layout = app.state::<Shared>().0.lock().unwrap().layout.clone();
@@ -212,6 +284,11 @@ pub fn make(app: &AppHandle, asked: &Asked) -> Result<PathBuf, String> {
     if asked.pc {
         about.push_str("\nThis PC:\n");
         about.push_str(&this_pc());
+        about.push('\n');
+    }
+    if asked.settings {
+        about.push_str("\nVPX and VPinMAME:\n");
+        about.push_str(&pinball_programs(app));
         about.push('\n');
     }
     put("about.txt", &about)?;
@@ -439,6 +516,16 @@ pub fn send(path: &Path, note: &str, table: Option<&str>) -> Result<crate::repli
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The classic VPinMAME as a report on this PC says it, the user's folder taken out:
+    /// `cargo test -p app vpinmame_on_this_pc -- --ignored --nocapture`. Nothing written.
+    #[test]
+    #[ignore]
+    fn vpinmame_on_this_pc() {
+        let lines = vpinmame_lines();
+        println!("{}", private(&lines.join("\n")));
+        assert!(lines.first().is_some_and(|l| l.starts_with("VPinMAME registered: ")));
+    }
 
     #[test]
     fn a_report_holds_no_key_nor_the_users_folder() {

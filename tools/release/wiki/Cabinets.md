@@ -24,7 +24,7 @@ Pinscape and Open Pinball Device boards, key encoders and gamepads work through 
 
 ## Real DMD panels
 
-ZeDMD, PIN2DMD (with a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build)), Pixelcade and other panels through VPX's own DMDUtil add-on, or a display device such as DMD Extensions' with the classic VPinMAME. See [Score displays](Score-displays#real-dmd-panels).
+ZeDMD, PIN2DMD (with VPX 10.9, not an [older VPX build](Installing-and-first-setup#which-build-of-vpx)), Pixelcade and other panels through VPX's own DMDUtil add-on, or a display device such as DMD Extensions' with the classic VPinMAME. See [Score displays](Score-displays#real-dmd-panels).
 
 ## Sound
 

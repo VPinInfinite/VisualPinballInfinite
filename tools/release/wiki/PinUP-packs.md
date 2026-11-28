@@ -1,6 +1,6 @@
 # PinUP packs
 
-A PinUP pack is a set of videos, pictures and sounds made for one table. It plays on your other screens (the topper, the backglass, the score display, and sometimes the playfield) while the table plays, started by what happens in the game. VPX 10.8.1's own PinUP add-on plays packs, so PinUP Player isn't needed. Settings › Library › its add-ons can use the classic PinUP Player instead where it's installed, and VPX 10.8.0 always does.
+A PinUP pack is a set of videos, pictures and sounds made for one table. It plays on your other screens (the topper, the backglass, the score display, and sometimes the playfield) while the table plays, started by what happens in the game. VPX 10.9's own PinUP add-on plays packs, so PinUP Player isn't needed. Settings › Library › its add-ons can use the classic PinUP Player instead where it's installed, and VPX 10.8.0 always does. Future Pinball's tables that play a PinUP pack (PinEvent tables) play it through PinUP Player too.
 
 ## Getting one in
 
@@ -41,5 +41,7 @@ The **Enable** switch on the pack's row, on the table's page, turns it off for t
 Settings › PinUP packs › **PinUP packs** turns VPX's own PinUP add-on off for every table: it's the same switch as Settings › Library's for PinUP packs, so where the classic PinUP Player is installed, it plays the packs instead.
 
 ## Where it draws
+
+Where the classic PinUP Player shows a pack, it puts each of the pack's screens where its own settings (`PinUpPlayer.ini`) say. Before a game it shows a pack for, in VPX or in Future Pinball, the app moves any of PinUP's screens left off your screens, where Windows has moved a screen since PinUP was set up, back onto the screen it was on, keeping the file before beside it as `PinUpPlayer.previous.ini`.
 
 Where a table has both a PinUP pack and a backglass file, Settings › PinUP packs chooses which comes first on the backglass and on the score display: **The pack** or **The backglass file**. **Room around the packs' screens** draws a pack's screens this many pixels in from each side of their window, on the backglass, the score display and the topper. Their volume is on Settings › Sound (**PinUP packs**), and the pause menu has a **PinUP pack** level while one plays.

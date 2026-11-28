@@ -5053,7 +5053,7 @@ static void D3D12_INTERNAL_WriteGPUDescriptors(
     D3D12_CPU_DESCRIPTOR_HANDLE gpuHeapCpuHandle;
 
     /* Descriptor overflow, acquire new heaps */
-    /* Visual Pinball Infinite: altered from SDL 3.4.18 -- new heaps when this write wouldn't fit,
+    /* Visual Pinball Infinite: altered from SDL 3.4.20 -- new heaps when this write wouldn't fit,
        not only once the heap is full, so a write of several descriptors near the end of a heap
        can't run past it (the driver then wrote outside the heap and crashed) */
     if (commandBuffer->gpuDescriptorHeaps[heapType]->currentDescriptorIndex + resourceHandleCount > commandBuffer->gpuDescriptorHeaps[heapType]->maxDescriptors) {
@@ -5093,7 +5093,7 @@ static void D3D12_INTERNAL_BindGraphicsResources(
         D3D12_INTERNAL_SetGPUDescriptorHeaps(commandBuffer);
     }
 
-    /* Visual Pinball Infinite: altered from SDL 3.4.18 -- the descriptors this draw writes are
+    /* Visual Pinball Infinite: altered from SDL 3.4.20 -- the descriptors this draw writes are
        counted first; when they don't fit in the bound heaps, new heaps are bound before any is
        written and every descriptor table is written again into them (a table written before the
        switch would point into heaps no longer bound) */
@@ -8559,11 +8559,10 @@ static void D3D12_INTERNAL_InitBlitResources(
     }
 
     // Create samplers
+    SDL_zero(samplerCreateInfo);
     samplerCreateInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     samplerCreateInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
     samplerCreateInfo.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-    samplerCreateInfo.enable_anisotropy = 0;
-    samplerCreateInfo.enable_compare = 0;
     samplerCreateInfo.mag_filter = SDL_GPU_FILTER_NEAREST;
     samplerCreateInfo.min_filter = SDL_GPU_FILTER_NEAREST;
     samplerCreateInfo.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;

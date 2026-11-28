@@ -874,6 +874,30 @@ fn main() -> ExitCode {
     if let Some(table) = to_vpx::table_in(&args) {
         return to_vpx::run(&table, args);
     }
+    // whether a VR headset answers through the PC's VR program, as VPX looks for one
+    if args.first().is_some_and(|a| a == "--vr-check") {
+        let text: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        return match player::vr_check::run(&text) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("vpi-player: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // the desktop's parts captured as they show: a table's media made from another program's windows
+    // (and, before, the game shown there waited for until it plays)
+    if args.first().is_some_and(|a| a == "--capture" || a == "--wait-playing") {
+        let text: Vec<String> = args.iter().map(|a| a.to_string_lossy().into_owned()).collect();
+        let done = if text[0] == "--wait-playing" { player::capture::wait_playing(&text) } else { player::capture::run(&text) };
+        return match done {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("vpi-player: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let o = match parse_args() {
         Ok(o) => o,
         Err(e) => {

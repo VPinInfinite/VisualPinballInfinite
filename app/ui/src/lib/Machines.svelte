@@ -49,4 +49,4 @@
   ];
 </script>
 
-<IniPage title="Machines" lead="PinMAME’s settings for every machine a ROM table drives, where each PinMAME reads them." {parts} kept="VPX’s own PinMAME’s in VPX’s settings; the classic VPinMAME’s where it keeps them, in your part of Windows’ registry." />
+<IniPage title="Machines" tag="vpx" lead="PinMAME’s settings for every machine a ROM table drives, where each PinMAME reads them." {parts} kept="VPX’s own PinMAME’s in VPX’s settings; the classic VPinMAME’s where it keeps them, in your part of Windows’ registry." />

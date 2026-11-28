@@ -214,11 +214,11 @@
                   <span class="layout-q">How should it keep each table’s files?</span>
                   <label class="opt" class:on={!perGame}>
                     <input type="radio" name="layout" checked={!perGame} onchange={() => (perGame = false)} />
-                    <span><span class="opt-name"><b>Shared folders</b><span class="rec">Recommended</span></span><span class="opt-what">Tables together, every ROM in one ROMs folder, every PinUP pack in one PinUP folder: the layout every VPX, PinUP Popper and VPin Studio read, 10.8.0 and 10.8.1 alike. The safe choice.</span></span>
+                    <span><span class="opt-name"><b>Shared folders</b><span class="rec">Recommended</span></span><span class="opt-what">Tables together, every ROM in one ROMs folder, every PinUP pack in one PinUP folder: the layout every VPX, PinUP Popper and VPin Studio read, 10.8.0 and newer alike. The safe choice.</span></span>
                   </label>
                   <label class="opt" class:on={perGame}>
                     <input type="radio" name="layout" checked={perGame} onchange={() => (perGame = true)} />
-                    <span><b>A folder for each game</b><span class="opt-what">Each game’s tables in a folder of its own with their ROM, packs, coloring and music: easy to copy, back up or delete one game. Needs VPX 10.8.1: VPX 10.8.0, and PinUP Popper starting tables through it, can’t start ROM tables kept this way.</span></span>
+                    <span><b>A folder for each game</b><span class="opt-what">Each game’s tables in a folder of its own with their ROM, packs, coloring and music: easy to copy, back up or delete one game. Needs VPX 10.8.1 or newer: VPX 10.8.0, and PinUP Popper starting tables through it, can’t start ROM tables kept this way.</span></span>
                   </label>
                   <span class="opt-what">Settings › Library can move a library of shared folders into a folder for each game later, and put it back.</span>
                 </div>
@@ -252,26 +252,26 @@
           {/if}
           {#if !vpx.found.addons && !(vpx.installed || []).some((f) => f.addons)}
             <!-- 10.8.0 alone: 10.8.1 offered beside it, what changes said first -->
-            <p class="soft">VPX 10.8.1, the newest, adds achievements as you play, its own add-ons and table tests out of sight. VPI can get it and put it beside your VPX 10.8.0, which stays; Settings › Library then chooses which plays.</p>
+            <p class="soft">VPX {vpx.madeForLine}, the newest, adds achievements as you play, its own add-ons and table tests out of sight. VPI can get it and put it beside your VPX 10.8.0, which stays; Settings › Library then chooses which plays.</p>
             {#if getting}
-              <p class="soft">Getting VPX 10.8.1 — the bar at the top shows how it goes. You can carry on meanwhile.</p>
+              <p class="soft">Getting VPX {vpx.madeForLine} — the bar at the top shows how it goes. You can carry on meanwhile.</p>
             {:else}
               <div class="field">
-                <button type="button" class="btn" onclick={getVpx} disabled={!vpx.getInto}><Icon name="download" size={16} />Get VPX 10.8.1</button>
+                <button type="button" class="btn" onclick={getVpx} disabled={!vpx.getInto}><Icon name="download" size={16} />Get VPX {vpx.madeForLine}</button>
                 <button type="button" class="btn ghost" onclick={() => (app.vpxChoice = { choosing: null, current: vpx.found.line })}><Icon name="help" size={16} />How they differ</button>
               </div>
             {/if}
           {/if}
         {:else}
           <p class="lead">
-            {vpx.found ? `Your VPX is ${vpx.found.version}. Tables play in VPX 10.8.1, the newest VPX, or 10.8.0.` : 'VPI didn’t find VPX on this PC. Tables play in VPX 10.8.1, the newest VPX, or 10.8.0.'}
+            {vpx.found ? `Your VPX is ${vpx.found.version}. Tables play in VPX ${vpx.madeForLine}, the newest VPX, or 10.8.0.` : `VPI didn’t find VPX on this PC. Tables play in VPX ${vpx.madeForLine}, the newest VPX, or 10.8.0.`}
             VPI can get VPX {vpx.madeFor}, the build it’s made for, from VPX’s automatic builds on GitHub and put it in {vpx.getInto || 'VPX’s folder'}{vpx.found ? ', keeping each file it replaces so Settings › Library can put the VPX you have back' : ''}.
           </p>
           {#if getting}
-            <p class="soft">Getting VPX 10.8.1 — the bar at the top shows how it goes. You can carry on meanwhile.</p>
+            <p class="soft">Getting VPX {vpx.madeForLine} — the bar at the top shows how it goes. You can carry on meanwhile.</p>
           {:else}
             <div class="field">
-              <button type="button" class="btn" onclick={getVpx} disabled={!vpx.getInto}><Icon name="download" size={16} />Get VPX 10.8.1</button>
+              <button type="button" class="btn" onclick={getVpx} disabled={!vpx.getInto}><Icon name="download" size={16} />Get VPX {vpx.madeForLine}</button>
               <button type="button" class="btn ghost" onclick={chooseVpxFolder}><Icon name="folder" size={16} />It’s in another folder…</button>
             </div>
           {/if}

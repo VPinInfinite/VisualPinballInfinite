@@ -50,6 +50,8 @@ struct Ended {
 enum Run {
     /// PLAY, as it stands or softcore.
     Play(Asked),
+    /// PLAY in VR, this game alone: VPX's VR on in the copy of its settings made for it.
+    Vr,
     /// A PinUP pack's layout tried: the file listing its files (`pup_packs::trying`).
     TryLayout(PathBuf),
     /// Its score display recorded for colouring, into this file.
@@ -70,6 +72,12 @@ pub fn try_layout(app: &AppHandle, id: &str, trying: PathBuf) -> Result<(), Stri
     start(app, id, None, false, Run::TryLayout(trying))
 }
 
+/// PLAY in a VR headset, this game alone, whatever Settings › VR says: VPX's BGFX program, 10.8.1
+/// or newer, with its VR on in the game's copy of its settings.
+pub fn play_vr(app: &AppHandle, id: &str, stay: bool) -> Result<(), String> {
+    start(app, id, None, stay, Run::Vr)
+}
+
 /// The table played with its score display's frames recorded for colouring it, into `dump`:
 /// counted as a play.
 pub fn play_recording(app: &AppHandle, id: &str, dump: PathBuf) -> Result<(), String> {
@@ -88,13 +96,14 @@ fn vpx_to_play(layout: Option<&::library::plan::Layout>) -> Result<::library::vp
     match layout.and_then(::library::vpx::to_play) {
         Some(v) if v.plays() => Ok(v),
         Some(v) => Err(format!(
-            "Tables play in VPX 10.8.0 or newer, and the VPX found for this library is {}.{}.{} ({}). Settings › Library gets VPX 10.8.1.",
+            "Tables play in VPX 10.8.0 or newer, and the VPX found for this library is {}.{}.{} ({}). Settings › Library gets VPX {}.",
             v.version[0],
             v.version[1],
             v.version[2],
-            v.program.parent().map(|d| d.display().to_string()).unwrap_or_default()
+            v.program.parent().map(|d| d.display().to_string()).unwrap_or_default(),
+            ::library::vpx::MADE_FOR_LINE
         )),
-        None => Err("VPX wasn't found for this library. Settings › Library says where it is, or gets VPX 10.8.1.".into()),
+        None => Err(format!("VPX wasn't found for this library. Settings › Library says where it is, or gets VPX {}.", ::library::vpx::MADE_FOR_LINE)),
     }
 }
 
@@ -102,7 +111,7 @@ fn vpx_to_play(layout: Option<&::library::plan::Layout>) -> Result<::library::vp
 /// add-on's recording: the one whose settings the app keeps (`library::vpx::settings_vpx`), the one
 /// that plays where it's 10.8.1 or newer, else the newest that is.
 fn vpx_with_addons(layout: Option<&::library::plan::Layout>, for_what: &str) -> Result<::library::vpx::Vpx, String> {
-    layout.and_then(::library::vpx::settings_vpx).ok_or_else(|| format!("{for_what} needs VPX 10.8.1, which wasn't found for this library: Settings › Library gets it."))
+    layout.and_then(::library::vpx::settings_vpx).ok_or_else(|| format!("{for_what} needs VPX 10.8.1 or newer, and none was found for this library: Settings › Library gets one."))
 }
 
 /// Whether the process `pid` shows a window yet: a visible top-level window of its own.
@@ -293,12 +302,25 @@ fn now_ms() -> i64 {
 /// DMDUtil add-on writing the display's frames down (its displays left unlooked for, where it
 /// isn't on already). Presets hold VPX 10.8.1's windows, which 10.8.0 has none of: for 10.8.0, the
 /// game controller 10.8.1's settings map, where its own settings map none
-/// (`library::controller_1080`).
-fn run_changes(vpx: &::library::vpx::Vpx, table: &Path, preset: Option<&str>, recording: bool) -> Vec<Change> {
+/// (`library::controller_1080`), the menu's key and button left to the app's own menu where it's
+/// asked for (`app_menu`). Played in VR (`vr`, or VPX's switch always on): VPX's VR switched on for
+/// the game, its sharpening off (it draws a line in the headset); and wherever VPX may play it in
+/// VR, the headset's resolution kept for the VR program it plays with (`vr::res_factor_change`).
+fn run_changes(vpx: &::library::vpx::Vpx, table: &Path, preset: Option<&str>, recording: bool, app_menu: bool, vr: bool) -> Vec<Change> {
     let main = vpi_settings::read_all();
     let mut changes = Vec::new();
     if !vpx.has_addons() {
-        return ::library::controller_1080::changes(&main, &vpi_settings::parse_ini(&::library::vpx::settings_text(vpx)));
+        // 10.8.0: the controller, and what the settings pages set in 10.8.1's settings that 10.8.0
+        // reads the same way: the sound outputs and volumes, the ball trail, the supersampling
+        let own = vpi_settings::parse_ini(&::library::vpx::settings_text(vpx));
+        let mut changes = ::library::controller_1080::changes(&main, &own);
+        if app_menu {
+            changes.extend(::library::controller_1080::menu_key_changes(&main, &own));
+        }
+        // the outputs numbered as VPX's own process lists them: Windows keeps an output of its own
+        // for its program (`sound::route_older`), which DirectSound lists second there
+        changes.extend(::library::settings_1080::changes(&main, &own, &crate::sound::direct_sound_outputs_for(&vpx.program), crate::sound::default_output().as_deref()));
+        return changes;
     }
     let preset_text = match preset.filter(|p| !p.trim().is_empty()) {
         Some(name) => vpi_settings::preset_path(name).and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned()),
@@ -318,6 +340,36 @@ fn run_changes(vpx: &::library::vpx::Vpx, table: &Path, preset: Option<&str>, re
     {
         changes.push(Change::set(section, &format!("Priority.{}", ::library::vpx_addon::ID), 100));
     }
+    // the classic programs' sound given the backglass's output as VPX's program's own
+    // (`sound::route_older`): the table's sounds, left on Windows' default, named as it, so they
+    // stay there rather than follow
+    if classic_sound(vpx, &main)
+        && vpi_settings::get(&main, "Player", "SoundDeviceBG").is_some_and(|v| !v.trim().is_empty())
+        && vpi_settings::get(&main, "Player", "SoundDevice").is_none_or(|v| v.trim().is_empty())
+        && let Some(name) = crate::sound::default_output()
+    {
+        changes.push(Change::set("Player", "SoundDevice", name));
+    }
+    // played in VR: VPX's own switch, Enabled, for this game; on where a headset answers, a copy
+    // kept for the game all the same, for VR to be switched off in it where none answers as the game
+    // starts (the game's thread asks first), so a game on the screens has the app's pause menu
+    if vr {
+        changes.push(Change::set("PlayerVR", "AskToTurnOn", 0));
+    } else if vr_autodetect(vpx, &main) {
+        changes.push(Change::set("PlayerVR", "AskToTurnOn", 1));
+    }
+    // a game VPX may play in a headset: the resolution kept for the VR program it plays with, so
+    // one chosen for another program, which recommends its own size, isn't carried over
+    if (vr || vr_may_start(vpx, &main))
+        && let Some(change) = crate::vr::res_factor_change(&main)
+    {
+        changes.push(change);
+    }
+    // VPX's sharpening draws a line in the headset: off for a game in VR, the screens keeping theirs
+    let always_vr = vpi_settings::get(&main, "PlayerVR", "AskToTurnOn").and_then(vpi_settings::vpx_int) == Some(0);
+    if (vr || always_vr) && vpx.has_addons() && vpi_settings::get(&main, "Player", "Sharpen").and_then(vpi_settings::vpx_int).is_some_and(|n| n != 0) {
+        changes.push(Change::set("Player", "Sharpen", 0));
+    }
     if recording {
         let on = vpi_settings::get(&main, "Plugin.DMDUtil", "Enable").and_then(vpi_settings::vpx_bool).unwrap_or(false);
         changes.push(Change::set("Plugin.DMDUtil", "Enable", 1));
@@ -327,6 +379,132 @@ fn run_changes(vpx: &::library::vpx::Vpx, table: &Path, preset: Option<&str>, re
         }
     }
     changes
+}
+
+/// Whether a game's machine, PinUP pack or Media Player's music play through the classic programs —
+/// VPinMAME, PinUP's own, Windows Media Player — which play on Windows' default output, not VPX's:
+/// always in VPX 10.8.0, which takes no add-on; in a newer VPX, where its own add-on for any of
+/// them isn't on (off on Windows until set).
+fn classic_sound(vpx: &::library::vpx::Vpx, main: &[(String, String, String)]) -> bool {
+    !vpx.has_addons() || ["PinMAME", "PUP", "WMP"].iter().any(|id| vpi_settings::get(main, &format!("Plugin.{id}"), "Enable").and_then(vpi_settings::vpx_bool) != Some(true))
+}
+
+/// VPX's notice on a touch screen counted down after a game played with a copy of its settings made
+/// for it: VPX shows the notice while `[Player]` `NumberOfTimesToShowTouchMessage` is above 0 and
+/// takes one off as it does, in the settings it plays with, so the copy's count is carried back into
+/// VPX's own (where it's lower), else the notice would show at every game.
+fn keep_touch_count(vpx: &::library::vpx::Vpx, copy: &Path) {
+    let Some(own_file) = ::library::vpx::settings_file(vpx) else {
+        return;
+    };
+    let copy_text = std::fs::read(copy).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let own_text = std::fs::read(&own_file).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    if let Some(change) = touch_count_back(&copy_text, &own_text)
+        && let Err(e) = std::fs::write(&own_file, vpi_settings::edit(&own_text, &[change]))
+    {
+        eprintln!("VPX's count of its touch notice wasn't kept: {e}");
+    }
+}
+
+/// The change carrying a game's count of VPX's touch notice (`copy`'s) into VPX's own settings
+/// (`own`'s), where the game took it lower: none where it's the same, or VPX left it unset.
+fn touch_count_back(copy: &str, own: &str) -> Option<Change> {
+    const NAME: &str = "NumberOfTimesToShowTouchMessage";
+    let count = |text: &str| vpi_settings::get(&vpi_settings::parse_ini(text), "Player", NAME).and_then(vpi_settings::vpx_int);
+    let after = count(copy)?;
+    // VPX's default count is 10
+    (after < count(own).unwrap_or(10)).then(|| Change::set("Player", NAME, after))
+}
+
+/// The VPX a game in VR plays in: VR is VPX's BGFX program's, 10.8.1 or newer — the library's VPX
+/// to play where it's that, else another of its programs that is.
+fn vpx_for_vr(layout: Option<&::library::plan::Layout>) -> Result<::library::vpx::Vpx, String> {
+    let vpx = vpx_to_play(layout)?;
+    if vpx.has_addons() && is_bgfx(&vpx.program) {
+        return Ok(vpx);
+    }
+    layout
+        .map(::library::vpx::all_for)
+        .into_iter()
+        .flatten()
+        .find(|v| v.has_addons() && is_bgfx(&v.program))
+        .ok_or_else(|| "VR plays in VPX's BGFX program, VPX 10.8.1 or newer, which isn't found for this library: Settings › Library gets it.".to_string())
+}
+
+/// Whether a VPX program is its BGFX one, the one that plays in VR.
+fn is_bgfx(program: &Path) -> bool {
+    program.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(::library::vpx::PROGRAMS[0]))
+}
+
+/// Whether VPX's VR switch is always on (`[PlayerVR]` `AskToTurnOn` 0), in its BGFX program.
+fn vr_always(vpx: &::library::vpx::Vpx, settings: &[(String, String, String)]) -> bool {
+    vpx.has_addons() && is_bgfx(&vpx.program) && vpi_settings::get(settings, "PlayerVR", "AskToTurnOn").and_then(vpi_settings::vpx_int) == Some(0)
+}
+
+/// Whether VPX's VR switch plays a game in a headset where one answers as the game starts
+/// (`[PlayerVR]` `AskToTurnOn` 1, Autodetect), in its BGFX program.
+fn vr_autodetect(vpx: &::library::vpx::Vpx, settings: &[(String, String, String)]) -> bool {
+    vpx.has_addons() && is_bgfx(&vpx.program) && vpi_settings::get(settings, "PlayerVR", "AskToTurnOn").and_then(vpi_settings::vpx_int) == Some(1)
+}
+
+/// VR switched off in a game's copy of VPX's settings (`[PlayerVR]` `AskToTurnOn` 2), for a game no
+/// headset answered for: VPX plays it on the screens.
+fn switch_vr_off(copy: &Path) {
+    let text = std::fs::read(copy).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    if let Err(e) = std::fs::write(copy, vpi_settings::edit(&text, &[Change::set("PlayerVR", "AskToTurnOn", 2)])) {
+        eprintln!("VR wasn't switched off for the game: {e}");
+    }
+}
+
+/// Whether VPX may play a game in a headset as its settings stand: its BGFX program, its VR switch
+/// on, or on where a headset answers as the game starts (`[PlayerVR]` `AskToTurnOn` 0 or 1; 2, off,
+/// unless set).
+fn vr_may_start(vpx: &::library::vpx::Vpx, settings: &[(String, String, String)]) -> bool {
+    vpx.has_addons() && is_bgfx(&vpx.program) && vpi_settings::get(settings, "PlayerVR", "AskToTurnOn").and_then(vpi_settings::vpx_int).is_some_and(|n| n == 0 || n == 1)
+}
+
+/// The room fitted in VR during a game played with a copy of VPX's settings, carried back into
+/// VPX's own: VPX keeps what's set in its VR menu — the room's place and turn, the cabinet, the
+/// lockbar, the view's tilt — in the settings it plays with, so it stays for the next game.
+fn keep_vr_fitting(vpx: &::library::vpx::Vpx, copy: &Path) {
+    let Some(own_file) = ::library::vpx::settings_file(vpx) else {
+        return;
+    };
+    let copy_text = std::fs::read(copy).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let own_text = std::fs::read(&own_file).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+    let changes = vr_fitting_back(&copy_text, &own_text);
+    if !changes.is_empty()
+        && let Err(e) = std::fs::write(&own_file, vpi_settings::edit(&own_text, &changes))
+    {
+        eprintln!("VPX's VR fitting wasn't kept: {e}");
+    }
+}
+
+/// The changes carrying a game's VR fitting (`copy`'s) into VPX's own settings (`own`'s): each of
+/// VPX's VR settings the game changed but those the copy may set for the game alone — its switch,
+/// and the resolution kept for the VR program it played with, which VPX's menu has no setting for —
+/// and the lockbar's width and height; a setting taken back to VPX's default taken out.
+fn vr_fitting_back(copy: &str, own: &str) -> Vec<Change> {
+    let (copy, own) = (vpi_settings::parse_ini(copy), vpi_settings::parse_ini(own));
+    let fitting = |section: &str, name: &str| {
+        (section.eq_ignore_ascii_case("PlayerVR") && !["AskToTurnOn", "ResFactor"].iter().any(|n| n.eq_ignore_ascii_case(name))) || (section.eq_ignore_ascii_case("Player") && ["LockbarWidth", "LockbarHeight"].iter().any(|n| n.eq_ignore_ascii_case(name)))
+    };
+    let mut names: Vec<(String, String)> = Vec::new();
+    for (section, name, _) in copy.iter().chain(own.iter()) {
+        if fitting(section, name) && !names.iter().any(|(s, n)| s.eq_ignore_ascii_case(section) && n.eq_ignore_ascii_case(name)) {
+            names.push((section.clone(), name.clone()));
+        }
+    }
+    names
+        .into_iter()
+        .filter_map(|(section, name)| {
+            let after = vpi_settings::get(&copy, &section, &name).map(str::trim);
+            (after != vpi_settings::get(&own, &section, &name).map(str::trim)).then(|| match after {
+                Some(v) => Change::set(&section, &name, v),
+                None => Change::remove(&section, &name),
+            })
+        })
+        .collect()
 }
 
 /// A folder of the app's own for one run of VPX, made empty.
@@ -384,7 +562,18 @@ struct Prepared {
 
 fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) -> Result<(), String> {
     let shared = app.state::<Shared>();
-    let counted = matches!(run, Run::Play(_) | Run::Record(_));
+    let counted = matches!(run, Run::Play(_) | Run::Vr | Run::Record(_));
+    // a Future Pinball table: played in Future Pinball, through BAM
+    let fp = shared.0.lock().unwrap().tables.iter().find(|t| t.id == id && ::library::future_pinball::is_table(&t.path)).map(|t| t.path.clone());
+    if let Some(path) = fp {
+        // a game alone, on the screens or in VR: a layout or a pack tried, or the display recorded,
+        // are VPX's
+        return match run {
+            Run::Play(_) => crate::future_pinball::play_table_as_set(app, Some(id), &path),
+            Run::Vr => crate::future_pinball::play_table_vr(app, Some(id), &path),
+            _ => Err("That's for VPX's tables, and this one plays in Future Pinball.".into()),
+        };
+    }
     // the ROM its script asks for not here, and another of its machine that is: that one played
     if let Some((from, to)) = crate::library::use_usable_rom(app, id) {
         let name = {
@@ -408,7 +597,11 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
         ::library::vpx::follow(l);
     }
     // recording for colouring needs VPX 10.8.1's DMDUtil add-on, whichever VPX plays
-    let vpx = if matches!(run, Run::Record(_)) { vpx_with_addons(layout.as_ref(), "Recording the display for coloring")? } else { vpx_to_play(layout.as_ref())? };
+    let vpx = match run {
+        Run::Record(_) => vpx_with_addons(layout.as_ref(), "Recording the display for coloring")?,
+        Run::Vr => vpx_for_vr(layout.as_ref())?,
+        _ => vpx_to_play(layout.as_ref())?,
+    };
     let prefs = ::library::vpx::prefs_override();
     let (path, name, at, rom, saved_under, achievements, rom_only) = {
         let mut st = shared.0.lock().unwrap();
@@ -420,6 +613,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
         // it's tried; none while a PinUP layout's only tried
         let achievements = match &run {
             Run::Play(asked) => crate::achievements::for_play(&st, t, *asked),
+            Run::Vr => crate::achievements::for_play(&st, t, Asked::AsItStands),
             Run::Record(_) => crate::achievements::for_play(&st, t, Asked::AsItStands),
             Run::TryPack(asked) => Some(asked.clone()),
             Run::TryLayout(_) => None,
@@ -436,6 +630,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
         _ => None,
     };
     let hardcore = matches!(run, Run::Play(Asked::Hardcore));
+    let vr_asked = matches!(run, Run::Vr);
     let prepared = (|| -> Result<Prepared, String> {
         // the add-ons VPX plays with, decided the first time, and the folders they look in: VPX
         // 10.8.1's, as 10.8.0 takes none
@@ -446,6 +641,12 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
             {
                 eprintln!("VPX's add-ons' folders couldn't be set: {e}");
             }
+        }
+        // B2S Server's own screen file as the screens have it, where B2S Server shows the backglasses
+        crate::b2s_screen::before_play(&vpx, layout.as_ref().map(|l| l.tables.as_path()));
+        // PinUP Player's screens on Windows' screens, where it shows a pack rather than VPX's add-on
+        if !vpx.has_addons() || vpi_settings::get(&vpi_settings::read_all(), "Plugin.PUP", "Enable").and_then(vpi_settings::vpx_bool) != Some(true) {
+            crate::pinup_screens::before_play();
         }
         // our add-on: its achievements followed while it plays, where VPX's add-ons share the game,
         // and screenshots on a key
@@ -464,7 +665,7 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
         // Play Hardcore: what makes it softcore set aside for the game
         let (table_ini, hardcore_changes) = if hardcore { crate::hardcore::set_aside(&path, rom.as_deref(), rom_only, &vpi_settings::parse_ini(&vpx_settings))? } else { (None, Vec::new()) };
         // VPX's settings for this game alone, where a preset, a recording or Play Hardcore changes them
-        let mut changes = run_changes(&vpx, &path, preset, recording.is_some());
+        let mut changes = run_changes(&vpx, &path, preset, recording.is_some(), crate::pause_menu::ours(&app), matches!(run, Run::Vr));
         changes.extend(hardcore_changes);
         let ini = if changes.is_empty() {
             None
@@ -534,6 +735,16 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
             let since = now_ms();
             // VPX 10.8.0: the shared scripts it was released with, beside the table for the game
             crate::scripts_1080::lend_for(&vpx, &path);
+            // a machine played by the classic VPinMAME (10.8.0's always; a newer VPX's with its own
+            // PinMAME add-on off) at the backglass's volume, as VPX's own add-on plays it
+            let main_now = vpi_settings::read_all();
+            let classic_pinmame = !vpx.has_addons() || vpi_settings::get(&main_now, "Plugin.PinMAME", "Enable").and_then(vpi_settings::vpx_bool) != Some(true);
+            if classic_pinmame
+                && let Some(rom) = rom.as_deref()
+            {
+                let backglass = ::library::settings_1080::backglass_volume(&vpi_settings::read_all(), &vpi_settings::parse_ini(&::library::vpx::settings_text(&vpx)));
+                crate::machines::lower_volume_for(rom, backglass);
+            }
             let mut command = ::library::vpx::play_command(&vpx, &path, prefs.as_deref());
             if let Some(ini) = &ini {
                 command.arg("-Ini").arg(ini);
@@ -558,25 +769,65 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                     }
                 }
             }
-            // the app's own pause menu, where it's asked for: our add-on keeps VPX's menu key for it
+            // the app's own pause menu, where it's asked for: our add-on keeps VPX's menu key for it;
+            // in 10.8.0, which takes no add-on, the app watches the key and button itself
             let played = crate::pause_menu::Played { settings: ini.clone(), table_settings: table_ini.clone().unwrap_or_else(|| path.with_extension("ini")), table: path.clone() };
-            if vpx.has_addons()
-                && let Some((port, levels)) = crate::pause_menu::start(&app, &id, played)
-            {
-                command.env("VPI_MENU_PORT", port.to_string()).env("VPI_MENU_LEVELS", levels);
+            // a game VPX may play in a headset: VPX's own menu, which works there, the app's on
+            // the desktop out of sight
+            let vpx_settings_now = vpi_settings::parse_ini(&::library::vpx::settings_text(&vpx));
+            // the headset asked for first, as VPX would ask: for a game that must play in VR (Play in
+            // VR, VPX's switch always on), so a headset that isn't there is said here rather than in
+            // VPX's box asking to try again; for one VPX plays in VR where a headset answers, so a
+            // game on the screens is started as one, with the app's pause menu, VR off in its copy
+            let must_vr = vr_asked || vr_always(&vpx, &vpx_settings_now);
+            let autodetect = !vr_asked && vr_autodetect(&vpx, &vpx_settings_now);
+            let headset = (must_vr || autodetect).then(|| vpx.program.parent().map(crate::vr::check_in)).flatten();
+            let no_headset = autodetect && !headset.as_ref().is_some_and(|c| c.ready);
+            if no_headset {
+                eprintln!("{name}: no headset answered, played on the screens");
+                if let Some(copy) = &ini {
+                    switch_vr_off(copy);
+                }
             }
-            // no script runs in VPX without Windows' VBScript, and VPX says nothing of it: said
-            // here, VPX not started
-            let started = if ::library::vpx::vbscript_ready() {
-                command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("VPX didn't start: {e}"))
+            let in_vr = vr_asked || (vr_may_start(&vpx, &vpx_settings_now) && !no_headset);
+            // the VR program chosen for VPX in Settings › VR, for its game alone, Windows' own left as
+            // it is
+            if in_vr && let Some(runtime) = crate::vr::chosen() {
+                command.env("XR_RUNTIME_JSON", runtime);
+            }
+            if in_vr {
+                eprintln!("{name} may play in VR: VPX's own menu, not the app's");
+            } else if vpx.has_addons() {
+                if let Some((port, levels)) = crate::pause_menu::start(&app, &id, played) {
+                    command.env("VPI_MENU_PORT", port.to_string()).env("VPI_MENU_LEVELS", levels);
+                }
             } else {
+                crate::pause_menu::start_older(&app, &id, played, &vpi_settings::read_all(), &vpi_settings::parse_ini(&::library::vpx::settings_text(&vpx)));
+            }
+            // no script runs in VPX without Windows' VBScript, and VPX says nothing of it; nor does
+            // VPX start without the libraries it loads, Windows naming none of them: said here, VPX
+            // not started
+            let path_given = ::library::vpx::runtime_path().or_else(|| std::env::var_os("PATH"));
+            let missing = ::library::vpx::missing_said(&vpx, &::library::vpx::missing_libraries(&vpx.program, path_given.as_deref()));
+            let started = if !::library::vpx::vbscript_ready() {
                 Err(::library::vpx::NO_VBSCRIPT.to_string())
+            } else if let Some(missing) = missing {
+                Err(missing)
+            } else if let Some(check) = headset.filter(|c| must_vr && !c.ready) {
+                Err(format!(
+                    "The headset didn't answer, so {name} wasn't started in VR: {}. Put it on and connect it to {} (Link or Air Link started on it, or Virtual Desktop connected), then play again.",
+                    check.problem.unwrap_or_else(|| "no headset".into()),
+                    check.runtime.unwrap_or_else(|| "your VR program".into())
+                ))
+            } else {
+                command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|e| format!("VPX didn't start: {e}"))
             };
             let mut child = match started {
                 Ok(c) => c,
                 Err(problem) => {
                     crate::pause_menu::end(&app);
                     crate::scripts_1080::take_back();
+                    crate::machines::put_volume_back();
                     if let Err(e) = crate::pup_packs::put_back() {
                         eprintln!("{e}");
                     }
@@ -593,6 +844,18 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
             // the app out of the way once VPX's window shows (cabinet mode staying behind it), told
             // to the screens; given up after a minute, or once the game's ended
             let ended = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            // 10.8.0: the controller's buttons and triggers passed to it as its keys, whenever it's on
+            if !vpx.has_addons()
+                && let Some(keys) = ::library::controller_1080::keys(&vpi_settings::read_all(), &vpi_settings::parse_ini(&::library::vpx::settings_text(&vpx)), crate::pause_menu::ours(&app))
+            {
+                crate::pad_keys::start(ended.clone(), keys, crate::pause_menu::vpx_in_front);
+            }
+            // the classic programs' sound — VPinMAME's, a PinUP pack's — on the backglass's output in
+            // Settings › Sound
+            if classic_sound(&vpx, &vpi_settings::read_all()) {
+                let (pid, ended) = (child.id(), ended.clone());
+                let _ = std::thread::Builder::new().name("vpx-sound-output".into()).spawn(move || crate::sound::route_older(pid, &ended));
+            }
             {
                 let (app, ended, pid) = (app.clone(), ended.clone(), child.id());
                 let _ = std::thread::Builder::new().name("vpx-shows".into()).spawn(move || {
@@ -610,12 +873,25 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
                     if !stay && let Some(w) = crate::main_window::window(&app) {
                         let _ = w.minimize();
                     }
+                    // its playfield window in front with the keys and the controller, as VPX 10.9 no
+                    // longer brings it there itself; a game that may play in VR the whole game long, as
+                    // VPX takes the keyboard and a cabinet's buttons there only while its window on
+                    // the desktop has the focus, which the headset's own programs can take
+                    crate::pause_menu::keep_vpx_in_front(&ended);
+                    if in_vr {
+                        crate::pause_menu::keep_vpx_in_front_while(&ended);
+                    }
                 });
             }
             let code = child.wait().ok().and_then(|s| s.code());
             ended.store(true, std::sync::atomic::Ordering::Relaxed);
             crate::scripts_1080::take_back();
+            crate::machines::put_volume_back();
             crate::pause_menu::end(&app);
+            if let Some(copy) = &ini {
+                keep_touch_count(&vpx, copy);
+                keep_vr_fitting(&vpx, copy);
+            }
             if let Err(e) = crate::pup_packs::put_back() {
                 eprintln!("{e}");
             }
@@ -705,6 +981,35 @@ fn start(app: &AppHandle, id: &str, preset: Option<&str>, stay: bool, run: Run) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vpxs_touch_notice_counted_down_across_games() {
+        let set = |c: Option<Change>| c.map(|c| c.value.unwrap_or_default());
+        // VPX took one off the copy's count: carried back, from its default where VPX's own set none
+        assert_eq!(set(touch_count_back("[Player]\nNumberOfTimesToShowTouchMessage = 9\n", "[Player]\nSoundVolume = 60\n")), Some("9".into()));
+        assert_eq!(set(touch_count_back("[Player]\nNumberOfTimesToShowTouchMessage = 2\n", "[Player]\nNumberOfTimesToShowTouchMessage = 3\n")), Some("2".into()));
+        // no touch screen: the count as it was, or unset
+        assert_eq!(set(touch_count_back("[Player]\nNumberOfTimesToShowTouchMessage = 3\n", "[Player]\nNumberOfTimesToShowTouchMessage = 3\n")), None);
+        assert_eq!(set(touch_count_back("[Player]\nSoundVolume = 60\n", "")), None);
+        assert_eq!(set(touch_count_back("[Player]\nNumberOfTimesToShowTouchMessage = 10\n", "")), None);
+    }
+
+    #[test]
+    fn the_rooms_vr_fitting_kept_from_a_game() {
+        let own = "[Player]\nLockbarWidth = 70\nSoundVolume = 60\n[PlayerVR]\nAskToTurnOn = 2\nRoomYaw = 4\nSeatedTilt = 10\n";
+        // fitted in VPX's VR menu during a game played in VR for this game alone, at the resolution
+        // kept for its VR program
+        let copy = "[Player]\nLockbarWidth = 72.5\nSoundVolume = 60\n[PlayerVR]\nAskToTurnOn = 0\nResFactor = 1.4\nRoomYaw = 12.5\nRoomOffsetZ = -3\n";
+        let back = vr_fitting_back(copy, own);
+        let said: Vec<(String, Option<String>)> = back.iter().map(|c| (c.name.clone(), c.value.clone())).collect();
+        // the fitting carried back, the tilt taken back to VPX's default taken out; the switch and
+        // the resolution, set for the game alone, and the other settings left as they were
+        assert_eq!(
+            said,
+            [("LockbarWidth".into(), Some("72.5".into())), ("RoomYaw".into(), Some("12.5".into())), ("RoomOffsetZ".into(), Some("-3".into())), ("SeatedTilt".into(), None)]
+        );
+        assert!(vr_fitting_back(own, own).is_empty());
+    }
 
     #[test]
     fn the_popups_window_and_its_renderers_priorities_are_handed_over() {

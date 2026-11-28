@@ -1,14 +1,14 @@
 # Visual Pinball Infinite
 
-Visual Pinball Infinite is a free, open-source front end and table and media manager for Visual Pinball X (VPX) on Windows 10 and 11, and one place for VPX's settings. Your tables play in VPX itself: **PLAY** starts VPX with the table, VPX 10.8.1 or 10.8.0, as a front end does. Around VPX, the app looks after your library: adding tables and everything that comes with them, their pictures and videos, high scores and achievements, your screens, sound and controls, and every setting.
+Visual Pinball Infinite is a free, open-source front end and table and media manager for Visual Pinball X (VPX) on Windows 10 and 11, and one place for VPX's settings. Your tables play in VPX itself: **PLAY** starts VPX with the table, VPX 10.9 or 10.8.0, as a front end does. Future Pinball's tables can sit beside them, played in Future Pinball through BAM, and VPX's tables can play in a VR headset too. Around the games, the app looks after your library: adding tables and everything that comes with them, their pictures and videos, high scores and achievements, your screens, sound and controls, and every setting.
 
-You bring the tables and their ROMs. If VPX isn't on your PC, the app gets VPX 10.8.1 for you, from VPX's own releases.
+You bring the tables and their ROMs. If VPX isn't on your PC, the app gets VPX 10.9 for you, from VPX's own automatic builds.
 
 ## Getting started
 
-- [Installing and first setup](Installing-and-first-setup): the installer, first setup, getting VPX 10.8.1, updates, and where the files live.
+- [Installing and first setup](Installing-and-first-setup): the installer, first setup, getting VPX 10.9, updates, and where the files live.
 - [Adding tables](Adding-tables): drop in what you downloaded, and see where each file goes before anything is copied.
-- [Playing](Playing): PLAY, which VPX plays a table, the keys, the pause menu over VPX and its guide, notes after a game, and screenshots.
+- [Playing](Playing): PLAY, which VPX plays a table, the keys, the pause menu and its guide, notes after a game, and screenshots.
 
 ## Using the app
 
@@ -22,6 +22,11 @@ You bring the tables and their ROMs. If VPX isn't on your PC, the app gets VPX 1
 - [Screens](Screens): where VPX puts every window, ready-made layouts, presets, a table's own screens, and where achievements show.
 - [Sound](Sound): VPX's speakers, surround and cabinet layouts, a bass shaker, volumes and sound packs.
 - [Controls](Controls): keys, gamepads, cabinet boards, nudging and plungers.
+
+## Future Pinball and VR
+
+- [Future Pinball](Future-Pinball): Future Pinball's tables in your library, played in Future Pinball through BAM: getting it, its screens, sound and controls, the pause menu, its media and its files.
+- [VR](VR): VPX's tables in a VR headset: Settings › VR, Play it in VR, setting up a Meta Quest 3 with Link, Virtual Desktop or SteamVR, and Future Pinball in VR.
 
 ## Tables' extras
 

@@ -18,12 +18,17 @@ export const app = $state({
   settingsPage: 'screens',
   /** what VPX's log said of the last game that the player can do something about: { id, notes }, shown on its table's page until dismissed */
   lastNotes: null,
-  /** VPX 10.8.0 plays the tables, keeping its own settings apart from 10.8.1's (Settings › Library) */
+  /** VPX 10.8.0 plays the tables, keeping its own settings apart from the newer VPX's (Settings › Library) */
   vpxOlder: false,
-  /** the window comparing VPX 10.8.1 and 10.8.0 shows: { choosing: a line to switch to, or null, current, onchosen } */
+  /** the window comparing the newer VPX and 10.8.0 shows: { choosing: a line to switch to, or null, current, onchosen } */
   vpxChoice: null,
   /** each line of VPX found for the library (`vpx_status`'s installed) */
   vpxInstalled: [],
+  /** the line of the VPX build the app is made for, which Get VPX brings (`vpx_status`'s madeForLine) */
+  vpxMadeForLine: '10.9.0',
+  /** Future Pinball as the app finds it (`fp_state`): its folder, where it's found, tagging the
+   *  settings pages VPX's, Future Pinball's or both's */
+  fp: null,
   /** the Tools page shown: roms, pinup, media, colour, altsound */
   toolsPage: 'roms',
   /** the player hub's page shown: scores, achievements, stats */
@@ -155,6 +160,26 @@ export function buildsOf(t) {
   return groups().get(t.group) || [t];
 }
 
+// the library's tables by name in lower case, made again when its tables change
+let namesOf = null;
+let nameMap = new Map();
+/** The other tables named as `t` is, its own builds left out where a table shows once: a tile tells
+ *  two of one name apart by their version and first author. */
+export function sameName(t) {
+  const tables = app.tables;
+  if (namesOf !== tables) {
+    namesOf = tables;
+    nameMap = new Map();
+    for (const x of tables) {
+      const k = x.name.toLowerCase();
+      const n = nameMap.get(k);
+      if (n) n.push(x);
+      else nameMap.set(k, [x]);
+    }
+  }
+  return (nameMap.get(t.name.toLowerCase()) || []).filter((x) => x.id !== t.id && !(combined() && x.group === t.group));
+}
+
 /** Two versions compared as people read them: 4.2 after 4.1a, 1.10 after 1.9. */
 export function versionOrder(a, b) {
   const parts = (v) => String(v || '').toLowerCase().match(/\d+|[a-z]+/g) || [];
@@ -221,7 +246,15 @@ export function tagPlaylists(tables) {
       by.get(id).list.push(t);
     }
   }
-  return [...by.values()].filter((g) => g.list.length >= 2).sort((a, b) => b.list.length - a.list.length || a.label.localeCompare(b.label));
+  // what plays them, VPX or Future Pinball, where the library holds both
+  const formats = new Map();
+  for (const t of tables) {
+    const f = t.format === 'fp' ? 'fp' : 'vpx';
+    if (!formats.has(f)) formats.set(f, { id: `tag:format:${f}`, label: f === 'fp' ? 'Future Pinball' : 'VPX', kind: 'format', list: [] });
+    formats.get(f).list.push(t);
+  }
+  const both = formats.size > 1 ? [...formats.values()] : [];
+  return [...both, ...[...by.values()].filter((g) => g.list.length >= 2).sort((a, b) => b.list.length - a.list.length || a.label.localeCompare(b.label))];
 }
 
 /** PinUP packs named so the player won't find them renamed to what their tables' scripts ask for. */
@@ -544,6 +577,39 @@ export async function makePictures(id, wanted = ALL_MEDIA, { quiet = false } = {
   app.makingIds = app.makingIds.filter((x) => x !== id);
 }
 
+/** A Future Pinball table's media recorded from the game itself, played on the user's screens in
+ *  its attract mode (our player draws VPX's tables): its playfield's picture and video, its
+ *  backglass's and score display's pictures; the wheel drawn after from them, where `wheel`. */
+export async function recordMedia(id, { wheel = false } = {}) {
+  if (app.makingIds.includes(id)) return;
+  app.makingIds.push(id);
+  let off = null;
+  try {
+    const done = new Promise((resolve) => {
+      off = listen('media-recorded', (e) => {
+        if (e.payload?.id === id) resolve(e.payload);
+      });
+    });
+    await invoke('record_media', { id });
+    const r = await done;
+    if (r.problem) {
+      notice(`${r.name}’s media weren’t recorded: ${r.problem}`, { kind: 'problem' });
+    } else {
+      if (wheel) {
+        await reload();
+        const t = tableById(id);
+        if (t) await invoke('save_wheel', { id, png: Array.from(await drawWheel(t)) });
+      }
+      notice(`${tableById(id)?.short ?? r.name}’s media are recorded: they’re on its page.`, { kind: 'done' });
+    }
+  } catch (e) {
+    notice(String(e), { kind: 'problem' });
+  } finally {
+    off?.then((f) => f());
+  }
+  app.makingIds = app.makingIds.filter((x) => x !== id);
+}
+
 /** How far a table's picture or video at `url` is turned to stand upright, clockwise: 90 or 270 for
  *  one lying on its side (a front end's made for a cabinet's screen laid on its side), else 0. */
 export const turnOf = (t, url) => (url && t?.media?.find((m) => m.url === url)?.turn) || 0;
@@ -664,8 +730,18 @@ export function dismiss(id) {
 // the page the app opens on chosen once, as the library first reads whole
 let openedOn = false;
 
-async function reload() {
-  const reply = await invoke('library');
+// the library asked for again, each time it changes: only the newest reply taken, as a reply asked
+// for earlier can come after it — one passed over waits for the newest, so whoever waits on a
+// reload finds the library as it is
+let reloadAsked = 0;
+let reloading = Promise.resolve();
+function reload() {
+  const ask = ++reloadAsked;
+  reloading = invoke('library').then((reply) => (ask === reloadAsked ? take(reply) : reloading));
+  return reloading;
+}
+
+function take(reply) {
   app.status = reply.status;
   app.tables = reply.tables;
   app.packed = reply.packed || [];
@@ -744,6 +820,12 @@ export async function start() {
       // Windows' VBScript off: its page in Windows' Settings opened from the notice
       if (problem.startsWith("Windows' VBScript")) {
         notice(problem, { kind: 'problem', action: { label: 'Open Windows’ settings', run: () => invoke('open_optional_features').catch((e) => notice(String(e), { kind: 'problem' })) } });
+        return;
+      }
+      // the DirectX End-User Runtime missing, which VPX 10.8.0 loads: Microsoft's page for it
+      if (problem.includes("Microsoft's DirectX End-User Runtime")) {
+        const url = 'https://www.microsoft.com/en-us/download/details.aspx?id=35';
+        notice(problem, { kind: 'problem', action: { label: 'Open Microsoft’s page', run: () => invoke('open_link', { url }).catch((e) => notice(String(e), { kind: 'problem' })) } });
         return;
       }
       // VPX ended before it started: Report a problem offered too, the table in it
@@ -1112,6 +1194,8 @@ export const hasTests = {
   alt: (t) => !!t.holds.altsound,
   colour: (t) => !!t.holds.colour,
   ach: (t) => app.packed.includes(t.id),
+  // made for VR, as VPS tags its release: a room and cabinet in the headset, or a switch to them
+  vr: (t) => t.format !== 'fp' && t.features.some((f) => ['VR', 'Hybrid', 'Mixed Reality', 'MR'].includes(f)),
 };
 
 /** VPS's tags for a table's file that a player picks a table by, as VPS writes them, each said in
@@ -1134,6 +1218,8 @@ export const VPS_TAGS = [
  * file. */
 export function tagsOf(t) {
   const out = [];
+  // what plays it: VPX, or Future Pinball
+  out.push(t.format === 'fp' ? { label: 'FP', kind: 'format', title: 'A Future Pinball table, played in Future Pinball' } : { label: 'VPX', kind: 'format', title: 'A Visual Pinball X table, played in VPX' });
   if (t.holds.backglass) out.push({ label: 'B2S', kind: 'has', title: 'Its backglass file' });
   if (t.holds.rom) out.push({ label: 'ROM', kind: 'has', title: 'Its ROM' });
   if (t.holds.pupPack) out.push({ label: 'PUP', kind: 'has', title: 'Its PinUP pack' });

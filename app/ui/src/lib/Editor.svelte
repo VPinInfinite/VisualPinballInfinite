@@ -6,11 +6,13 @@
   import Inspector from './Inspector.svelte';
   import { app, savePrefs } from './store.svelte.js';
 
+  // VPX's tables: the inspector reads a VPX table file
+  const vpx = $derived(app.tables.filter((t) => t.format !== 'fp'));
   $effect(() => {
-    if (app.inspectId && app.tables.some((t) => t.id === app.inspectId)) return;
+    if (app.inspectId && vpx.some((t) => t.id === app.inspectId)) return;
     const last = app.prefs.lastEditorTable;
-    const first = [...app.tables].sort((a, b) => a.name.localeCompare(b.name))[0];
-    const open = last && app.tables.some((t) => t.id === last) ? last : first?.id;
+    const first = [...vpx].sort((a, b) => a.name.localeCompare(b.name))[0];
+    const open = last && vpx.some((t) => t.id === last) ? last : first?.id;
     if (open) app.inspectId = open;
   });
   // the table opened, remembered for next time

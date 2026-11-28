@@ -1,17 +1,17 @@
-From 8ca4b1abf58d9c76e7fefafc94688061bd0de653 Mon Sep 17 00:00:00 2001
+From e43afa2e27871971ac65f6672fe6b680981b1f3c Mon Sep 17 00:00:00 2001
 From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
 Subject: [PATCH 2/4] Visual Pinball Infinite: a file fence the host sets
 
 libwinevbs_set_file_fence(allow, base_dir): every path the file object opens, creates, lists or looks up (CreateFileW, CreateDirectoryW, FindFirstFileW, GetFileAttributesW) is first made absolute - a relative path taken from base_dir - with its . and .. parts and the trailing dots and spaces Windows ignores resolved, and handed to allow(path, write); a refused path fails with access denied, as does a share, a device or a stream. GetFullPathNameW takes relative paths from base_dir too. GetAbsolutePathName keeps the rest of its path when a parent folder can't be looked up, as behind the fence.
 ---
  include/libwinevbs.h          |   9 ++
- src/wine.c                    | 171 ++++++++++++++++++++++++++++++++++
+ src/wine.c                    | 172 ++++++++++++++++++++++++++++++++++
  wine/dlls/scrrun/filesystem.c |   6 +-
  winevbs64.def                 |   1 +
- 4 files changed, 186 insertions(+), 1 deletion(-)
+ 4 files changed, 187 insertions(+), 1 deletion(-)
 
 diff --git a/include/libwinevbs.h b/include/libwinevbs.h
-index 06e5a11..7d75bea 100644
+index 94a2ecc..7603912 100644
 --- a/include/libwinevbs.h
 +++ b/include/libwinevbs.h
 @@ -57,6 +57,15 @@ typedef struct {
@@ -31,10 +31,10 @@ index 06e5a11..7d75bea 100644
  }
  #endif
 diff --git a/src/wine.c b/src/wine.c
-index ece9324..082ab49 100644
+index 7cda9ca..882f99c 100644
 --- a/src/wine.c
 +++ b/src/wine.c
-@@ -1146,6 +1146,148 @@ LSTATUS WINAPI RegQueryValueExA(HKEY hkey, LPCSTR name, LPDWORD reserved, LPDWOR
+@@ -1155,6 +1155,148 @@ LSTATUS WINAPI RegQueryValueExA(HKEY hkey, LPCSTR name, LPDWORD reserved, LPDWOR
     return STATUS_SUCCESS;
  }
  
@@ -183,7 +183,7 @@ index ece9324..082ab49 100644
  BOOL WINAPI CloseHandle(HANDLE handle)
  {
     if (handle)
-@@ -1163,6 +1305,10 @@ BOOL WINAPI CopyFileW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, BOOL bF
+@@ -1172,6 +1314,10 @@ BOOL WINAPI CopyFileW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, BOOL bF
  
  BOOL WINAPI CreateDirectoryW(LPCWSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes)
  {
@@ -194,7 +194,7 @@ index ece9324..082ab49 100644
     CHAR szPathName[MAX_PATH];
     int wlen = wcslen(lpPathName);
     /* Linux/macOS filesystems use UTF-8 paths; CP_ACP can't represent
-@@ -1249,6 +1395,10 @@ static int resolve_path_ci(char *path) { (void)path; return 0; }
+@@ -1258,6 +1404,10 @@ static int resolve_path_ci(char *path) { (void)path; return 0; }
  
  HANDLE WINAPI CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes, HANDLE hTemplateFile)
  {
@@ -205,7 +205,7 @@ index ece9324..082ab49 100644
     CHAR szFileName[MAX_PATH];
     int wlen = wcslen(lpFileName);
     int blen = WideCharToMultiByte(LIBWINEVBS_PATH_CP, 0, lpFileName, wlen, szFileName, sizeof(szFileName) - 1, NULL, NULL);
-@@ -1366,6 +1516,10 @@ HANDLE WINAPI FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileDa
+@@ -1375,6 +1525,10 @@ HANDLE WINAPI FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileDa
  {
     if (!lpFileName || !lpFindFileData)
        return INVALID_HANDLE_VALUE;
@@ -216,7 +216,7 @@ index ece9324..082ab49 100644
  
     WCHAR pathW[MAX_PATH];
     wcsncpy(pathW, lpFileName, MAX_PATH);
-@@ -1460,6 +1614,10 @@ BOOL WINAPI GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInf
+@@ -1469,6 +1623,10 @@ BOOL WINAPI GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInf
  DWORD WINAPI GetFileAttributesW(LPCWSTR lpFileName)
  {
     DWORD status = INVALID_FILE_ATTRIBUTES;
@@ -227,10 +227,10 @@ index ece9324..082ab49 100644
     CHAR szFileName[MAX_PATH];
     int wlen = wcslen(lpFileName);
     int blen = WideCharToMultiByte(LIBWINEVBS_PATH_CP, 0, lpFileName, wlen, szFileName, sizeof(szFileName) - 1, NULL, NULL);
-@@ -1499,6 +1657,19 @@ BOOL WINAPI GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize)
+@@ -1518,6 +1676,20 @@ DWORD WINAPI GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lp
+    if (!lpFileName)
+       return 0;
  
- DWORD WINAPI GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart)
- {
 +   /* Visual Pinball Infinite: behind the fence, a relative path is taken from its base folder */
 +   WCHAR full[MAX_PATH];
 +   if (g_file_fence && fence_normalize(lpFileName, full, MAX_PATH)) {
@@ -244,9 +244,10 @@ index ece9324..082ab49 100644
 +      }
 +      return len;
 +   }
++
     if (wcscmp(lpFileName, L".") == 0) {
-       char currentDirBuffer[4096];
-       size_t i;
+       char cwd[4096];
+       if (!getcwd(cwd, sizeof(cwd))) return 0;
 diff --git a/wine/dlls/scrrun/filesystem.c b/wine/dlls/scrrun/filesystem.c
 index a827510..68d72ec 100644
 --- a/wine/dlls/scrrun/filesystem.c
@@ -266,7 +267,7 @@ index a827510..68d72ec 100644
          exp_len = lstrlenW(fdata.cFileName);
          if(exp_len == i-beg)
 diff --git a/winevbs64.def b/winevbs64.def
-index 3535763..2c3d221 100644
+index 927b634..3a2d793 100644
 --- a/winevbs64.def
 +++ b/winevbs64.def
 @@ -5,6 +5,7 @@ libwinevbs_init

@@ -107,12 +107,16 @@ fn resolve(st: &State, path: &str) -> Option<Source> {
             let t = st.tables.iter().find(|t| t.id == table)?;
             Some(Source::BackglassPicture(::library::backglass_dmd::playing_file(&t.path)?))
         }
-        // its backglasses, small, for choosing which plays: the one playing (0), then those kept
+        // its backglasses, small, for choosing which plays: the one playing (0), B2S Pro's playing
+        // (`p`), then those kept
         ("b", table, Some(n)) => {
             let t = st.tables.iter().find(|t| t.id == table)?;
-            let file = match n.parse::<usize>().ok()? {
-                0 => t.holds.backglass.clone()?,
-                n => t.holds.backglasses.get(n - 1)?.clone(),
+            let file = match n {
+                "p" => t.holds.backglass_pro.clone()?,
+                n => match n.parse::<usize>().ok()? {
+                    0 => t.holds.backglass.clone()?,
+                    n => t.holds.backglasses.get(n - 1)?.clone(),
+                },
             };
             Some(Source::Backglass(t.id.clone(), file))
         }

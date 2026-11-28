@@ -1,7 +1,8 @@
 <script>
-  // Its backglass: the backglass files kept for the table, each with a picture of it — the one that
-  // plays first — and one chosen to play, or none. The others stay beside the table, numbered as
-  // VPin Studio keeps a backglass's versions, so either program sees the same ones.
+  // Its backglass: the backglass files kept for the table, each with a picture of it — those that
+  // play first, B2S's and B2S Pro's (`.B2SPro`, which B2S Pro shows before the other and nothing
+  // else reads) — and one chosen to play, or none. The others stay beside the table, numbered as
+  // VPin Studio keeps a backglass's versions, both kinds together, so either program sees the same.
   import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
   import { notice } from './store.svelte.js';
@@ -18,7 +19,8 @@
       .catch((e) => (problem = String(e)));
   });
 
-  const playing = $derived(choices?.find((c) => c.n === 0));
+  const playing = $derived(choices?.find((c) => c.n <= 0));
+  const pro = (c) => c.kind === 'b2spro';
   const size = (b) => (b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 
   // `version`: its place among those kept (1 for the first), or null for none
@@ -47,17 +49,17 @@
     {:else if !choices}
       <p class="soft">Looking…</p>
     {:else}
-      <p class="soft">The one named as the table plays, in VPX too; the others are kept beside it, to choose from here.</p>
+      <p class="soft">The one named as the table plays, in VPX too; the others are kept beside it, to choose from here.{#if choices.some(pro)} A B2S Pro backglass (.B2SPro) plays only where B2S Pro is installed, before the other; VPX’s own backglass add-on and B2S Server play the .directb2s.{/if}</p>
       <div class="grid">
         {#each choices as c (c.n)}
-          <figure class:on={c.n === 0}>
+          <figure class:on={c.n <= 0}>
             <img src={c.picture} alt="" />
             <figcaption>
               <span class="name" title={c.name}>{c.name}</span>
-              <span class="soft">{size(c.bytes)}</span>
+              <span class="soft">{size(c.bytes)}{pro(c) ? ' · B2S Pro' : ''}</span>
             </figcaption>
-            {#if c.n === 0}
-              <span class="badge now"><Icon name="check" size={13} width={2.6} />Plays</span>
+            {#if c.n <= 0}
+              <span class="badge now"><Icon name="check" size={13} width={2.6} />{pro(c) ? 'Plays in B2S Pro' : 'Plays'}</span>
             {:else}
               <button type="button" class="btn small go" disabled={busy} onclick={() => play(c.n)}>Play this one</button>
             {/if}

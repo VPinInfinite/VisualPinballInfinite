@@ -3,7 +3,8 @@
 // A presses it (a list of choices goes to its next), B goes back as Esc does (a window or menu
 // closed, a table's page back to the library), Start plays the table pointed at or shown, and the
 // right stick scrolls. The shoulder buttons are a table page's own (`TablePage.svelte`). Read
-// while the window has the focus; never in cabinet mode, which takes its own keys, nor on the
+// while the window has the focus, or from those a window reads itself (the pause menu over VPX,
+// whatever has the focus); never in cabinet mode, which takes its own keys, nor on the
 // Controls page, where presses are tried out.
 import { app, play } from './store.svelte.js';
 
@@ -22,8 +23,10 @@ const DOWN = 13;
 const LEFT = 14;
 const RIGHT = 15;
 
-/** Starts reading the controllers; what it returns stops it. */
-export function startPad() {
+/** Starts reading the controllers; what it returns stops it. `pads`: where a window reads
+ * controllers of its own (the app's, as XInput lists them), those in place of the page's — read
+ * with or without the page's focus, the window being one in front of VPX. */
+export function startPad({ pads: own = null } = {}) {
   let frame = 0;
   // every button held as it starts, so one held then counts only once let go
   let held = new Set([A, B, START]);
@@ -36,11 +39,12 @@ export function startPad() {
 
   const poll = (now) => {
     frame = requestAnimationFrame(poll);
-    if (!document.hasFocus() || app.testing || app.cabinet || (app.page === 'settings' && app.settingsPage === 'controls')) {
+    const mine = own?.() || [];
+    if ((!mine.length && !document.hasFocus()) || app.testing || app.cabinet || (app.page === 'settings' && app.settingsPage === 'controls')) {
       direction = null;
       return;
     }
-    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const pads = mine.length ? mine : navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
     if (!pads.length) return;
     const down = new Set();
     let [x, y, sy] = [0, 0, 0];
@@ -51,20 +55,24 @@ export function startPad() {
       if (Math.abs(p.axes[3] ?? 0) > Math.abs(sy)) sy = p.axes[3];
     }
     const pressed = (i) => down.has(i) && !held.has(i);
-    if (pressed(A)) { using(); press(); }
-    if (pressed(B)) { using(); back(); }
+    // a window read without the focus (the pause menu over a game that keeps it) moves by its keys,
+    // as a page without the focus moves its own focus no further
+    const asKeys = mine.length > 0 && !document.hasFocus();
+    if (pressed(A)) { using(); asKeys ? tapKey('Enter') : press(); }
+    if (pressed(B)) { using(); asKeys ? tapKey('Escape') : back(); }
     if (pressed(START)) { using(); start(); }
     held = down;
 
     // the pad, else the left stick: one step, then steps while it's held
     const way = down.has(UP) || y < -DEAD ? 'up' : down.has(DOWN) || y > DEAD ? 'down' : down.has(LEFT) || x < -DEAD ? 'left' : down.has(RIGHT) || x > DEAD ? 'right' : null;
+    const step = (w) => (asKeys ? tapKey(ARROWS[w]) : move(w));
     if (way !== direction) {
       direction = way;
       next = now + FIRST;
-      if (way) { using(); move(way); }
+      if (way) { using(); step(way); }
     } else if (way && now >= next) {
       next = now + AGAIN;
-      move(way);
+      step(way);
     }
     if (Math.abs(sy) > 0.2) scroller().scrollBy(0, sy * 28);
   };
@@ -75,6 +83,13 @@ export function startPad() {
     window.removeEventListener('mousedown', mouse);
     mouse();
   };
+}
+
+const ARROWS = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+
+/** A key pressed on the page as the keyboard presses it, for the page's own keys to take. */
+function tapKey(key) {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true, cancelable: true }));
 }
 
 /** What can be pressed now: inside the window or menu on top, where one is open. */

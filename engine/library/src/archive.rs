@@ -80,6 +80,11 @@ pub struct Entry {
     pub modified: Option<i64>,
 }
 
+/// A zip entry's name, its folders split by `/`: as the zip encodes it, else read as UTF-8 at best.
+pub fn zip_name<R: Read + ?Sized>(f: &zip::read::ZipFile<'_, R>) -> String {
+    f.name().map(|n| n.into_owned()).unwrap_or_else(|_| String::from_utf8_lossy(f.name_raw()).into_owned()).replace('\\', "/")
+}
+
 /// Whether an archive's name for one of its files keeps the file inside the folder it's unpacked
 /// into: no `..`, no root, drive or share, no stream (`name:stream`), no control characters. An
 /// archive can name its files anything; one named to climb out of its folder is left out of the
@@ -194,7 +199,7 @@ pub fn list(path: &Path) -> Result<Listing, String> {
                     probe = Some((i, f.size()));
                 }
                 let modified = f.last_modified().map(|t| civil_ms(t.year().into(), t.month().into(), t.day().into(), t.hour().into(), t.minute().into(), t.second().into()));
-                entries.push(Entry { path: f.name().replace('\\', "/"), size: f.size(), modified });
+                entries.push(Entry { path: zip_name(&f), size: f.size(), modified });
             }
             let passwords = match probe {
                 None => Vec::new(),
@@ -432,7 +437,7 @@ impl Listing {
                         if f.is_dir() {
                             continue;
                         }
-                        let name = f.name().replace('\\', "/");
+                        let name = zip_name(&f);
                         if let Some(mut out) = open(&name)? {
                             std::io::copy(&mut f, &mut out).map_err(|e| format!("{name}: {e}"))?;
                             out.flush().map_err(|e| format!("{name}: {e}"))?;

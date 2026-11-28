@@ -6,12 +6,14 @@
   // named, ordered and deleted here — and which of the playlists made from VPS's tags show; and the
   // folders, what's
   // done with a file that's there already when files are added, and where each kind of file lives.
-  import { onMount, tick } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import Icon from './Icon.svelte';
   import FolderLayout from './FolderLayout.svelte';
-  import { app, savePrefs, savePlaylists, newPlaylist, tagPlaylists, notice, setHidden, answerRatings } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
+  import WebPanel from './WebPanel.svelte';
+  import { app, savePrefs, savePlaylists, newPlaylist, tagPlaylists, notice, setHidden, answerRatings, openWeb, closeWeb, vps as browser } from './store.svelte.js';
 
   function set(name, value) {
     app.prefs[name] = value;
@@ -45,9 +47,11 @@
   ];
 
   // the playlists made from VPS's tags; those shown, the five biggest until the user chooses
-  const tags = $derived(tagPlaylists(app.tables.filter((t) => !t.hiddenTable)));
+  const tags = $derived(tagPlaylists(app.tables.filter((t) => !t.hiddenTable)).filter((g) => g.kind !== 'format'));
   const hiddenTables = $derived(app.tables.filter((t) => t.hiddenTable));
   const shown = $derived(app.prefs.tagLists ?? tags.slice(0, 5).map((g) => g.id));
+  // listed by name, A to Z
+  const byName = $derived([...tags].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })));
 
   function showTag(id, on) {
     set('tagLists', on ? [...shown, id] : shown.filter((x) => x !== id));
@@ -98,12 +102,15 @@
     vpx = await invoke('vpx_status').catch(() => ({}));
     app.vpxOlder = !!vpx?.found && !vpx.found.addons;
     app.vpxInstalled = vpx?.installed || [];
+    app.vpxMadeForLine = vpx?.madeForLine || app.vpxMadeForLine;
     addons = await invoke('addons').catch(() => []);
     toBring = await invoke('vpx_settings_to_bring').catch(() => 0);
   };
-  // the lines found, the one that plays, and whether 10.8.1 is among them
+  // the lines found, the one that plays, and whether a newer VPX (10.8.1 or later) is among them
   const lines = $derived(vpx?.installed || []);
   const hasNewer = $derived(lines.some((f) => f.addons));
+  // the newer line: the one here, else the one Get VPX brings
+  const newerLine = $derived(lines.find((f) => f.addons)?.line ?? vpx?.madeForLine ?? app.vpxMadeForLine);
   const compare = (choosing = null) => (app.vpxChoice = { choosing, current: vpx?.found?.line ?? null, onchosen: () => readVpx() });
   const bringSettings = () =>
     invoke('vpx_bring_settings')
@@ -139,18 +146,51 @@
       notice(String(e), { kind: 'problem' });
     }
   }
-  const getVpx = () => invoke('vpx_get').then(() => notice('Getting VPX 10.8.1: the tasks bar shows how it’s going.', { kind: 'info' })).catch((e) => notice(String(e), { kind: 'problem' }));
+  const getVpx = () => invoke('vpx_get').then(() => notice(`Getting VPX ${vpx?.madeFor ?? app.vpxMadeForLine}: the tasks bar shows how it’s going.`, { kind: 'info' })).catch((e) => notice(String(e), { kind: 'problem' }));
   const putBackVpx = () => invoke('vpx_put_back').then(() => { notice('The VPX before is back.', { kind: 'done' }); readVpx(); }).catch((e) => notice(String(e), { kind: 'problem' }));
+
+  // Future Pinball as the app finds it — beside VPX's folder, where its installer put it, or where
+  // the settings name it — and where it isn't found, its makers' download pages in the app's
+  // browser (BAM's has the installer of both), looked for again once it's installed; Windows'
+  // fullscreen optimizations off for its games where chosen (its guides' advice against stutters)
+  const FP_SITE = 'https://futurepinball.com/';
+  const BAM_DOWNLOADS = 'https://www.ravarcade.pl/download';
+  let fp = $state(null);
+  let fpProblem = $state('');
+  async function readFp() {
+    try {
+      fp = await invoke('fp_state');
+      app.fp = fp;
+      fpProblem = '';
+    } catch (e) {
+      fpProblem = String(e);
+    }
+  }
+  onMount(readFp);
+  onDestroy(() => {
+    if (browser.web?.from === 'fp') closeWeb();
+  });
+  async function setOptimizations(off) {
+    try {
+      await invoke('fp_set_no_optimizations', { on: off });
+      fp = { ...fp, noOptimizations: off };
+      notice(off ? 'Windows’ fullscreen optimizations are off for Future Pinball’s games from the next one.' : 'Windows’ fullscreen optimizations stay on for Future Pinball’s games.', { kind: 'done' });
+    } catch (e) {
+      notice(String(e), { kind: 'problem' });
+    }
+  }
+  let innerWidth = $state(1600);
+  const drawer = $derived(Math.round(Math.min(760, Math.max(420, innerWidth * 0.45))));
 </script>
 
 <div class="page">
   <header>
-    <h1 class="display">Library</h1>
+    <h1 class="display">Library<ForTag which="both" /></h1>
     <p>How the library shows your tables, your playlists, and where your tables’ files go. The library’s own controls change the same choices, and each is kept as soon as it changes.</p>
   </header>
 
   <section class="part" aria-labelledby="lib-vpx">
-    <h2 id="lib-vpx" class="partname">VPX</h2>
+    <h2 id="lib-vpx" class="partname">VPX<ForTag which="vpx" /></h2>
     <div class="block">
       <h3 class="section-title">What plays your tables</h3>
       {#if vpx === null}
@@ -173,17 +213,17 @@
           {#if vpx.found.plays}<span class="ok">Plays your tables</span>{:else}<span class="none">Tables play in VPX 10.8.0 or newer</span>{/if}
         </div>
       {:else}
-        <p class="what">No VPX was found beside your tables. Choose its folder, or get VPX 10.8.1.</p>
+        <p class="what">No VPX was found beside your tables. Choose its folder, or get VPX {app.vpxMadeForLine}.</p>
       {/if}
       {#if vpx}
         <div class="row">
           <button type="button" class="btn small" onclick={chooseVpx}><Icon name="folder" size={14} />Choose VPX’s folder…</button>
-          {#if !hasNewer || vpx.older}<button type="button" class="btn small" onclick={getVpx}>{hasNewer ? `Get VPX ${vpx.madeFor}` : 'Get VPX 10.8.1'}</button>{/if}
-          {#if lines.length <= 1}<button type="button" class="btn small ghost" onclick={() => compare()}><Icon name="help" size={14} />VPX 10.8.1 or 10.8.0?</button>{/if}
-          {#if vpx.putBack}<button type="button" class="btn small ghost" title={vpx.putBack === 'none' ? 'Takes out what Get VPX 10.8.1 brought, to the Recycle Bin: the folder as it was.' : `Takes out what Get VPX 10.8.1 brought, to the Recycle Bin, and puts back the files of VPX ${vpx.putBack} it replaced.`} onclick={putBackVpx}>Undo Get VPX 10.8.1</button>{/if}
+          {#if !hasNewer || vpx.older}<button type="button" class="btn small" onclick={getVpx}>{hasNewer ? `Get VPX ${vpx.madeFor}` : `Get VPX ${vpx.madeForLine ?? app.vpxMadeForLine}`}</button>{/if}
+          {#if lines.length <= 1}<button type="button" class="btn small ghost" onclick={() => compare()}><Icon name="help" size={14} />VPX {newerLine} or 10.8.0?</button>{/if}
+          {#if vpx.putBack}<button type="button" class="btn small ghost" title={vpx.putBack === 'none' ? 'Takes out what Get VPX brought, to the Recycle Bin: the folder as it was.' : `Takes out what Get VPX brought, to the Recycle Bin, and puts back the files of VPX ${vpx.putBack} it replaced.`} onclick={putBackVpx}>Undo Get VPX</button>{/if}
         </div>
         {#if (!hasNewer || vpx.older) && vpx.getInto}
-          <p class="what">{vpx.older ? `Your VPX 10.8.1 is older than the build this app is made for, VPX ${vpx.madeFor}. ` : ''}Get VPX 10.8.1 downloads VPX {vpx.madeFor}, the build this app is made for: one of VPX’s automatic builds of its newest code, as VPX’s team hasn’t released 10.8.1 yet. It checks it against the checksum GitHub keeps of it and puts it in {vpx.getInto}. Each file it replaces is kept, so the VPX before can be put back{vpx.found?.plays && !hasNewer ? '; VPX 10.8.0 stays, and you choose which plays your tables' : ''}.</p>
+          <p class="what">{vpx.older ? `Your VPX ${newerLine} is older than the build this app is made for, VPX ${vpx.madeFor}. ` : ''}Get VPX downloads VPX {vpx.madeFor}, the build this app is made for: one of VPX’s automatic builds of its newest code, as VPX’s team hasn’t released it yet. It checks it against the checksum GitHub keeps of it and puts it in {vpx.getInto}. Each file it replaces is kept, so the VPX before can be put back{vpx.found?.plays && !hasNewer ? '; VPX 10.8.0 stays, and you choose which plays your tables' : ''}.</p>
         {/if}
       {/if}
     </div>
@@ -223,8 +263,44 @@
     {/if}
   </section>
 
+  <section class="part" aria-labelledby="lib-fp">
+    <h2 id="lib-fp" class="partname">Future Pinball<ForTag which="fp" /></h2>
+    <div class="block">
+      <h3 class="section-title">Where it is</h3>
+      {#if fpProblem}
+        <p class="what">{fpProblem}</p>
+      {:else if !fp}
+        <p class="what" data-loading>Looking…</p>
+      {:else if fp.folder}
+        <div class="folder">
+          <span class="flabel">Future Pinball</span>
+          <span class="fpath" title={fp.folder}>{fp.folder}</span>
+          {#if fp.bam}<span class="ok">With BAM</span>{:else}<span class="none">Without BAM</span>{/if}
+        </div>
+        <p class="what">{fp.tables === 1 ? 'Its table is' : `Its ${fp.tables} tables are`} in your library beside VPX’s, tagged FP, each played in Future Pinball{fp.bam ? ' through BAM, as other front ends play them' : ''}. The pages tagged VPX + FP set its games too: Screens, Sound’s outputs, Controls. BAM’s own options are in its menu during a game: press Q or ~.</p>
+      {:else}
+        <p class="what">Future Pinball isn’t found on this PC: the app looks beside VPX’s folder (as the Baller Installer puts it), where its installer puts it, and where the settings name it. Its tables play in Future Pinball itself, the app their front end; it isn’t part of the app.</p>
+        <div class="row">
+          <button type="button" class="btn small" onclick={() => openWeb(BAM_DOWNLOADS, null, 'fp')}><Icon name="download" size={14} />Get Future Pinball with BAM</button>
+          <button type="button" class="btn small ghost" onclick={() => openWeb(FP_SITE, null, 'fp')}>Future Pinball’s site</button>
+          <button type="button" class="btn small ghost" onclick={readFp}><Icon name="refresh" size={14} />Look again</button>
+        </div>
+        <p class="what">Download its installer (Future Pinball with BAM): it lands in Downloads › Visual Pinball Infinite. Run it from there, then Look again. Future Pinball and BAM are their makers’ own, free, installed by you.</p>
+      {/if}
+    </div>
+    {#if fp?.folder}
+      <div class="block">
+        <h3 class="section-title">Its games</h3>
+        <label class="fpcheck">
+          <input type="checkbox" checked={!!fp.noOptimizations} onchange={(e) => setOptimizations(e.currentTarget.checked)} />
+          <span><b>Turn off fullscreen optimizations</b><span class="what">Windows’ own compatibility setting, for Future Pinball and BAM’s loader, during its games. Future Pinball’s guides set it against stutters in its full screen; leave it off unless you see them.</span></span>
+        </label>
+      </div>
+    {/if}
+  </section>
+
   <section class="part" aria-labelledby="lib-library">
-    <h2 id="lib-library" class="partname">The library</h2>
+    <h2 id="lib-library" class="partname">The library<ForTag which="both" /></h2>
     <div class="block">
       <h3 class="section-title">It opens as</h3>
       <div class="row">
@@ -306,9 +382,9 @@
     </div>
     <div class="block">
       <h3 class="section-title">Smart playlists from VPS’s tags</h3>
-      <p class="what">Made by themselves from what VPS says of each table: a release’s features (SSF, VR, FastFlips …) and a machine’s themes. Ticked ones show in the library.</p>
+      <p class="what">Made by themselves from what VPS says of each table: a release’s features (SSF, VR, FastFlips …) and a machine’s themes, A to Z. Ticked ones show in the library.</p>
       <div class="tagrid">
-        {#each tags as g (g.id)}
+        {#each byName as g (g.id)}
           <label class="check"><input type="checkbox" checked={shown.includes(g.id)} onchange={(e) => showTag(g.id, e.currentTarget.checked)} />{g.label}<span class="n">{g.list.length}</span><span class="kind">{g.kind === 'feature' ? 'feature' : 'theme'}</span></label>
         {/each}
       </div>
@@ -367,7 +443,21 @@
   </section>
 </div>
 
+<svelte:window bind:innerWidth />
+{#if browser.web?.from === 'fp'}
+  <aside class="webdrawer" style="width: {drawer}px" aria-label="Future Pinball’s download">
+    <WebPanel back="Close" onback={() => { closeWeb(); readFp(); }} edge={drawer} />
+  </aside>
+{/if}
+
 <style>
+  .webdrawer {
+    position: fixed; right: 0; top: 61px; bottom: 0; z-index: 30; display: flex;
+    background: var(--side); border-left: 1px solid var(--line); box-shadow: -12px 0 30px rgba(0, 0, 0, 0.45);
+  }
+  .fpcheck { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; color: var(--fg-soft); max-width: 760px; cursor: pointer; }
+  .fpcheck input { margin-top: 3px; }
+  .fpcheck > span { display: flex; flex-direction: column; gap: 3px; }
   .page { padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 26px; max-width: 1240px; }
   header h1 { font-size: 38px; line-height: 1; }
   header p { margin: 8px 0 0; color: var(--muted); max-width: 680px; }

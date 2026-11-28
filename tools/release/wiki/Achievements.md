@@ -2,9 +2,9 @@
 
 Goals to earn as you play a table: a score, a multiball, an extra ball, the table's lights, the machine's own lamps, switches and coils, each once or so many times, even one after another against the clock. They come in **achievement packs**, made by a table's author or anyone else, you included (see [Making a pack](#making-a-pack)), and a table can have several. Ten [sample packs](Sample-achievement-packs) show what a pack can do.
 
-They count as you play in VPX 10.8.1. The app puts an add-on of its own into VPX, which follows each game, shows each achievement the moment it's earned and plays its sound. It hears the game through VPX's own add-ons for the machine and the backglass, so Settings › Library › **Its add-ons** needs **VPX's own** for **Machines' ROMs** and **Backglasses** (where the classic VPinMAME or B2S Server was installed, the app keeps using it at first). With VPX 10.8.0, or with the classic programs, achievements are counted once the game is over, and only those counting games and scores: see [What can be counted](#what-can-be-counted) and [Settings](Settings#library).
+They count as you play in VPX 10.9 (or a VPX 10.8.1 build). The app puts an add-on of its own into VPX, which follows each game, shows each achievement the moment it's earned and plays its sound. It hears the game through VPX's own add-ons for the machine and the backglass, so Settings › Library › **Its add-ons** needs **VPX's own** for **Machines' ROMs** and **Backglasses** (where the classic VPinMAME or B2S Server was installed, the app keeps using it at first). With VPX 10.8.0, or with the classic programs, achievements are counted once the game is over, and only those counting games and scores: see [What can be counted](#what-can-be-counted) and [Settings](Settings#library).
 
-They count in the games the app starts: **PLAY**, **Play Hardcore** and **Play Softcore** on a table's page, and Start in cabinet mode. A table started from a front end plays in VPX as usual, without them.
+They count in the games the app starts: **PLAY**, **Play Hardcore** and **Play Softcore** on a table's page, and Start in cabinet mode. A table started from a front end plays in VPX as usual, without them. Future Pinball's tables have no achievements.
 
 ## Adding a pack
 
@@ -20,7 +20,7 @@ A pack names the game it's for, so it goes with every table file of that game yo
 
 One card on a table's page holds its **Achievements** and its **High scores**: click **Achievements** at its top, or the trophy button beside PLAY. It shows the achievements of the table's pack: those you've earned lit up, with the day you earned each (and **softcore** where it was earned so), the others dimmed, as a grid or a list. A secret one reads **Secret achievement** until it's earned. Above them are how many you've earned and their points, the pack's name, version and makers, and when you mastered it. Where a table has several packs, choose which one shows from the list.
 
-Under an achievement that can't be earned as the table plays now, a line says why: what it counts, and what would count it (VPX 10.8.1, a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build), or VPX's own PinMAME or B2S add-on, chosen in Settings › Library), or that VPX doesn't share it with add-ons yet. Where the table plays softcore, a line above them says why.
+Under an achievement that can't be earned as the table plays now, a line says why: what it counts, and what would count it (VPX 10.9 in VPX 10.8.0's place, a [newer VPX build](Installing-and-first-setup#which-build-of-vpx), or VPX's own PinMAME or B2S add-on, chosen in Settings › Library), or that VPX doesn't share it with add-ons yet. Where the table plays softcore, a line above them says why.
 
 **What it holds** lists each pack too, with how many you've earned of it and its bin, or **Add a pack…** where it has none. Where a table has several table files, shown once with a tab for each of its builds, its page shows the packs of the build you pick.
 
@@ -68,12 +68,12 @@ Earning every achievement of a pack in Hardcore masters it, and a card says so. 
 
 ## What can be counted
 
-As VPX 10.8.1 plays a table, the app's add-on hears:
+As VPX 10.9 plays a table, the app's add-on hears:
 
 - **A ROM table's machine,** through VPX's own PinMAME add-on: its game (a game starting and ending, the ball, the scores, credits, extra balls, a tilt) where a memory map knows the machine, and its lamps, switches and coils, by their numbers.
 - **A table without a ROM,** through VPX's own B2S add-on: what its script tells its backglass (a game starting and ending, the ball, the scores, credits, a tilt).
-- **The balls in play,** on any table, with a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build). A ball counts once it's travelled well away from where it rested, until it's been still for ten seconds: a ball served, plunged or kicked out counts, the balls waiting in the trough never do, and a ball held in a lock stops counting.
-- **The table's lights,** by their names in the table: on, off or blinking, with a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build).
+- **The balls in play,** on any table, in VPX 10.9 (or VPX 10.8.1 from build 5575: see [Which build of VPX](Installing-and-first-setup#which-build-of-vpx)). A ball counts once it's travelled well away from where it rested, until it's been still for ten seconds: a ball served, plunged or kicked out counts, the balls waiting in the trough never do, and a ball held in a lock stops counting.
+- **The table's lights,** by their names in the table: on, off or blinking, in VPX 10.9 (or VPX 10.8.1 from build 6148).
 
 Not yet: a table's own parts (a hit, a spinner's spins, a slingshot's kicks) and the events a table's script tells. VPX doesn't share them with add-ons, so an achievement counting them can't be earned in VPX yet.
 
@@ -108,7 +108,7 @@ Below, in three columns:
 Under **Earned when** come its conditions, from **+ Add a condition…**. What the table can't tell is greyed, with why, and a line below says what it can tell:
 
 - **A part on the playfield:** its parts, what they do (**is hit**, **spins**, **fires its slingshot**, **is rolled over**, **is entered**, **is passed through**, **does anything**). Pick them with **Pick object** (click the parts on the playfield or in the list, a second click takes one out, then **Done**), drag them from the list, or find one by name. VPX doesn't share a table's parts with add-ons yet, so these aren't counted in VPX.
-- **A light on the table:** one or more of its lights by name (**Pick light**, or type its name), and what it does: **turns on**, **goes out**, **starts blinking**, **is on**, **is off** or **is blinking**. Several lights on one row mean any one of them. "Turns on" is the moment it lights; "is on" lasts while it's lit, so an **is on** row for each light, all at the same moment, means every one lit together. Counted with a newer VPX 10.8.1 build.
+- **A light on the table:** one or more of its lights by name (**Pick light**, or type its name), and what it does: **turns on**, **goes out**, **starts blinking**, **is on**, **is off** or **is blinking**. Several lights on one row mean any one of them. "Turns on" is the moment it lights; "is on" lasts while it's lit, so an **is on** row for each light, all at the same moment, means every one lit together. Counted in VPX 10.9 (or VPX 10.8.1 from build 6148).
 - **The score**; **A game starting or ending, or a ball begun**; **Balls in play at once (multiball)**; **An extra ball earned**; **Credits on the machine**; or **A tilt**.
 - On a ROM table, **A lamp of the machine**, **A switch of the machine** or **A coil of the machine**, by its number as the machine's manual and PinMAME number it. The box suggests numbers from the names the table gives its lights and switches, and its coils by the names its script gives them.
 - **An event the table's script tells,** for tables written for achievements. Not counted in VPX yet.
@@ -125,3 +125,14 @@ With more than one condition, choose how they go together:
 **Optional: start it over when something happens, a ball going down an outlane, say…** adds what sets it back to nothing: **It starts over each time this happens**, a count over all your games included. Its **×** takes it out again.
 
 **As the pack file has it** shows the achievement as the file keeps it, and **Take it out of the pack** removes it, after asking. What's been earned of it stays earned.
+
+## The add-on on its own
+
+The add-on that follows your games also works without the app, in VPX alone: a download of its own on each release, beside the installer (`vpi-achievements-<version>.zip`), with a read-me saying how to put it in. It needs VPX 10.9, or a recent VPX 10.8.1 build, and VPX's own add-ons for the tables you play (its PinMAME add-on for ROM machines, its B2S add-on for a table whose backglass tells its scores).
+
+- **Putting it in:** its `vpi-achievements` folder goes into the `plugins` folder of VPX's settings folder (`%APPDATA%\VPinballX\10.9\plugins`), and `[Plugin.VPIAchievements]` `Enable = 1` in VPX's settings switches it on, or switch it on where VPX lists its add-ons.
+- **Packs:** in an `achievements` folder beside the table, or in VPX's settings folder (`%APPDATA%\VPinballX\10.9\achievements`). A pack plays with a table when the table runs one of the ROM sets it names, or else when the game's name it gives is in the table file's name (and its year, where both have one).
+- **What you earn** is kept in VPX's settings folder, and hardcore and softcore count as they do in the app.
+- **Its settings** are in VPX's menu (F12): the sound on or off, where the card shows and its size.
+
+With the app, there's nothing to do: the app puts the add-on in for you and hands it each table's packs.

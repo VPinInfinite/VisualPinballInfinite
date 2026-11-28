@@ -7,6 +7,8 @@ Settings › Screens places every window VPX opens: the playfield, the backglass
 - **Score display:** the DMD or the score digits, or a PinUP pack's DMD screen.
 - **Topper:** a PinUP pack's topper screen.
 
+Future Pinball's games play where this page puts the playfield, and the backglass as Future Pinball's backbox: see [Future Pinball](Future-Pinball#playing). Where Future Pinball is installed, the parts that set its games too are tagged **VPX + FP**: the ready-made layouts and the windows.
+
 ## The table's view
 
 How VPX draws the playfield:
@@ -36,11 +38,13 @@ It's the same for every table: a table's own screens and presets leave it as it 
 - **The score display over the backglass:** the backglass's card holds **The score display in it** and **Show the backglass picture's speaker panel**, and the score display's card holds **Over a score panel**. See [Score displays](Score-displays#over-the-backglass).
 - **Save** writes only what changed; **Undo changes** puts the page back. The file before is kept as `VPinballX.previous.ini`, and **Show the file** shows VPX's settings file in Explorer.
 
-A window kept inside the table's window is drawn at the wrong place and size while VPX's supersampling (Settings › Picture) is anything but 1×: the page says so. With the classic B2S Server playing backglasses (Settings › Library › its add-ons), the backglass goes where B2S Server's own settings put it.
+A window kept inside the table's window is drawn at the wrong place and size while VPX's supersampling (Settings › Picture) is anything but 1×: the page says so.
+
+Where the classic B2S Server shows the backglasses (in VPX 10.8.0, or where Settings › Library › Its add-ons has B2S Server play them), it places them by its own screen file, `ScreenRes.txt`. The app writes the backglass's place there as this page has it, when the page saves and before a table plays, keeping the file before beside it as `ScreenRes.previous.txt`. B2S Server's second window, a backglass file's score panel, stays where B2S Server's own settings put it, and so does a table that has a screen file of its own (`<table>.res`).
 
 ## Presets
 
-Set the windows as you want them for some tables (the topper off, say), then **Save as preset…**, name it and **Keep it**. A table plays with a preset when its settings choose it (**Its screens**). **Show it here** puts a preset on the page, to change and keep again or to save as your usual; presets can be renamed, or deleted to the Recycle Bin. Cabinet mode can have one of its own: see [Cabinet mode](Cabinet-mode#its-screens). Presets are for VPX 10.8.1: VPX 10.8.0 plays with its own settings.
+Set the windows as you want them for some tables (the topper off, say), then **Save as preset…**, name it and **Keep it**. A table plays with a preset when its settings choose it (**Its screens**). **Show it here** puts a preset on the page, to change and keep again or to save as your usual; presets can be renamed, or deleted to the Recycle Bin. Cabinet mode can have one of its own: see [Cabinet mode](Cabinet-mode#its-screens). Presets are for VPX 10.9 (and 10.8.1): VPX 10.8.0 plays with its own settings.
 
 ## A table's own screens
 

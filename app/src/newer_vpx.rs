@@ -76,13 +76,13 @@ fn run(app: &AppHandle) {
     if todo.is_empty() {
         return;
     }
-    let task = crate::tasks::begin(app, format!("Trying tables in VPX 10.8.1 build {build}"), todo.len() as u32);
+    let task = crate::tasks::begin(app, format!("Trying tables in VPX {} build {build}", vpx.line()), todo.len() as u32);
     for (n, (key, path, name)) in todo.iter().enumerate() {
         // never beside a game being played
         while app.state::<Shared>().0.lock().unwrap().playing.is_some() {
             std::thread::sleep(Duration::from_secs(5));
         }
-        task.step(n as u32, Some(format!("Trying {name} in VPX 10.8.1 build {build}")));
+        task.step(n as u32, Some(format!("Trying {name} in VPX {} build {build}", vpx.line())));
         let report = ::library::vpx_test::test(&vpx, path, &vpi_settings::vpx_settings_text());
         let plays = report.look != "bad";
         {

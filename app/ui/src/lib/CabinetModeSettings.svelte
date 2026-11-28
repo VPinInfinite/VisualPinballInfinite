@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { app, savePrefs, notice, cabinetVolume, cabinetSoundOrder } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
 
   let withWindows = $state(false);
   let presets = $state([]);
@@ -44,7 +45,7 @@
 </script>
 
 <section class="cm" aria-labelledby="cab-mode">
-  <h2 id="cab-mode" class="partname">Cabinet mode</h2>
+  <h2 id="cab-mode" class="partname">Cabinet mode<ForTag which="both" /></h2>
   <p class="what">The app full screen on your cabinet’s screens, with the tables chosen by its buttons: the flippers move a table, the magna-saves a letter, Start plays, and Exit opens its menu.</p>
   <div class="row">
     <span class="name">The playfield screen shows</span>
@@ -105,7 +106,7 @@
 
 <style>
   .cm { display: flex; flex-direction: column; gap: 10px; padding: 28px 32px 8px; max-width: 1240px; }
-  .partname { margin: 0; font-size: 22px; }
+  .partname { margin: 0; font-size: 22px; display: flex; align-items: center; gap: 10px; }
   .what { margin: 0 0 4px; color: var(--muted); max-width: 720px; }
   .row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .name { min-width: 220px; color: var(--fg-soft); }

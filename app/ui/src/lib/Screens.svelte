@@ -16,6 +16,7 @@
   import { listen } from '@tauri-apps/api/event';
   import Icon from './Icon.svelte';
   import { app, notice, savePrefs } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
   import { KINDS, ORDER, shapeName } from './windows.js';
 
   let { table = null, onclose = null } = $props();
@@ -564,7 +565,7 @@
 <div class="page" role="presentation" data-loading={draft || problem ? undefined : ''} onpointermove={moveTo} onpointerup={up} onpointercancel={up}>
   <header>
     <div class="title">
-      <h1 class="display">{table ? `Screens for ${table.short}` : 'Screens'}</h1>
+      <h1 class="display">{table ? `Screens for ${table.short}` : 'Screens'}<ForTag which="both" /></h1>
       <p>{#if table}For this table alone, kept in its own settings file over your usual screens; what's the same as them isn't written.{:else}Where each of VPX’s windows goes. Drag them on the map, or on your screens themselves; VPX takes them from here whenever a table starts.{/if}</p>
     </div>
     <div class="actions">
@@ -608,7 +609,7 @@
       <div class="missing" role="status"><Icon name="alert" size={17} />The {KINDS[t.id].label.toLowerCase()} is set for screen {t.screen.number}, but it and screen {t.first.number} are both called “{t.first.name}”: VPX finds a screen by its name alone, so it opens on the main screen instead.{t.id === 'backglass' ? ' The classic B2S Server, chosen in Settings › Library › Its add-ons, places a backglass by its own settings.' : ''}</div>
     {/each}
     {#if insideOff.length}
-      <div class="missing" role="status"><Icon name="alert" size={17} />{insideOff.map((w) => KINDS[w.id].label).join(' and ')} {insideOff.length > 1 ? 'are' : 'is'} set inside the table’s window, but VPX’s supersampling is {view.supersampling}× (Settings › Picture): VPX 10.8.1 then draws {insideOff.length > 1 ? 'them' : 'it'} at {Math.round(100 / view.supersampling)}% of {insideOff.length > 1 ? 'their' : 'its'} place and size{view.supersampling > 1 ? ', smaller and nearer the top left' : ', bigger and further from the top left'}. Show {insideOff.length > 1 ? 'them' : 'it'} in {insideOff.length > 1 ? 'windows of their own' : 'a window of its own'}, or set supersampling to 1× (off).</div>
+      <div class="missing" role="status"><Icon name="alert" size={17} />{insideOff.map((w) => KINDS[w.id].label).join(' and ')} {insideOff.length > 1 ? 'are' : 'is'} set inside the table’s window, but VPX’s supersampling is {view.supersampling}× (Settings › Picture): VPX then draws {insideOff.length > 1 ? 'them' : 'it'} at {Math.round(100 / view.supersampling)}% of {insideOff.length > 1 ? 'their' : 'its'} place and size{view.supersampling > 1 ? ', smaller and nearer the top left' : ', bigger and further from the top left'}. Show {insideOff.length > 1 ? 'them' : 'it'} in {insideOff.length > 1 ? 'windows of their own' : 'a window of its own'}, or set supersampling to 1× (off).</div>
     {/if}
 
     <section class="map-wrap" aria-label="Your screens">
@@ -643,7 +644,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">The table’s view</h2>
+      <h2 class="section-title">The table’s view<ForTag which="vpx" /></h2>
       <div class="seg wide" role="radiogroup" aria-label="The table’s view">
         <button type="button" role="radio" aria-checked={draft.view === 'desktop'} onclick={() => (draft.view = 'desktop')}>Desktop</button>
         <button type="button" role="radio" aria-checked={draft.view === 'cabinet'} onclick={() => (draft.view = 'cabinet')}>Cabinet</button>
@@ -656,7 +657,7 @@
 
     {#if !table}
       <section class="block">
-        <h2 class="section-title">The achievement popup</h2>
+        <h2 class="section-title">The achievement popup<ForTag which="vpx" /></h2>
         <div class="popup">
           <span class="lab">Shows on</span>
           <div class="seg" role="radiogroup" aria-label="Where the achievement popup shows">
@@ -678,7 +679,7 @@
     {/if}
 
     <section class="block">
-      <h2 class="section-title">Ready-made layouts</h2>
+      <h2 class="section-title">Ready-made layouts<ForTag which="both" /></h2>
       <div class="layouts" role="radiogroup" aria-label="Ready-made layouts">
         {#each layouts as l (l.name)}
           <button type="button" class="layout" role="radio" aria-checked={chosen === l} onclick={() => useLayout(l)} title={chosen === l ? 'Chosen — choose it again to go back to what was there before it' : undefined}>
@@ -689,7 +690,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">Presets</h2>
+      <h2 class="section-title">Presets<ForTag which="vpx" /></h2>
       {#if presets.length}
         <div class="presets">
           {#each presets as p (p)}
@@ -716,7 +717,7 @@
     </section>
 
     <section class="block">
-      <h2 class="section-title">The windows</h2>
+      <h2 class="section-title">The windows<ForTag which="both" /></h2>
       <div class="windows">
         {#each draft.windows as w (w.id)}
           {@const s = screenOf(w)}

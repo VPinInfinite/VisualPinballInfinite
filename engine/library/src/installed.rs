@@ -320,8 +320,12 @@ pub struct Media {
 pub struct Holds {
     /// The backglass file named as the table (`.directb2s`).
     pub backglass: Option<PathBuf>,
-    /// Its other backglasses beside it, numbered as VPin Studio keeps a backglass's versions
-    /// (`<table> (1).directb2s` and on): which one plays is chosen on its page (`backglass::play`).
+    /// B2S Pro's backglass file named as the table (`.B2SPro`), which B2S Pro shows before the
+    /// other and nothing else reads.
+    pub backglass_pro: Option<PathBuf>,
+    /// Its other backglasses beside it, numbered as VPin Studio keeps a backglass's versions, both
+    /// kinds counted together (`<table> (1).directb2s`, `<table> (2).B2SPro` and on): which plays is
+    /// chosen on its page (`backglass::play`).
     pub backglasses: Vec<PathBuf>,
     /// Pictures the player reads in place of its own, kept in `<table> pictures` beside it, each
     /// named as the picture it stands in for (`backdrop2.png`).
@@ -531,7 +535,7 @@ fn music_in(names: &[String], folders: &[PathBuf]) -> Vec<PathBuf> {
 }
 
 /// The companion files' kinds a table's page shows in rows of their own.
-const OWN: [&str; 6] = ["vpx", "directb2s", "pov", "vpp", "ini", "vbs"];
+const OWN: [&str; 7] = ["vpx", "directb2s", "b2spro", "pov", "vpp", "ini", "vbs"];
 
 /// The number of a file named `<stem> (n)` (lower case both), as a second download is numbered and
 /// VPin Studio numbers a backglass's versions.
@@ -554,7 +558,7 @@ fn beside_named(stem: &str, files: &[String], dir: &Path) -> Vec<PathBuf> {
                 return !OWN.contains(&ext);
             }
             // numbered: `<stem> (n)`, not a table of its own
-            ext != "directb2s" && number_after(&low, name_stem).is_some() && !stems.iter().any(|s| s == name_stem)
+            !crate::backglass::KINDS.contains(&ext) && number_after(&low, name_stem).is_some() && !stems.iter().any(|s| s == name_stem)
         })
         .map(|f| dir.join(f))
         .collect();
@@ -562,15 +566,16 @@ fn beside_named(stem: &str, files: &[String], dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// A table's other backglasses beside it, `<stem> (n).directb2s` — none another table's own — by
-/// their numbers.
+/// A table's other backglasses beside it, `<stem> (n).directb2s` and `<stem> (n).B2SPro` — none
+/// another table's own — by their numbers.
 fn backglass_versions(stem: &str, files: &[String], dir: &Path) -> Vec<PathBuf> {
     let low = stem.to_lowercase();
     let stems: Vec<String> = files.iter().filter_map(|f| f.to_lowercase().strip_suffix(".vpx").map(str::to_string)).collect();
     let mut found: Vec<(u32, PathBuf)> = files
         .iter()
         .filter_map(|f| {
-            let name_stem = f.to_lowercase().strip_suffix(".directb2s")?.to_string();
+            let low_f = f.to_lowercase();
+            let name_stem = crate::backglass::KINDS.iter().find_map(|k| low_f.strip_suffix(&format!(".{k}")))?.to_string();
             let n = number_after(&low, &name_stem)?;
             (!stems.contains(&name_stem)).then(|| (n, dir.join(f)))
         })
@@ -774,6 +779,7 @@ pub fn holds(layout: &Layout, aliases: &Aliases, media: &[(String, PathBuf, Vec<
     let folders_missing: Vec<String> = folder_names.iter().filter(|n| !n.contains('*') && !beside_folders.iter().any(|f| f.eq_ignore_ascii_case(n))).cloned().collect();
     Holds {
         backglass: beside("directb2s"),
+        backglass_pro: beside_files.iter().find(|f| f.to_lowercase() == format!("{}.b2spro", stem.to_lowercase())).map(|f| table_dir.join(f)),
         backglasses: backglass_versions(&stem, beside_files, &table_dir),
         // only where its folder is there: a folder each table rarely has
         pictures: if beside_folders.iter().any(|f| f.eq_ignore_ascii_case(&format!("{stem} pictures"))) { table_pictures(&table_dir, &stem) } else { Vec::new() },

@@ -1,7 +1,8 @@
 <script>
-  // VPX 10.8.1 or VPX 10.8.0: what changes with each, side by side, before choosing which plays the
-  // tables (Settings › Library, first setup); opened to compare (`choosing` null) or to switch to
-  // one (`choosing`, its line), the switch made only on its button (`vpx_play_with`).
+  // The newer VPX (10.8.1 or later: the one in the library, else the one Get VPX brings) or VPX
+  // 10.8.0: what changes with each, side by side, before choosing which plays the tables (Settings ›
+  // Library, first setup); opened to compare (`choosing` null) or to switch to one (`choosing`, its
+  // line), the switch made only on its button (`vpx_play_with`).
   import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
   import { app, notice } from './store.svelte.js';
@@ -26,8 +27,10 @@
     }
   }
 
+  // the newer line: the one in the library, else the one Get VPX brings
+  const newer = $derived(app.vpxInstalled?.find((f) => f.addons)?.line ?? app.vpxMadeForLine);
   const NEWER = [
-    ['star', 'VPX’s newest, which its team hasn’t released yet. Get VPX 10.8.1 brings the build this app is made for, one of VPX’s automatic builds.'],
+    ['star', 'VPX’s newest, which its team hasn’t released yet. Get VPX brings the build this app is made for, one of VPX’s automatic builds.'],
     ['layers', 'Brings its own add-ons for ROMs, backglasses, PinUP packs, FlexDMD, music and toys — or uses the classic programs you have, part by part (Settings › Library › Its add-ons).'],
     ['trophy', 'Achievements as you play: each one shows the moment it’s earned, with its sound, and pausing shows where they stand. This needs VPX’s own ROM and backglass add-ons.'],
     ['image', 'Screenshots with a key, F9 unless you choose another, and, if you like, when a game makes a high score.'],
@@ -35,15 +38,15 @@
     ['eyeOff', 'Test it, the check of a new table, the script editor’s Check it and a machine’s first start run out of sight.'],
     ['folder', 'Plays tables kept in shared folders, or in a folder for each game.'],
   ];
-  const OLDER = [
+  const OLDER = $derived([
     ['star', 'VPX’s current full release.'],
     ['layers', 'Plays with the classic programs you have installed — VPinMAME, B2S Server, PinUP Player, FlexDMD, DOF — each with its own settings. The add-on switches don’t apply.'],
     ['trophy', 'Achievements are counted once the game is over, from its scores and what the machine and the table keep. Nothing shows while you play, and those that need more — a shot, a mode, a ball locked — can’t be earned.'],
     ['image', 'No screenshots from the app while you play.'],
-    ['sliders', 'Keeps its own settings, apart from 10.8.1’s: the app’s Screens, Sound, Picture and Controls pages set 10.8.1’s. Set 10.8.0’s in its own Preferences, and the backglass and score display in B2S Server’s and VPinMAME’s. Screen presets and cabinet mode’s own screens are for 10.8.1.'],
-    ['eyeOff', 'Test it and the other checks still run in VPX 10.8.1 when it’s there beside it; without it, they’re off.'],
+    ['sliders', `Keeps its own settings, apart from ${newer}’s, but each game gets from the app’s pages your controller, sound outputs and volumes, ball trail and supersampling, and the backglass’s place (B2S Server’s screen file). Set the rest in 10.8.0’s own Preferences, and the score display in VPinMAME’s. Screen presets and cabinet mode’s own screens are for ${newer}.`],
+    ['eyeOff', `Test it and the other checks still run in VPX ${newer} when it’s there beside it; without it, they’re off.`],
     ['folder', 'Shared folders only: it can’t start ROM tables kept in a folder for each game.'],
-  ];
+  ]);
   const BOTH = [
     'Your tables, ROMs, PinUP packs, AltSound and colorings stay where they are: nothing is moved, copied or changed when you switch, and you can switch back any time.',
     'PLAY, Play Hardcore and Play Softcore start the table the same way, from the library and from cabinet mode. Play Hardcore plays it as its author made it in both.',
@@ -55,12 +58,12 @@
 <div class="backdrop" role="presentation" onclick={(e) => e.target === e.currentTarget && onclose()}>
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="vc-title">
     <header>
-      <h2 id="vc-title">{switching ? `Play your tables in VPX ${choosing}?` : 'VPX 10.8.1 or VPX 10.8.0'}</h2>
+      <h2 id="vc-title">{switching ? `Play your tables in VPX ${choosing}?` : `VPX ${newer} or VPX 10.8.0`}</h2>
       <button type="button" class="btn icon ghost" aria-label="Close" onclick={onclose}><Icon name="x" /></button>
     </header>
     <p>Both play your tables from the same folders. What changes is what the app can do around VPX while it plays.</p>
     <div class="cols">
-      {#each [['10.8.1', NEWER], ['10.8.0', OLDER]] as [line, points] (line)}
+      {#each [[newer, NEWER], ['10.8.0', OLDER]] as [line, points] (line)}
         <section class="col" class:picked={(choosing || current) === line} aria-labelledby={`vc-${line}`}>
           <h3 id={`vc-${line}`}>
             VPX {line}

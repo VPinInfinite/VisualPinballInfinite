@@ -5,7 +5,8 @@
   // all at once from there — the kinds on its own screen, each under a thin line, not down the side
   //; the playlists'
   // sections folded and unfolded, remembered.
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
   import Icon from './Icon.svelte';
   import Tile from './Tile.svelte';
   import ListView from './ListView.svelte';
@@ -63,8 +64,12 @@
   // the smart playlists: made from what the tables are, and from VPS's tags,
   // those shown (Settings › Library › Playlists; the five biggest until the user chooses)
   const tags = $derived(tagPlaylists(T));
-  const shownTags = $derived(app.prefs.tagLists ? tags.filter((g) => app.prefs.tagLists.includes(g.id)) : tags.slice(0, 5));
+  // what plays them, VPX or Future Pinball: always there where the library holds both
+  const formatLists = $derived(tags.filter((g) => g.kind === 'format'));
+  const vpsTags = $derived(tags.filter((g) => g.kind !== 'format'));
+  const shownTags = $derived(app.prefs.tagLists ? vpsTags.filter((g) => app.prefs.tagLists.includes(g.id)) : vpsTags.slice(0, 5));
   const smart = $derived([
+    ...formatLists,
     { id: 'vpw', label: 'VPin Workshop’s', list: T.filter(isVpw) },
     { id: 'originals', label: 'Originals', list: T.filter(isOriginal) },
     { id: 'nineties', label: 'The 1990s', list: T.filter((t) => decade(t.year) === '1990s') },
@@ -157,6 +162,37 @@
 
   const shown = $derived(arrange(chosen.list, chosen.ordered));
 
+  // a big library drawn a part at a time: the first tiles at once, the rest over the next frames,
+  // so the page shows before every tile's made — begun again as another group, search, filter or
+  // order shows, not as the library's read again (a table's tile changing in place)
+  const FIRST = 36;
+  const STEP = 72;
+  let limit = $state(FIRST);
+  let growing = 0;
+  $effect(() => {
+    void app.pick;
+    void app.query;
+    void app.prefs.sort;
+    void app.has.length;
+    untrack(() => {
+      cancelAnimationFrame(growing);
+      limit = FIRST;
+      const more = () => {
+        limit += STEP;
+        if (limit < app.tables.length) growing = requestAnimationFrame(more);
+      };
+      growing = requestAnimationFrame(more);
+    });
+    return () => cancelAnimationFrame(growing);
+  });
+  // the library's first tiles shown, told in the app's log with the time since it started
+  let told = false;
+  $effect(() => {
+    if (told || !app.loaded || !shown.length) return;
+    told = true;
+    tick().then(() => requestAnimationFrame(() => invoke('page_moment', { what: `the library's first ${Math.min(limit, shown.length)} tiles shown, of ${app.tables.length} tables` }).catch(() => {})));
+  });
+
   // a table just added shown once the library has it — all tables shown if the group or a filter
   // leaves it out — scrolled to and lit for a moment
   $effect(() => {
@@ -211,6 +247,7 @@
     { id: 'alt', label: 'AltSound', icon: 'music' },
     { id: 'colour', label: 'Color DMD', icon: 'palette' },
     { id: 'ach', label: 'Achievements', icon: 'trophy' },
+    { id: 'vr', label: 'VR', icon: 'eye' },
   ];
 
   const pictures = [
@@ -386,7 +423,7 @@
         <ListView tables={list} open={(t) => openTable(t.id, list.map((x) => x.id))} />
       {:else}
         <div class="grid {app.prefs.picture}" style="--tile: {app.prefs.tile}px">
-          {#each list as t (t.id)}
+          {#each list.length > limit ? list.slice(0, limit) : list as t (t.id)}
             <Tile {t} picture={app.prefs.picture} onopen={() => openTable(t.id, list.map((x) => x.id))} />
           {/each}
         </div>
@@ -429,9 +466,11 @@
       </form>
     {:else}
     <button type="button" role="menuitem" onclick={() => openTable(tableMenu.t.id, shown.map((x) => x.id))}>Open its page</button>
-    <button type="button" role="menuitem" onclick={() => { const id = tableMenu.t.id; tableMenu = null; inspect(id); }}>Open in the table editor</button>
+    <!-- the table editor and Hardcore are VPX's: a Future Pinball table plays as it is -->
+    {#if tableMenu.t.format !== 'fp'}<button type="button" role="menuitem" onclick={() => { const id = tableMenu.t.id; tableMenu = null; inspect(id); }}>Open in the table editor</button>{/if}
     <button type="button" role="menuitem" onclick={() => { const t = tableMenu.t; tableMenu = null; play(t); }}>Play</button>
-    <button type="button" role="menuitem" title="As its author made it: your table settings, script edits and physics changes left out for this game" onclick={() => { const t = tableMenu.t; tableMenu = null; play(t, null, 'hardcore'); }}>Play in Hardcore</button>
+    {#if tableMenu.t.format !== 'fp'}<button type="button" role="menuitem" title="As its author made it: your table settings, script edits and physics changes left out for this game" onclick={() => { const t = tableMenu.t; tableMenu = null; play(t, null, 'hardcore'); }}>Play in Hardcore</button>{/if}
+    {#if tableMenu.t.format === 'fp' || (!app.vpxOlder && tableMenu.t.playWith !== '10.8.0')}<button type="button" role="menuitem" title="In a VR headset, this game alone" onclick={() => { const t = tableMenu.t; tableMenu = null; play(t, null, 'vr'); }}>Play in VR</button>{/if}
     <button type="button" role="menuitem" onclick={(e) => { e.stopPropagation(); plMenu = true; }}>Add to a playlist…</button>
     {#if tableMenu.t.hiddenTable}
       <button type="button" role="menuitem" onclick={() => setHidden(tableMenu.t, false)}>Unhide</button>

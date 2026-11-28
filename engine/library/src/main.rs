@@ -532,7 +532,20 @@ fn run() -> Result<(), String> {
                 if s.kind == "script" && s.kept.is_empty() {
                     // what VPX keeps instead, to see a name that doesn't match
                     for file in library::vpx::saved_values(&layout, Some(path.as_path())).into_iter().filter(|f| f.is_file()) {
-                        let names = library::scores::names_in_stg(&file).unwrap_or_default();
+                        let names = if file.extension().is_some_and(|x| x.eq_ignore_ascii_case("ini")) {
+                            let text = std::fs::read(&file).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
+                            let entries = vpi_settings::parse_ini(&text);
+                            let mut names: Vec<(String, usize)> = Vec::new();
+                            for (section, _, _) in &entries {
+                                match names.iter_mut().find(|(n, _)| n == section) {
+                                    Some((_, count)) => *count += 1,
+                                    None => names.push((section.clone(), 1)),
+                                }
+                            }
+                            names
+                        } else {
+                            library::scores::names_in_stg(&file).unwrap_or_default()
+                        };
                         println!("  none kept; VPX's {} keeps: {}", file.display(), names.iter().map(|(n, c)| format!("{n} ({c})")).collect::<Vec<_>>().join(", "));
                     }
                 }
@@ -593,6 +606,12 @@ fn explain_match(facts: &library::table::TableFacts, m: &Match, db: &Database) {
     let fresh = library::matcher::parse_filename(&c.file_name);
     for (g, d) in library::matcher::closest_games(&["VPX"], &fresh, &db.games).iter().take(5) {
         println!("     game {:.3}  {} ({} {}) `{}`", d, g.name, g.manufacturer, g.year.unwrap_or(0), g.id);
+    }
+    // the nearest by the table info's name, and whether the file name says something of each
+    if let Some(info) = c.info_name.as_deref() {
+        for (g, d) in library::matcher::closest_games(&["VPX"], &library::matcher::parse_filename(info), &db.games).iter().take(5) {
+            println!("     by its info: game {:.3}  {} ({} {}) `{}`, the file name says something of it: {}", d, g.name, g.manufacturer, g.year.unwrap_or(0), g.id, library::matcher::relates(&c.file_name, g));
+        }
     }
     if let (Some(g), Some(q)) = (m.game, &m.asked) {
         println!(

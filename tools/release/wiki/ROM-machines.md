@@ -1,10 +1,10 @@
 # ROM machines
 
-A table that recreates a real machine runs that machine's own program, its ROM, in PinMAME: VPX 10.8.1's own PinMAME add-on, or the classic VPinMAME where Settings › Library › its add-ons choose it (VPX 10.8.0 always uses the classic one). ROMs belong to the machines' makers, so no installer may include them: you supply them yourself, as for VPX. The table's script names the ROM it wants, and a table's VPS page lists the ROMs for it.
+A table that recreates a real machine runs that machine's own program, its ROM, in PinMAME: VPX 10.9's own PinMAME add-on, or the classic VPinMAME where Settings › Library › its add-ons choose it (VPX 10.8.0 always uses the classic one). ROMs belong to the machines' makers, so no installer may include them: you supply them yourself, as for VPX. The table's script names the ROM it wants, and a table's VPS page lists the ROMs for it.
 
 ## Getting a ROM in
 
-Drop the ROM's `.zip` onto the app, with its table or onto the table's page. It goes into VPinMAME's `roms` folder, where both PinMAMEs look (or into the table's own `pinmame\roms`, for a table kept in a folder of its own that has one), checked file by file against what PinMAME expects for it. Keep ROMs zipped, named as the table asks: the drop window does both, and makes a zip of a set that comes in another kind of archive or as loose files. A zip under a name PinMAME doesn't know is recognised by its files and named for its set (`sopranos-usa.zip` is `sopranos`), and one a file short says which file it lacks. A download's read-me shows in the drop window (**Its read-me**). A zip named for a ROM that holds only a coloring's files isn't a ROM: the drop window says so, leaves it out and keeps your ROM (see [Score displays](Score-displays#color-dmds)).
+Drop the ROM's `.zip` onto the app, with its table or onto the table's page. It goes into VPinMAME's `roms` folder, where both PinMAMEs look (or into the table's own `pinmame\roms`, for a table kept in a folder of its own that has one), checked file by file against what PinMAME expects for it. Keep ROMs zipped, named as the table asks: the drop window does both, and makes a zip of a set that comes in another kind of archive or as loose files. A zip under a name PinMAME doesn't know is recognised by its files and named for its set (`sopranos-usa.zip` is `sopranos`), and one a file short says which file it lacks. A download's read-me shows in the drop window (**Its read-me**). A zip named for a ROM that holds only a coloring's files isn't a ROM: the drop window says so, leaves it out and keeps your ROM (see [Score displays](Score-displays#color-dmds)). A merged set, which keeps a game's other versions in folders of their own inside its zip, as MAME keeps them, goes in as the table's ROM.
 
 ## When a ROM isn't right
 
@@ -40,17 +40,19 @@ Settings › Machines sets them for every machine, where each PinMAME reads them
 
 A game's own, in a table's settings (**The machine**: its sound, its volume, recorded sounds, skipping its start-up tests, and with a display device, the real DMD and its color there), are the classic VPinMAME's: kept as it keeps them for each game, shared by every table that plays it, and winning over those for every machine. VPX's own PinMAME keeps none for each game, so a table's settings show them only where the classic VPinMAME plays its machine. A table's script may set some of them itself each time it starts, whichever PinMAME plays; its settings say so.
 
+Where the classic VPinMAME plays a machine (in VPX 10.8.0 always), the app lowers its volume for the game by the backglass's volume in Settings › Sound, as VPX's own PinMAME add-on mixes it, and puts it back after the game.
+
 ## Its memory
 
 A machine keeps its high scores, settings and audits in its memory (NVRAM), a small file for each ROM. VPX's PinMAME keeps it beside the table's own ROMs (in its `pinmame\nvram` folder) where the table has its own, and else in PinMAME's own `nvram` folder, where the classic VPinMAME keeps it too: a machine's high scores and settings are the same whichever plays. Memory kept by an earlier version of the app comes along the first time a table plays in VPX, where VPX has none, so your high scores and settings carry on.
 
-A machine with no memory at all restores its factory settings the first time it's switched on, and many then show them until they're switched off and on. So before its first game, the app switches it on once by itself, unseen, with VPX 10.8.1: the game then starts as it should.
+A machine with no memory at all restores its factory settings the first time it's switched on, and many then show them until they're switched off and on. So before its first game, the app switches it on once by itself, unseen, with VPX 10.9 (or 10.8.1): the game then starts as it should.
 
 ## High scores
 
 A machine's high scores are read from its memory, through the [Pinball Memory Maps](https://github.com/tomlogic/pinball-memory-maps) (ODbL), and shown on its table's page. See [A table's page](Table-page#achievements-high-scores-and-plays). **Player hub** › **High scores** lists every table's best.
 
-While a game plays in VPX 10.8.1, VPX's own PinMAME add-on shares the machine's game and its high scores with the app's achievements add-on through the same kind of map: VPX's own maps where its PinMAME brings one for the machine, else one the app puts in for it. That's how achievements follow a ROM machine as you play, and how a screenshot is taken when a game makes the high scores.
+While a game plays in VPX 10.9, VPX's own PinMAME add-on shares the machine's game and its high scores with the app's achievements add-on through the same kind of map: VPX's own maps where its PinMAME brings one for the machine, else one the app puts in for it. That's how achievements follow a ROM machine as you play, and how a screenshot is taken when a game makes the high scores.
 
 ## AltSound packs
 

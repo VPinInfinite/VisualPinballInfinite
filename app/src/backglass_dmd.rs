@@ -396,7 +396,7 @@ fn background() {}
 mod tests {
     use super::*;
 
-    /// The test library's tables (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-6758`) copied to a
+    /// The test library's tables (`VPI_TEST_LIBRARY`, else `vpx-build\vpx-test-7001`) copied to a
     /// scratch folder and each brought to the backglass's place as the background pass brings
     /// them: what each was found to be, its file placed in and kept as it came; looked at again,
     /// none changed; then every place taken out, each file as it came byte for byte.
@@ -406,7 +406,7 @@ mod tests {
     #[ignore]
     fn the_test_librarys_backglasses_are_placed_and_put_back() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-6758"));
+        let lib = std::env::var_os("VPI_TEST_LIBRARY").map(PathBuf::from).unwrap_or_else(|| repo.join("vpx-build").join("vpx-test-7001"));
         let work = std::env::temp_dir().join(format!("vpi-backglass-library-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&work);
         let layout = Layout::under(&work);

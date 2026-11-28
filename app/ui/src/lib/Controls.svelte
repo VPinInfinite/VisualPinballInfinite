@@ -12,14 +12,18 @@
   import { listen } from '@tauri-apps/api/event';
   import Icon from './Icon.svelte';
   import { notice, app, savePrefs } from './store.svelte.js';
+  import ForTag from './ForTag.svelte';
 
   const PAUSE = [
-    ['ours', 'The app’s', 'Resume, your achievements, the volume, the table’s settings and Quit, over the playfield; VPX’s own menu a button in it.'],
-    ['vpx', 'VPX’s own', 'VPX’s menu, as VPX shows it.'],
+    ['ours', 'The app’s', 'Resume, the table’s rules and guide, your achievements, the volume and Quit, over the playfield, the same for every table; VPX’s own menu, or BAM’s in Future Pinball, a button in it.'],
+    ['vpx', 'The game’s own', 'VPX’s menu, or BAM’s in Future Pinball, as they show it.'],
   ];
   import { CODES } from './keycodes.js';
 
   // the actions, in groups, in plain words
+  // the groups whose actions Future Pinball's games play too, on its keys as set here and the
+  // controller passed to it as them
+  const FP_GROUPS = ['Flippers', 'Ball and cabinet', 'Coins and start'];
   const GROUPS = [
     ['Flippers', [['LeftFlipper', 'Left flipper'], ['RightFlipper', 'Right flipper'], ['LeftStagedFlipper', 'Left upper flipper'], ['RightStagedFlipper', 'Right upper flipper'], ['LeftMagna', 'Left magna-save'], ['RightMagna', 'Right magna-save']]],
     ['Ball and cabinet', [['LaunchBall', 'Launch the ball'], ['Lockbar', 'Lockbar button'], ['LeftNudge', 'Nudge from the left'], ['RightNudge', 'Nudge from the right'], ['CenterNudge', 'Nudge forward'], ['Tilt', 'Tilt bob'], ['SlamTilt', 'Slam tilt']]],
@@ -251,7 +255,7 @@
 <div class="page" data-loading={draft || problem ? undefined : ''}>
   <header>
     <div class="title">
-      <h1 class="display">Controls</h1>
+      <h1 class="display">Controls<ForTag which="both" /></h1>
       <p>Every game action and the keys and buttons that press it. Press any of them to see it light up here; click a key or button to change it, or + to add another.</p>
     </div>
     <div class="actions">
@@ -267,7 +271,7 @@
   {:else}
     <section class="live">
       <div class="who">
-        <h2 class="section-title">Controllers</h2>
+        <h2 class="section-title">Controllers<ForTag which="both" /></h2>
         {#if Object.keys(devices).length}
           {#each Object.entries(devices) as [id, name] (id)}<p class="dev"><Icon name="disc" size={15} />{name}</p>{/each}
         {:else}
@@ -302,7 +306,7 @@
     {#each GROUPS as [title, list] (title)}
       <section class="block">
         <div class="grid head">
-          <h2 class="section-title">{title}</h2>
+          <h2 class="section-title">{title}<ForTag which={FP_GROUPS.includes(title) ? 'both' : 'vpx'} /></h2>
           <span class="col">Keyboard</span>
           <span class="col">Controller</span>
         </div>
@@ -344,7 +348,7 @@
     {/each}
 
     <section class="block">
-      <h2 class="section-title">The pause menu</h2>
+      <h2 class="section-title">The pause menu<ForTag which="both" /></h2>
       <div class="choices" role="radiogroup" aria-label="The pause menu">
         {#each PAUSE as [v, l, what] (v)}
           <label class="choice" class:on={(app.prefs.pauseMenu || 'ours') === v}>
@@ -353,11 +357,11 @@
           </label>
         {/each}
       </div>
-      <p class="soft">VPX’s menu key opens it: F12 on the keyboard, and the button a controller has for VPX’s menu. VPX 10.8.1’s newer builds; with VPX 10.8.0 its own menu shows.</p>
+      <p class="soft">VPX’s menu key opens it: F12 on the keyboard, and the button a controller has for VPX’s menu, in every VPX and in Future Pinball. A game played in VR shows VPX’s own menu, which VPX draws in the headset.</p>
     </section>
 
     <section class="block">
-      <h2 class="section-title">Screenshots</h2>
+      <h2 class="section-title">Screenshots<ForTag which="vpx" /></h2>
       <div class="shotrow">
         <label for="shot-key">The key that takes one while you play</label>
         <select id="shot-key" class="select" value={shotKey} onchange={(e) => setShotKey(e.currentTarget.value)}>

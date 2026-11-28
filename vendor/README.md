@@ -3,16 +3,16 @@
 Third-party source we build from a copy of our own: changed by us (SDL, SDL_ttf's binding), or
 needed to build and not fetched (FFmpeg's headers).
 
-## sdl3-src — SDL 3.4.18, with four changes of ours
+## sdl3-src — SDL 3.4.20, with four changes of ours
 
-The `sdl3-src` crate (3.4.18, the source of [SDL](https://github.com/libsdl-org/SDL) that
+The `sdl3-src` crate (3.4.20, the source of [SDL](https://github.com/libsdl-org/SDL) that
 `sdl3-sys` builds) as published on crates.io, used in place of the published crate through
 `[patch.crates-io]` in the workspace's `Cargo.toml`. Left out of the copy, as a CMake build
 doesn't use them: SDL's `VisualC`, `VisualC-GDK`, `Xcode`, `android-project` and `docs` folders,
 `Android.mk`, and its notes for AI tools (`AGENTS.md` and the like). SDL is under the zlib
 license (`sdl3-src/LICENSE.md`, `sdl3-src/SDL/LICENSE.txt`); as it asks, this is an altered
 version, marked as such: two changes are in `SDL/src/gpu/d3d12/SDL_gpu_d3d12.c` and two in
-`SDL/CMakeLists.txt`, each marked `Visual Pinball Infinite: altered from SDL 3.4.18`.
+`SDL/CMakeLists.txt`, each marked `Visual Pinball Infinite: altered from SDL 3.4.20`.
 
 SDL's Direct3D 12 code copies each draw's descriptors (the records telling the graphics card
 which pictures and samplers a shader reads) into heaps of 65,536 and 2,048. Before a copy it only

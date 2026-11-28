@@ -78,7 +78,7 @@
 {/snippet}
 
 {#key set}
-  <IniPage title="Physics sets" lead="Almost every table carries its own physics, set by its author: how the ball rolls and bounces, how strong the flippers are. A few say instead “use physics set 1” (to 8), chosen by the author in VPX’s editor, and then play the values kept here, for every table that names that set. Change them only if you mean to: a game played with them changed counts as Softcore for achievements. One table’s own physics are changed in its physics window, on its settings." {parts} custom={{ picker }} />
+  <IniPage title="Physics sets" tag="vpx" lead="Almost every table carries its own physics, set by its author: how the ball rolls and bounces, how strong the flippers are. A few say instead “use physics set 1” (to 8), chosen by the author in VPX’s editor, and then play the values kept here, for every table that names that set. Change them only if you mean to: a game played with them changed counts as Softcore for achievements. One table’s own physics are changed in its physics window, on its settings." {parts} custom={{ picker }} />
 {/key}
 
 <style>

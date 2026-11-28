@@ -5,17 +5,22 @@
   // its pictures. Those not ticked stay as
   // they were; what the app made of it before is replaced only once the user says so.
   import Icon from './Icon.svelte';
-  import { app, makePictures, savePrefs } from './store.svelte.js';
+  import { app, makePictures, recordMedia, savePrefs } from './store.svelte.js';
 
   let { t, onclose } = $props();
 
-  const KINDS = [
+  const ALL = [
     ['playfield', 'Playfield picture', 'The playfield seen from straight above, flippers at the bottom, cut to the playfield as VPS’s pictures show tables.'],
     ['video', 'Playfield video, with its sound', 'Twenty seconds of it starting a game, seen the same way, with its sound (off until you turn it on), to preview it here, in front ends and in cabinet mode.'],
     ['backglass', 'Backglass picture', 'From its backglass file, lit as its script lights it.'],
     ['dmd', 'Score display picture', 'Its DMD or score digits, once it’s up.'],
     ['wheel', 'Wheel', 'A round logo for front ends: its backglass in a ring, its name across it.'],
   ];
+  // a Future Pinball table: our player draws VPX's, so its media recorded from the game itself as
+  // it plays on the user's screens, and the wheel, which the screens draw
+  const fp = t.format === 'fp';
+  const RECORDED = ['record', 'Recorded from the game', 'Its playfield’s picture and twenty seconds of video, its backglass’s and score display’s pictures where it shows them. The table plays on your screens in its attract mode for about a minute, then closes: nothing to press.'];
+  const KINDS = fp ? [RECORDED, ...ALL.filter(([k]) => k === 'wheel')] : ALL;
 
   let ticked = $state(Object.fromEntries(KINDS.map(([k]) => [k, true])));
 
@@ -26,8 +31,10 @@
     for (const [k] of KINDS) ticked[k] = on;
   }
 
-  // what of the ticked the app made before, asked about before it's replaced
-  const again = $derived(KINDS.filter(([k]) => ticked[k] && (t.made || []).includes(k)));
+  // what of the ticked the app made before, asked about before it's replaced (a recording replaces
+  // its playfield, video, backglass and score display)
+  const made = (k) => (k === 'record' ? ['playfield', 'video', 'backglass', 'dmd'].some((m) => (t.made || []).includes(m)) : (t.made || []).includes(k));
+  const again = $derived(KINDS.filter(([k]) => ticked[k] && made(k)));
   let asking = $state(false);
 
   function make() {
@@ -36,7 +43,8 @@
       return;
     }
     savePrefs();
-    makePictures(t.id, { kinds: chosen });
+    if (fp && ticked.record) recordMedia(t.id, { wheel: !!ticked.wheel });
+    else makePictures(t.id, { kinds: chosen });
     onclose();
   }
 </script>
@@ -47,8 +55,12 @@
       <h2 id="mm-title">Make media for {t.short}</h2>
       <button type="button" class="btn icon ghost" aria-label="Close" onclick={onclose}><Icon name="x" /></button>
     </header>
-    <p class="lead">The app draws it with no window and no sound, in about a minute with the video. What you don’t tick stays as it is.</p>
-    <label class="check all"><input type="checkbox" checked={all} indeterminate={!all && chosen.length > 0} onchange={(e) => setAll(e.currentTarget.checked)} />Everything</label>
+    {#if fp}
+      <p class="lead">The app draws VPX’s tables with no window. A Future Pinball table it records playing on your screens, as front ends record their media; the wheel it draws from its pictures.</p>
+    {:else}
+      <p class="lead">The app draws it with no window and no sound, in about a minute with the video. What you don’t tick stays as it is.</p>
+      <label class="check all"><input type="checkbox" checked={all} indeterminate={!all && chosen.length > 0} onchange={(e) => setAll(e.currentTarget.checked)} />Everything</label>
+    {/if}
     <div class="kinds">
       {#each KINDS as [k, label, what] (k)}
         <label class="kind">

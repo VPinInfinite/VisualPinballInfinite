@@ -480,7 +480,8 @@ pub fn add(app: &AppHandle, choices: Vec<Choice>, already: Already, test: bool) 
                 }
                 let mut tested = Vec::new();
                 if test {
-                    for t in &added.tables {
+                    // a Future Pinball table plays in Future Pinball: tests run VPX's
+                    for t in added.tables.iter().filter(|t| !::library::future_pinball::is_table(t)) {
                         let table = t.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                         let _ = app.emit("drop-progress", Progress { download: i, of, name: name.clone(), done: 0, total: 0, testing: Some(table.clone()) });
                         match crate::library::test_path(Some(&layout), t) {

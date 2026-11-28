@@ -1,4 +1,4 @@
-# The achievements add-on on its own: a zip anyone can drop into VPX 10.8.1's add-on folder.
+# The achievements add-on on its own: a zip anyone can drop into VPX 10.9's (or 10.8.1's) add-on folder.
 #   1. Built for release as stage.ps1 builds the programs: in target\release-build, this PC's user
 #      folder and the repository remapped out of what's compiled in (rustc's --remap-path-prefix),
 #      the debug file named without its folder, the C runtime built in; VPI_RELEASE_BUILD set.
@@ -52,5 +52,11 @@ if (Test-Path $key) { $scanArgs += @('--key-folder', $key) }
 python -I @scanArgs
 if ($LASTEXITCODE -ne 0) { throw "the scan found what mustn't go out: $(Join-Path $out 'scan.txt')" }
 $zip = Join-Path $out "vpi-achievements-$version.zip"
-Compress-Archive -Path $folder -DestinationPath $zip -Force
+# .NET's own zip writer, its folders named with forward slashes as zip files name them: Windows
+# PowerShell's Compress-Archive, and the .NET it runs on unless told otherwise (the switch below,
+# before the zip code first loads), write backslashes, which other unzippers keep in the files' names
+[AppContext]::SetSwitch('Switch.System.IO.Compression.ZipFile.UseBackslash', $false)
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+if (Test-Path $zip) { Remove-Item $zip }
+[IO.Compression.ZipFile]::CreateFromDirectory($folder, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
 Write-Host "The add-on on its own: $zip"

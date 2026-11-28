@@ -11,9 +11,12 @@ Two outputs, as in VPX:
 
 Each is Windows' default output, or one you choose by name. A cabinet often sends the playfield's sounds to the speakers or shakers in its body and the backglass's to the speakers in its backbox. One set of speakers can play both. On Windows' default, VPX plays through whatever Windows plays through as a table starts, which Windows can change by itself (a screen with speakers waking up, headphones plugged in): choose your speakers by name to keep them.
 
+- **In VPX 10.8.0,** which keeps settings of its own, each game is given these outputs and the volumes too: the table's sounds on the playfield's output, and the machine's sound and a PinUP pack's on the backglass's. In a newer VPX set to play with the classic VPinMAME or PinUP Player (Settings › Library › Its add-ons), their sound plays on the backglass's output the same way.
+- **In Future Pinball's games,** Future Pinball's own sound plays through the playfield's output, and a PinUP pack's through the backglass's: see [Future Pinball](Future-Pinball#playing).
+
 ## Bass shaker
 
-A copy of the playfield's sounds (the flippers, the ball, the bumpers) sent to a bass shaker or another tactile transducer on a sound output of its own, so you feel them: **Its output** (**None — off** until you choose one), **Its layout** (one of the layouts below) and **Its volume**. It's VPX's third output, in a [newer VPX 10.8.1 build](Installing-and-first-setup#which-vpx-1081-build): with an older one, the page says so.
+A copy of the playfield's sounds (the flippers, the ball, the bumpers) sent to a bass shaker or another tactile transducer on a sound output of its own, so you feel them: **Its output** (**None — off** until you choose one), **Its layout** (one of the layouts below) and **Its volume**. It's VPX's third output, from build 6640, so VPX 10.9 has it (see [Which build of VPX](Installing-and-first-setup#which-build-of-vpx)): with an older VPX, the page says so.
 
 ## The playfield's speaker layout
 
@@ -26,12 +29,12 @@ A copy of the playfield's sounds (the flippers, the ball, the bumpers) sent to a
 ## Volumes
 
 - **Playfield**, **Backglass** and **PinUP packs** (a pack's videos and sounds, on top of the backglass volume), for every table. A table's settings can give it a playfield and a backglass volume of its own.
-- **In the pause menu,** while a game plays: **Volume** turns VPX's volume down or up, both together as **-** and **=** do, and it's kept for your next games. Below it, a level for each part of the sound the table plays (**Table sounds**, **Machine** or **Machine (AltSound)**, **Music**, **PinUP pack**, **Media Player**, **Backglass sounds**, **Achievements**), from 0 to 100%, 100% being as the table came, kept for that table. **Put the parts back as they came** sets them all to 100% again. See [Playing](Playing#the-pause-menu).
-- **A machine's own volume,** its ROM's sound louder or softer, is the classic VPinMAME's, on Settings › Machines. With VPX's own PinMAME, the pause menu's **Machine** level turns it down.
+- **In the pause menu,** while a game plays: **Volume** turns VPX's volume down or up, both together as **-** and **=** do, and it's kept for your next games. Below it, a level for each part of the sound the table plays (**Table sounds**, **Machine** or **Machine (AltSound)**, **Music**, **PinUP pack**, **Media Player**, **Backglass sounds**, **Achievements**), kept for that table: **Table sounds** and **Music** from 0 to 100%, 100% being as the table came, and each add-on's sound at VPX's own level for it, the same as in VPX's sound settings, from 0 to 200%. **Put the parts back as they came** sets them all to 100% again. See [Playing](Playing#the-pause-menu).
+- **A machine's own volume,** its ROM's sound louder or softer, is the classic VPinMAME's, on Settings › Machines. With VPX's own PinMAME, the pause menu's **Machine** level sets it, as VPX's own sound settings do.
 
 ## Achievements
 
-Each achievement earned as you play in VPX 10.8.1 is announced with a sound: its pack's own, or the app's chime, played through VPX's backglass sound at VPX's music volume. **Play a sound as each achievement is earned** turns it off or on, and **Its volume** goes from 0 to 200% (100% plays it as it comes). VPX's own sound menu gives it a level of its own too (**Achievements**), and so does the pause menu. See [Achievements](Achievements#its-sound).
+Each achievement earned as you play in VPX 10.9 is announced with a sound: its pack's own, or the app's chime, played through VPX's backglass sound at VPX's music volume. **Play a sound as each achievement is earned** turns it off or on, and **Its volume** goes from 0 to 200% (100% plays it as it comes). VPX's own sound menu gives it a level of its own too (**Achievements**), and so does the pause menu. See [Achievements](Achievements#its-sound).
 
 ## Sound packs
 

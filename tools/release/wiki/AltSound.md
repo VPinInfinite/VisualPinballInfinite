@@ -1,6 +1,6 @@
 # AltSound packs
 
-A ROM machine's sound comes from its sound board, which PinMAME runs from the ROM. An AltSound pack replaces it with recorded files: the machine's music, callouts and effects, each a sound file the pack's list names, played in place of PinMAME's sound as the game asks for them. Some packs are remastered, re-recorded or remixed by their makers; others are made from the ROM itself, and can then be changed sound by sound. VPX 10.8.1's own AltSound add-on plays them, with its own PinMAME; the classic VPinMAME plays them itself.
+A ROM machine's sound comes from its sound board, which PinMAME runs from the ROM. An AltSound pack replaces it with recorded files: the machine's music, callouts and effects, each a sound file the pack's list names, played in place of PinMAME's sound as the game asks for them. Some packs are remastered, re-recorded or remixed by their makers; others are made from the ROM itself, and can then be changed sound by sound. VPX 10.9's own AltSound add-on plays them, with its own PinMAME; the classic VPinMAME plays them itself.
 
 ## Getting a pack
 

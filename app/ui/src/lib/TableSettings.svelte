@@ -66,10 +66,11 @@
 
   const isToggle = (o) => o.names?.length === 2;
   const current = (o) => options[o.id] ?? o.default;
-  const shown = (o, v) => (o.names ? o.names[Math.round(v - o.min)] ?? v : o.unit === 1 ? `${Math.round(v * 100)}%` : Number.isInteger(o.step) ? String(Math.round(v)) : v.toFixed(2));
+  // a table option's value as its unit has it: a percentage (1), degrees (2, VPX 10.9's), else as it is
+  const shown = (o, v) => (o.names ? o.names[Math.round(v - o.min)] ?? v : o.unit === 1 ? `${Math.round(v * 100)}%` : o.unit === 2 ? `${Number.isInteger(o.step) ? Math.round(v) : v.toFixed(1)}°` : Number.isInteger(o.step) ? String(Math.round(v)) : v.toFixed(2));
 
   const VIEWS = ['Desktop', 'Cabinet', 'Full single screen'];
-  const MAPPERS = ['Reinhard', 'AgX', 'Filmic', 'Neutral', 'AgX Punchy'];
+  const MAPPERS = ['Reinhard', 'AgX', 'Filmic', 'Neutral'];
   const LIGHTING = ['The table’s own', 'A level of your own', 'By the time of day'];
   const onOff = (b) => (b ? 'on' : 'off');
   const db = (v) => (v > 0 ? `+${v} dB` : `${v} dB`);

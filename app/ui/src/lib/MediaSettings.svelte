@@ -26,8 +26,10 @@
   const has = (t, k) => (k === 'sound' ? !!t.audio : t.media.some((m) => m.kind === k || (k !== 'playfield' && m.kind === `${k}-video`)));
   // a kind our player found it has none of when last made (no backglass file, no score display)
   const none = (t, make) => !!make && (t.none || []).includes(make);
-  // what our player can make of what it lacks
-  const toMake = (t) => [...new Set(KINDS.filter(([k, , make]) => make && !has(t, k) && !none(t, make)).map(([, , make]) => make))];
+  // what our player can make of what it lacks: of a Future Pinball table's, the wheel alone, which
+  // the screens draw (our player draws VPX's tables)
+  const canMake = (t, make) => !!make && (t.format !== 'fp' || make === 'wheel');
+  const toMake = (t) => [...new Set(KINDS.filter(([k, , make]) => canMake(t, make) && !has(t, k) && !none(t, make)).map(([, , make]) => make))];
   const NONE = { backglass: 'No backglass file to draw it from', dmd: 'It has no score display' };
 
   const tables = $derived([...app.tables].filter((t) => !t.hiddenTable).sort((a, b) => a.name.localeCompare(b.name)));
@@ -218,6 +220,7 @@
           {#each KINDS as [k, label, made] (k)}
             {#if has(t, k)}<span class="k" title={label}><Icon name="check" size={15} width={2.4} /></span>
             {:else if none(t, made)}<span class="k dash" title={NONE[made]}>–</span>
+            {:else if made && !canMake(t, made)}<span class="k dash" title="The app draws this for VPX’s tables: this one plays in Future Pinball">–</span>
             {:else}<span class="k" title={`No ${label.toLowerCase()} yet`}><span class="empty"></span></span>{/if}
           {/each}
           <span class="act">{#if make.length}<button type="button" class="btn small ghost" disabled={app.makingIds.includes(t.id)} onclick={() => makePictures(t.id, { kinds: make })}>{app.makingIds.includes(t.id) ? 'Making…' : 'Make missing'}</button>{/if}</span>

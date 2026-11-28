@@ -246,7 +246,7 @@
         <fieldset>
           <legend>What goes in it</legend>
           <label class="check"><input type="checkbox" bind:checked={logs} />The app's and VPX's logs, from this time and the time before</label>
-          <label class="check"><input type="checkbox" bind:checked={settings} />Your settings (a PIN2DMD key never)</label>
+          <label class="check"><input type="checkbox" bind:checked={settings} />Your settings, with VPX's and VPinMAME's folders (a PIN2DMD key never)</label>
           <label class="check"><input type="checkbox" bind:checked={pc} />This PC: Windows, processor, memory, graphics card and screens</label>
           {#if table}<label class="check"><input type="checkbox" checked disabled />{table.short}: what its page shows, and its own settings</label>{/if}
         </fieldset>

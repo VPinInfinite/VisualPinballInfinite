@@ -103,6 +103,10 @@
   // everything on it has loaded
   async function testMode() {
     const shot = await invoke('test_mode');
+    // Future Pinball, where it's found: the settings pages say which program each part sets
+    invoke('fp_state')
+      .then((s) => (app.fp = s))
+      .catch(() => {});
     // the reports sent from here, for the top bar's count of the team's new replies
     await loadReports();
     if (!shot) {
@@ -113,12 +117,13 @@
       checkReports();
       setInterval(() => checkReports(), 60 * 60 * 1000);
       lookForNotices();
-      // tables play in VPX 10.8.1, or 10.8.0: said once the library's read, where the library has neither
+      // tables play in VPX 10.8.1 or newer, or 10.8.0: said once the library's read, where the library has neither
       until(() => app.loaded, 180000)
         .then(() => invoke('vpx_status'))
         .then(async (v) => {
           app.vpxOlder = !!v?.found && !v.found.addons;
           app.vpxInstalled = v?.installed || [];
+          app.vpxMadeForLine = v?.madeForLine || app.vpxMadeForLine;
           if (v?.found?.plays) {
             if (!v.found.addons) return;
             // the settings VPI kept for its own player, not in VPX's file yet: offered once a start
@@ -137,7 +142,7 @@
             return;
           }
           const was = v?.found ? `The VPX found for your library is ${v.found.version}. ` : 'No VPX was found for your library. ';
-          notice(`${was}Tables play in VPX 10.8.1, or 10.8.0: Settings › Library gets VPX 10.8.1, and brings your settings over.`, {
+          notice(`${was}Tables play in VPX 10.8.1 or newer, or 10.8.0: Settings › Library gets VPX ${app.vpxMadeForLine}, and brings your settings over.`, {
             kind: 'update',
             action: { label: 'Settings › Library', run: () => { app.settingsPage = 'library'; app.page = 'settings'; } },
           });

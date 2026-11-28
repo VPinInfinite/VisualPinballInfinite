@@ -89,6 +89,8 @@ pub struct Asset {
     /// A tutorial's title and link.
     pub title: Option<String>,
     pub url: Option<String>,
+    /// A tutorial's video on YouTube, where VPS gives it by its ID alone.
+    pub youtube_id: Option<String>,
     /// A backglass file's picture, on VPS.
     pub img_url: Option<String>,
 }

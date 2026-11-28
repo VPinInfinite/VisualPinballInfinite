@@ -2,7 +2,9 @@
   // Settings: its pages down the side. Folders a part of Library, the Displays page a part of
   // Picture with the display timing from Screens, PinUP packs' settings a page of their own (the
   // packs themselves under Tools, with the other managers: ROMs, media, colour DMDs, AltSound),
-  // Cabinet and Advanced as they are; the ones built open, the rest say what they'll hold.
+  // Cabinet and Advanced as they are, VR's own; the ones built open, the rest say what they'll
+  // hold. Where Future Pinball is found, each page says in its title which tables it sets: VPX's,
+  // Future Pinball's, or both.
   import Icon from './Icon.svelte';
   import Screens from './Screens.svelte';
   import Sound from './Sound.svelte';
@@ -16,6 +18,7 @@
   import CabinetModeSettings from './CabinetModeSettings.svelte';
   import Cabinet from './Cabinet.svelte';
   import Advanced from './Advanced.svelte';
+  import VrSettings from './VrSettings.svelte';
   import { app } from './store.svelte.js';
 
   const pages = [
@@ -28,6 +31,7 @@
     { id: 'machines', label: 'Machines', icon: 'chip' },
     { id: 'pinup', label: 'PinUP packs', icon: 'layers' },
     { id: 'cabinet', label: 'Cabinet', icon: 'topper' },
+    { id: 'vr', label: 'VR', icon: 'eye' },
     { id: 'advanced', label: 'Advanced', icon: 'code' },
     // a part of Advanced: it changes how tables play
     { id: 'physics', label: 'Physics sets', icon: 'gauge', sub: true },
@@ -55,11 +59,11 @@
     {/each}
   </nav>
   <div class="content">
-    {#if app.vpxOlder && ['screens', 'sound', 'controls', 'picture', 'general', 'physics', 'cabinet', 'advanced'].includes(current.id)}
+    {#if app.vpxOlder && ['screens', 'sound', 'controls', 'picture', 'general', 'physics', 'cabinet', 'vr', 'advanced'].includes(current.id)}
       <!-- VPX 10.8.0 plays the tables, reading its own settings file: these pages set 10.8.1's -->
       <div class="older" role="status">
         <Icon name="alert" size={17} />
-        <span>VPX 10.8.0 plays your tables, and keeps its own settings: this page sets VPX {app.vpxInstalled.find((v) => v.addons)?.line ?? '10.8.1'}’s. Change 10.8.0’s in its own Preferences.</span>
+        <span>VPX 10.8.0 plays your tables, and keeps its own settings: this page sets VPX {app.vpxInstalled.find((v) => v.addons)?.line ?? app.vpxMadeForLine}’s. Change 10.8.0’s in its own Preferences.</span>
         <button type="button" class="btn small ghost" onclick={() => (app.vpxChoice = { choosing: null, current: '10.8.0' })}>How they differ</button>
       </div>
     {/if}
@@ -84,6 +88,8 @@
     {:else if current.id === 'cabinet'}
       <CabinetModeSettings />
       <Cabinet />
+    {:else if current.id === 'vr'}
+      <VrSettings />
     {:else if current.id === 'advanced'}
       <Advanced />
     {:else}

@@ -72,6 +72,10 @@
   const FRONT_NAMES = { Popper: 'PinUP Popper', PinballX: 'PinballX', PinballY: 'PinballY' };
 
   const t = $derived(tableById(app.tableId));
+  // a Future Pinball table: played in Future Pinball, through BAM, so what VPX alone does for a
+  // table — its settings file, its script, a test, the pictures our player draws, its high scores,
+  // achievements — isn't offered on its page
+  const fp = $derived(t?.format === 'fp');
   // the front ends a picture can be from, in words
   const FRONT_END = { Popper: 'PinUP Popper', PinballX: 'PinballX', PinballY: 'PinballY' };
   const order = $derived(app.order.filter((id) => tableById(id)));
@@ -218,7 +222,7 @@
     try {
       await invoke('vr_off');
       dropNote(n);
-      notice('VR is off in VPX’s settings: tables play on your screens from the next game. Its own setting, Enable VR, is on the Advanced page.', { kind: 'done' });
+      notice('VR is off in VPX’s settings: tables play on your screens from the next game. Settings › VR turns it on again.', { kind: 'done' });
     } catch (e) {
       notice(String(e), { kind: 'problem' });
     }
@@ -240,6 +244,8 @@
   // the VPX line this table plays with, chosen for it over Settings › Library's; offered where both
   // 10.8.1 and 10.8.0 are in the library
   const hasOlder = $derived(app.vpxInstalled.some((v) => v.line === '10.8.0') && app.vpxInstalled.some((v) => v.addons));
+  // the newer line in the library: 10.8.1 or later
+  const newerLine = $derived(app.vpxInstalled.find((v) => v.addons)?.line ?? app.vpxMadeForLine);
   async function playWith(line, n = null) {
     try {
       await invoke('set_play_with', { id: t.id, line });
@@ -250,11 +256,11 @@
     }
   }
 
-  // a newer VPX 10.8.1 found to play a table chosen to play with an older one: the user's word
+  // a newer VPX found to play a table chosen to play with an older one: the user's word
   async function answerNewer(useNewer) {
     try {
       await invoke('newer_vpx_answer', { id: t.id, useNewer });
-      notice(useNewer ? `${t.name} plays with VPX 10.8.1 again.` : `${t.name} keeps VPX ${t.playWith}; a newer build will try it again.`, { kind: 'done' });
+      notice(useNewer ? `${t.name} plays with VPX ${newerLine} again.` : `${t.name} keeps VPX ${t.playWith}; a newer build will try it again.`, { kind: 'done' });
     } catch (e) {
       notice(String(e), { kind: 'problem' });
     }
@@ -283,7 +289,8 @@
     const id = app.tableId;
     const pack = tableById(id)?.holds.pupPack;
     pupOn = null;
-    if (pack) invoke('table_pup', { id }).then(([on, usual]) => app.tableId === id && (pupOn = { on, usual })).catch(() => {});
+    // switched on or off in a VPX table's own settings file
+    if (pack && tableById(id)?.format !== 'fp') invoke('table_pup', { id }).then(([on, usual]) => app.tableId === id && (pupOn = { on, usual })).catch(() => {});
   });
 
   async function undoPackRename(path) {
@@ -421,7 +428,10 @@
     // what our player found it has none of: no score display wanted; a backglass from VPS's
     // backglass files, which our player draws from
     const none = t.none || [];
-    return WANTED.filter(([k]) => !has(k) && !(k === 'dmd' && none.includes('dmd'))).map((w) => (w[0] === 'backglass' && none.includes('backglass') ? [w[0], w[1], 'backglasses'] : w));
+    // a Future Pinball table: its media recorded from the game, a score display of its own only
+    // where a PinUP pack shows one
+    const wanted = t.format === 'fp' && !t.holds.pupPack ? WANTED.filter(([k]) => k !== 'dmd') : WANTED;
+    return wanted.filter(([k]) => !has(k) && !(k === 'dmd' && none.includes('dmd'))).map((w) => (w[0] === 'backglass' && none.includes('backglass') ? [w[0], w[1], 'backglasses'] : w));
   });
   function getMissing([, , how]) {
     if (how === 'make') mediaOpen = true;
@@ -511,7 +521,13 @@
     const h = t.holds;
     const out = [];
     const match = t.guess ? ['VPS match to confirm', 'warn'] : t.onVps.game ? ['Matched on VPS', 'good'] : ['Not on VPS', 'none'];
-    out.push({ icon: 'file', kind: 'Table', detail: `${t.file}.vpx · ${size(t.size)}`, state: match[0], look: match[1], actions: [['Show', () => showFile(t, 'table')]] });
+    out.push({ icon: 'file', kind: 'Table', detail: `${t.file}.${t.format === 'fp' ? 'fpt' : 'vpx'} · ${size(t.size)}`, note: t.format === 'fp' ? 'A Future Pinball table, played in Future Pinball through BAM' : '', state: match[0], look: match[1], actions: [['Show', () => showFile(t, 'table')]] });
+    // a Future Pinball table: of what VPX's tables hold beside them, its PinUP pack alone (a
+    // PinEvent table's backglass and display), where one's named as it
+    if (t.format === 'fp') {
+      if (h.pupPack) out.push(pupRow(h));
+      return out;
+    }
     // other backglasses kept beside it: which one plays is chosen in Change…
     const kept = h.backglasses.length;
     const change = kept ? [['Change…', () => (backglassOpen = true)]] : [];
@@ -522,6 +538,10 @@
       : kept
         ? { icon: 'image', kind: 'Backglass', detail: `None plays; ${kept} kept beside it`, state: 'None plays', look: 'none', actions: change }
         : { icon: 'image', kind: 'Backglass', detail: lists('backglasses'), state: 'Not added', look: 'none', actions: vpsCount('backglasses') ? [['Find', () => find('backglasses')]] : [] });
+    // B2S Pro's own named as the table, which B2S Pro shows before the other, where it's installed
+    if (h.backglassPro) {
+      out.push({ icon: 'image', kind: 'B2S Pro backglass', remove: 'backglassPro', detail: fileName(h.backglassPro), note: 'Plays where B2S Pro is installed, before the .directb2s; VPX’s own backglass add-on and B2S Server play the .directb2s', state: 'Added', look: 'good', actions: [['Show', () => showFile(t, 'backglassPro')], ...change] });
+    }
     if (t.rom) {
       // checked file by file once the page opens; a set that isn't right offers VPS's ROMs
       const [look, said] = romCheck || ['good', ''];
@@ -607,7 +627,7 @@
   };
   const READ = ['txt', 'pdf', 'md', 'rtf', 'doc', 'docx', 'htm', 'html'];
   const ADDED = {
-    music: 'Music', helperScript: 'Its scripts', nvram: 'Machine’s memory', pinmameSettings: 'Machine’s settings', dmdFolder: 'DMD pictures', backglass: 'Backglass',
+    music: 'Music', helperScript: 'Its scripts', nvram: 'Machine’s memory', pinmameSettings: 'Machine’s settings', bamSettings: 'BAM settings', dmdFolder: 'DMD pictures', backglass: 'Backglass',
     pov: 'POV', physics: 'Physics', tableSettings: 'Settings', script: 'Script', table: 'Table', rom: 'ROM', colouring: 'Coloring', media: 'Media', readme: 'Read-me', manual: 'Manual',
   };
 
@@ -699,7 +719,8 @@
       ['Board', t.board],
       ['Designers', t.designers.join(', ')],
       ['Theme', t.theme.join(', ')],
-      ['ROM', t.rom || 'None'],
+      // Future Pinball's tables need none
+      ['ROM', t.format === 'fp' ? null : t.rom || 'None'],
       ['This release', t.features.join(', ')],
     ].filter(([, v]) => v);
   });
@@ -847,6 +868,10 @@
               <span class="display">{t.name}</span>
               {#if app.makingIds.includes(t.id)}
                 <span class="making">The app is drawing it, with no window: about half a minute, with a preview video…</span>
+              {:else if fp}
+                <!-- our player draws VPX's tables: a Future Pinball table's media recorded from the game -->
+                <button type="button" class="btn" onclick={() => (mediaOpen = true)}><Icon name="image" size={16} />Make its media…</button>
+                <span class="making">VPS has no pictures of it: the app can record it playing on your screens, its playfield, a preview video and its backglass, and make a wheel</span>
               {:else}
                 <button type="button" class="btn" onclick={() => (mediaOpen = true)}><Icon name="image" size={16} />Make its media…</button>
                 <span class="making">VPS has no pictures of it: the app can draw it, its backglass and its score display, film a preview and make a wheel, with no window</span>
@@ -942,11 +967,15 @@
           </div>
           <button type="button" class="btn square" class:fav={isFavourite(t)} aria-pressed={isFavourite(t)} aria-label={isFavourite(t) ? 'A favourite: take it off' : 'Make it a favourite'} title="Favourite" onclick={() => setFavourite(t, !isFavourite(t))}><Icon name="heart" size={19} fill={isFavourite(t)} /></button>
           <button type="button" class="btn square" aria-label="Edit its details" title="Edit its details" onclick={() => (detailsOpen = true)}><Icon name="edit" size={19} /></button>
+          {#if t.format !== 'fp'}
           <button type="button" class="btn square" aria-label="Table settings" title="Table settings" onclick={() => (settingsOpen = true)}><Icon name="sliders" size={19} /></button>
           <button type="button" class="btn square" aria-label="Edit its script" title="Edit its script" onclick={() => (scriptOpen = true)}><Icon name="code" size={19} /></button>
+          {/if}
           <button type="button" class="btn square" aria-label="Show its files" title="Show its files" onclick={() => showFile(t, 'table')}><Icon name="folder" size={19} /></button>
           <button type="button" class="btn square" aria-label="Make media" title={app.makingIds.includes(t.id) ? 'Making its media…' : 'Make media'} disabled={app.makingIds.includes(t.id)} onclick={() => (mediaOpen = true)}><Icon name="film" size={19} /></button>
+          {#if t.format !== 'fp'}
           <button type="button" class="btn square" aria-label="Its achievements" title="Its achievements" onclick={() => { app.prefs.scoreCard = 'achievements'; savePrefs(); tick().then(() => document.getElementById('achievements')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }}><Icon name="trophy" size={19} /></button>
+          {/if}
           <div class="morebox" bind:this={moreBox}>
             <button type="button" class="btn square" aria-label="More" title="More" aria-expanded={more} onclick={() => (more = !more)}><Icon name="more" size={19} /></button>
             {#if more}
@@ -966,11 +995,15 @@
                 {:else}
                 <button type="button" role="menuitem" onclick={() => (plMenu = true)}>Add to a playlist…</button>
                 {#if t.vpsLink}<button type="button" role="menuitem" onclick={() => { more = false; openLink(t.vpsLink); }}>Open on VPS’s site</button>{/if}
-                <button type="button" role="menuitem" disabled={app.makingIds.includes(t.id)} onclick={() => { more = false; mediaOpen = true; }}>Make media…</button>
-                <button type="button" role="menuitem" onclick={() => { more = false; inspect(t.id); }}>Open in the table inspector</button>
-                <button type="button" role="menuitem" onclick={() => { more = false; invoke('show_player_log').catch((e) => notice(String(e), { kind: 'problem' })); }}>Show VPX’s last log</button>
-                {#if hasOlder && !t.playWith && !app.vpxOlder}<button type="button" role="menuitem" onclick={() => { more = false; playWith('10.8.0'); }}>Play it with VPX 10.8.0</button>{/if}
-                {#if t.playWith}<button type="button" role="menuitem" onclick={() => { more = false; playWith(null); }}>Play it with Settings › Library’s VPX</button>{/if}
+                <!-- in a VR headset, this game alone: VPX 10.8.1 or newer's BGFX program, or BAM's VR -->
+                {#if fp || (!app.vpxOlder && t.playWith !== '10.8.0')}<button type="button" role="menuitem" onclick={() => { more = false; play(t, null, 'vr'); }}>Play it in VR</button>{/if}
+                {#if !fp}
+                  <!-- VPX's own: a Future Pinball table is read and played by Future Pinball -->
+                  <button type="button" role="menuitem" onclick={() => { more = false; inspect(t.id); }}>Open in the table inspector</button>
+                  <button type="button" role="menuitem" onclick={() => { more = false; invoke('show_player_log').catch((e) => notice(String(e), { kind: 'problem' })); }}>Show VPX’s last log</button>
+                  {#if hasOlder && !t.playWith && !app.vpxOlder}<button type="button" role="menuitem" onclick={() => { more = false; playWith('10.8.0'); }}>Play it with VPX 10.8.0</button>{/if}
+                  {#if t.playWith}<button type="button" role="menuitem" onclick={() => { more = false; playWith(null); }}>Play it with Settings › Library’s VPX</button>{/if}
+                {/if}
                 <button type="button" role="menuitem" onclick={() => { more = false; app.report = { table: t }; }}>Report a problem with it…</button>
                 <button type="button" role="menuitem" onclick={() => { more = false; navigator.clipboard.writeText(t.path).then(() => notice('Its file’s place is copied.', { kind: 'done' })); }}>Copy where its file is</button>
                 <button type="button" role="menuitem" class="bad" onclick={() => { more = false; app.removing = t; }}>Remove from library…</button>
@@ -979,6 +1012,10 @@
             {/if}
           </div>
         </div>
+        {#if fp}
+          <!-- what plays it, where its own options are, and what of the app's is VPX's alone -->
+          <div class="match none"><Icon name="help" size={18} /><span>A Future Pinball table, played in Future Pinball through BAM. Its own options (physics, lights, the camera) are in BAM’s menu during a game: press Q or ~. What the app does for VPX’s tables alone isn’t here: table settings, its script, tests, high scores and achievements. Its media are recorded from the game itself.</span></div>
+        {/if}
         {#if t.scriptUpdate}
           <!-- updated since its script was changed here: its changes carried over to its new script, or not -->
           <div class="match warn script-update">
@@ -995,7 +1032,7 @@
           <div class="match none"><Icon name="play" size={18} /><span>Plays with VPX {t.playWith}, for this table alone. <button type="button" class="link" onclick={() => playWith(null)}>Play it with Settings › Library’s VPX again</button></span></div>
           {#if t.newerPlays}
             <!-- a newer VPX 10.8.1, tried quietly, plays it now -->
-            <div class="match good"><Icon name="check" size={18} /><span>It plays in VPX 10.8.1 now: tried out of sight in build {t.newerPlays}, its script ran without stopping. <button type="button" class="link" onclick={() => answerNewer(true)}>Play it with VPX 10.8.1</button> · <button type="button" class="link" onclick={() => answerNewer(false)}>Keep VPX {t.playWith}</button></span></div>
+            <div class="match good"><Icon name="check" size={18} /><span>It plays in VPX {newerLine} now: tried out of sight in build {t.newerPlays}, its script ran without stopping. <button type="button" class="link" onclick={() => answerNewer(true)}>Play it with VPX {newerLine}</button> · <button type="button" class="link" onclick={() => answerNewer(false)}>Keep VPX {t.playWith}</button></span></div>
           {/if}
         {/if}
         {#if lastNotes.length}
@@ -1023,7 +1060,7 @@
                   <Icon name="code" size={18} />
                   <div class="note-body">
                     <b>Its script stopped with an error</b>
-                    <span>Line {n.line}{n.text ? `: ${n.text}` : ''}.{n.ballId ? ' That line sets a ball’s ID, which VPX 10.8.1 refuses, to keep every ball’s ID its own; VPX 10.8.0 allowed it.' : ''}{n.older ? ' VPX 10.8.0 is in your library and can play it instead.' : ''}</span>
+                    <span>Line {n.line}{n.text ? `: ${n.text}` : ''}.{n.ballId ? ' That line sets a ball’s ID, which VPX 10.8.1 and newer refuse, to keep every ball’s ID its own; VPX 10.8.0 allowed it.' : ''}{n.older ? ' VPX 10.8.0 is in your library and can play it instead.' : ''}</span>
                     <span class="note-buttons">
                       {#if n.older}<button type="button" class="btn small" onclick={() => playWith('10.8.0', n)}>Play it with VPX 10.8.0</button>{/if}
                       <button type="button" class="btn small ghost" onclick={() => { dropNote(n); app.report = { table: t }; }}>Report it</button>
@@ -1090,7 +1127,9 @@
           <div class="match {matchLine[2]}"><Icon name={matchLine[0]} size={18} width={2.4} /><span>{matchLine[1]} <button type="button" class="link change" onclick={() => (pickOpen = true)}>{t.onVps.game ? 'Not the right one?' : 'Find it on VPS'}</button></span></div>
         {/if}
         <div class="tested">
-          {#if app.testingIds.includes(t.id)}
+          {#if t.format === 'fp'}
+            <!-- a Future Pinball table: tested in VPX it isn't -->
+          {:else if app.testingIds.includes(t.id)}
             <div class="match none"><Icon name="clock" size={18} /><span>Testing: running it in VPX for about 10 seconds, unseen and unheard…</span></div>
           {:else if t.tested && !t.tested.by}
             <!-- a test our own player ran, before tables were tested in VPX: no word on how VPX plays it -->
@@ -1144,7 +1183,7 @@
       </div>
 
       <div class="scores-cell">
-        <HighScores {t} />
+        {#if t.format !== 'fp'}<HighScores {t} />{/if}
       </div>
     </div>
 
@@ -1177,7 +1216,8 @@
             {/if}
           </div>
         {/each}
-        <!-- its achievement packs, each on a line of its own with a bin -->
+        <!-- its achievement packs, each on a line of its own with a bin: games in VPX alone -->
+        {#if !fp}
         {#each achPacks as p, i (p.id)}
           {@const earned = p.achievements.filter((a) => a.earned).length}
           <div class="part">
@@ -1223,8 +1263,13 @@
         {:else}
           <p class="none-else">Nothing else: no music, scripts of its own or other files for it.</p>
         {/each}
+        {/if}
         </div>
-        <p class="drop">To add files for {t.short} — a backglass, a ROM, a pack, a POV, music — drop them anywhere on this page. Each goes where it belongs, and you see where before anything is copied.</p>
+        {#if fp}
+          <p class="drop">To add files for {t.short} — its PinUP pack, a library (.fpl) — drop them anywhere on this page. Each goes where Future Pinball and PinUP read it, and you see where before anything is copied.</p>
+        {:else}
+          <p class="drop">To add files for {t.short} — a backglass, a ROM, a pack, a POV, music — drop them anywhere on this page. Each goes where it belongs, and you see where before anything is copied.</p>
+        {/if}
       </section>
 
       <div class="side">
@@ -1295,7 +1340,8 @@
   <ColourIt {t} onclose={() => (colourOpen = false)} />
 {/if}
 {#if t && layoutOpen && t.holds.pupPack}
-  <PupLayout path={t.holds.pupPack} title={t.short} tableId={t.id} onclose={() => (layoutOpen = false)} />
+  <!-- Try it starts a VPX table with the layout; a Future Pinball table plays as it is -->
+  <PupLayout path={t.holds.pupPack} title={t.short} tableId={fp ? null : t.id} onclose={() => (layoutOpen = false)} />
 {/if}
 {#if t && shotsOpen}
   <Screenshots {t} onclose={() => (shotsOpen = false)} />

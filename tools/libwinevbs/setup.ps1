@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Stop'
 # below normal for this and everything it starts: gentle on the machine
 (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
 
-$commit = 'e8f15a759c345f8ff535bacf2fe6045cc59f5f8c' # atl: return typeinfo from GetClassInfo (0.10.2, Wine 11.20's code)
+$commit = 'aef82ffbd5fd248549007ed304fa670c187c28e9' # ci: use NDK 29 for android (Wine 11.20's code, with libwinevbs' fixes to 2026-11-09)
 $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $src = Join-Path $BuildRoot 'libwinevbs'
 $bash = Join-Path $Msys 'usr\bin\bash.exe'

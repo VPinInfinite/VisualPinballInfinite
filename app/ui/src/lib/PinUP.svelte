@@ -55,7 +55,7 @@
 {#snippet Topper(get, set)}{@render padding('Topper', get, set)}{/snippet}
 
 
-<IniPage title="PinUP packs" lead="Packs of videos, sounds and pictures a table plays on the backglass, the score display and the topper: how they play. Your packs, each with its layout, are under Tools › PinUP packs, and PinUP Popper’s media under Tools › Media. Their volume is on the Sound page; where they’re kept, under Library › Folders." {parts} custom={{ BG, SV, Topper }} />
+<IniPage title="PinUP packs" tag="vpx" lead="Packs of videos, sounds and pictures a table plays on the backglass, the score display and the topper: how they play. Your packs, each with its layout, are under Tools › PinUP packs, and PinUP Popper’s media under Tools › Media. Their volume is on the Sound page; where they’re kept, under Library › Folders." {parts} custom={{ BG, SV, Topper }} />
 
 <style>
   .pad { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg-soft); }

@@ -4,7 +4,7 @@
   // button when pointed at; a yellow or red triangle at its top right when something needs a look,
   // what in its tip.
   import Icon from './Icon.svelte';
-  import { app, drop, play, problems, tagsOf, turnOf, buildsOf, combined, isFavourite, ratingOf } from './store.svelte.js';
+  import { app, drop, play, problems, tagsOf, turnOf, buildsOf, sameName, isFavourite, ratingOf } from './store.svelte.js';
 
   let { t, picture, onopen } = $props();
 
@@ -20,7 +20,7 @@
   const more = $derived(allTags.slice(tags.length));
   // two tables of one name (two releases of a machine) told apart by their version and first author;
   // a table shown once holds its own builds
-  const twin = $derived(app.tables.some((x) => x.id !== t.id && x.name.toLowerCase() === t.name.toLowerCase() && !(combined() && x.group === t.group)));
+  const twin = $derived(sameName(t).length > 0);
   const builds = $derived(buildsOf(t).length);
   const fav = $derived(isFavourite(t));
   const rating = $derived(ratingOf(t));

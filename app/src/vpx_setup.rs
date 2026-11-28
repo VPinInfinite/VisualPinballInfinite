@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::library::{self, Shared};
 
 /// The line of VPX the app plays tables in, and gets.
-const LINE: &str = "10.8.1";
+const LINE: &str = ::library::vpx::MADE_FOR_LINE;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,13 +45,15 @@ pub struct Status {
     pub installed: Vec<Found>,
     /// The line the settings choose to play with, where they choose one (`[VPI]` `PlayWith`).
     pub play_with: Option<String>,
-    /// The folder Get VPX 10.8.1 puts it in.
+    /// The folder Get VPX puts it in.
     pub get_into: Option<String>,
     /// The VPX that putting back brings back, where one was replaced: its version, or "none".
     pub put_back: Option<String>,
-    /// The VPX 10.8.1 build the app is made for, as Get VPX 10.8.1 brings it: `10.8.1 (build 6758)`.
+    /// The VPX build the app is made for, as Get VPX brings it: `10.9.0 (build 7001)`.
     pub made_for: String,
-    /// Whether the library's newest VPX 10.8.1 is older than that build.
+    /// That build's line: `10.9.0`.
+    pub made_for_line: String,
+    /// Whether the library's newest VPX with add-ons is older than that build.
     pub older: bool,
 }
 
@@ -154,7 +156,8 @@ pub fn vpx_status(shared: State<'_, Shared>) -> Status {
         play_with: layout.as_ref().and_then(|l| l.play_with.clone()),
         get_into: layout.as_ref().and_then(get_into).map(|p| p.display().to_string()),
         put_back,
-        made_for: version_text([10, 8, 1, ::library::vpx::MADE_FOR]),
+        made_for: version_text(::library::vpx::MADE_FOR_VERSION),
+        made_for_line: LINE.into(),
         older: newest_1081.is_some_and(::library::vpx::older_than_made_for),
     }
 }

@@ -7,8 +7,9 @@ PinUP Popper, PinballX and PinballY start VPX with a table as they always have: 
 - **It plays in VPX as VPX plays it,** with VPX's own menu on F12.
 - **It plays with your VPX settings,** the ones the app's settings pages change: your screens, sound, controls and picture. (VPX 10.8.0 keeps settings of its own.)
 - **The high scores it makes show on the table's page** all the same, as the app reads them where VPX keeps them.
-- **What it doesn't get, as these come with PLAY in the app:** achievements followed as you play, the app's [pause menu](Playing#the-pause-menu), screenshots, Play Hardcore and Play Softcore, a screen preset (a table's own, or cabinet mode's), your plays counted, and the VPX the app chooses for each table. A front end starts the VPX program its own settings name.
-- **A library kept in a folder for each game** needs VPX 10.8.1: VPX 10.8.0, and a front end starting tables through it, can't start ROM tables kept that way.
+- **What it doesn't get, as these come with PLAY in the app:** achievements followed as you play, the app's [pause menu](Playing#the-pause-menu), screenshots, Play Hardcore and Play Softcore, a screen preset (a table's own, or cabinet mode's), your plays counted, the VR program chosen in Settings › VR (VPX plays with Windows' own), and the VPX the app chooses for each table. A front end starts the VPX program its own settings name.
+- **A library kept in a folder for each game** needs VPX 10.8.1 or newer, such as 10.9: VPX 10.8.0, and a front end starting tables through it, can't start ROM tables kept that way.
+- **A Future Pinball table started from a front end** plays as that front end starts it, with Future Pinball's own settings: the app sets Future Pinball's screens and keys only for the games it starts (see [Future Pinball](Future-Pinball#from-a-front-end)).
 
 ## PinUP Popper
 

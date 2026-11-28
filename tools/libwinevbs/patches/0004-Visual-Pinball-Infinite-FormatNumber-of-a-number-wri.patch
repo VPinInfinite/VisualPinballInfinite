@@ -1,4 +1,4 @@
-From c4fd119044d35ed968dc56762eff42318cb3aa67 Mon Sep 17 00:00:00 2001
+From 4f2352a3706c963172acfc1dde8600812ba0c0a2 Mon Sep 17 00:00:00 2001
 From: VPinInfinite <340424849+VPinInfinite@users.noreply.github.com>
 Subject: [PATCH 4/4] Visual Pinball Infinite: FormatNumber of a number written
  with an exponent

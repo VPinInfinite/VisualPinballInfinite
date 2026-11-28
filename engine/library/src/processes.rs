@@ -31,8 +31,13 @@ mod windows {
 }
 
 /// The running programs' files' names (`PinUpMenu.exe` and the like).
-#[cfg(windows)]
 pub fn running() -> Vec<String> {
+    running_with_ids().into_iter().map(|(_, name)| name).collect()
+}
+
+/// The running processes, each by its ID and its program's file's name.
+#[cfg(windows)]
+pub fn running_with_ids() -> Vec<(u32, String)> {
     use windows::*;
     let mut out = Vec::new();
     // SAFETY: Tool Help's snapshot, read entry by entry as its documentation lays out, then closed
@@ -46,7 +51,7 @@ pub fn running() -> Vec<String> {
         let mut more = Process32FirstW(snapshot, &mut entry) != 0;
         while more {
             let len = entry.exe_file.iter().position(|&c| c == 0).unwrap_or(entry.exe_file.len());
-            out.push(String::from_utf16_lossy(&entry.exe_file[..len]));
+            out.push((entry.process_id, String::from_utf16_lossy(&entry.exe_file[..len])));
             more = Process32NextW(snapshot, &mut entry) != 0;
         }
         CloseHandle(snapshot);
@@ -55,7 +60,7 @@ pub fn running() -> Vec<String> {
 }
 
 #[cfg(not(windows))]
-pub fn running() -> Vec<String> {
+pub fn running_with_ids() -> Vec<(u32, String)> {
     Vec::new()
 }
 
@@ -66,5 +71,6 @@ mod tests {
         let names = super::running();
         let me = std::env::current_exe().unwrap().file_name().unwrap().to_string_lossy().to_lowercase();
         assert!(names.iter().any(|n| n.to_lowercase() == me), "{me} not in {} names", names.len());
+        assert!(super::running_with_ids().iter().any(|(id, n)| *id == std::process::id() && n.to_lowercase() == me));
     }
 }

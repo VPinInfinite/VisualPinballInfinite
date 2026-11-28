@@ -52,7 +52,6 @@
             { label: 'AgX', set: { 'TableOverride/ToneMapper': '1' } },
             { label: 'Filmic', set: { 'TableOverride/ToneMapper': '2' } },
             { label: 'Neutral', set: { 'TableOverride/ToneMapper': '3' } },
-            { label: 'AgX Punchy', set: { 'TableOverride/ToneMapper': '4' } },
           ],
           what: 'How colors too bright for the screen are brought down: Reinhard softest, Filmic and AgX keep the color of bright lights.',
           vpx: '[TableOverride] ToneMapper',
@@ -114,7 +113,7 @@
           what: 'Off is VPX’s own and the quickest. On switches off the ambient occlusion, the balls’ motion blur and the smoothing filters’ sparing of the background, which need what multisampling takes.',
           vpx: '[Player] MSAASamples',
         },
-        { label: 'Supersampling', kind: 'slider', key: 'Player/AAFactor', min: 0.5, max: 2, step: 0.25, def: 1, fmt: (v) => (Number(v) === 1 ? '1× (off)' : `${Number(v)}×`), what: 'Drawn larger or smaller than the window, then fitted. At anything but 1×, VPX 10.8.1 draws a backglass, score display or topper kept inside the table’s window at the wrong place and size.', vpx: '[Player] AAFactor' },
+        { label: 'Supersampling', kind: 'slider', key: 'Player/AAFactor', min: 0.5, max: 2, step: 0.25, def: 1, fmt: (v) => (Number(v) === 1 ? '1× (off)' : `${Number(v)}×`), what: 'Drawn larger or smaller than the window, then fitted. At anything but 1×, VPX 10.8.1 and newer draw a backglass, score display or topper kept inside the table’s window at the wrong place and size.', vpx: '[Player] AAFactor' },
         {
           label: 'Smoothing filter',
           kind: 'choice',
@@ -283,7 +282,7 @@
   </div>
 {/snippet}
 
-<IniPage title="Picture" lead="How tables look, for every table, their score displays, and how frames reach the screen: VPX’s own settings." {parts} custom={{ key, profiles }} />
+<IniPage title="Picture" tag="vpx" lead="How tables look, for every table, their score displays, and how frames reach the screen: VPX’s own settings." {parts} custom={{ key, profiles }} />
 
 <style>
   .keyset { font-size: 13px; color: var(--fg-soft); }

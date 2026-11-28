@@ -437,6 +437,7 @@ pub fn kind_key(kind: Kind) -> &'static str {
         Kind::Music => "music",
         Kind::Nvram => "nvram",
         Kind::PinmameSettings => "pinmameSettings",
+        Kind::BamSettings => "bamSettings",
         Kind::Media => "media",
         Kind::TablePicture => "tablePicture",
         Kind::Manual => "manual",
@@ -457,6 +458,7 @@ fn folder_name(kind: Kind) -> &'static str {
         Kind::HelperScript => "Scripts",
         Kind::Music => "Music",
         Kind::Media => "PinUP Popper's media",
+        Kind::FuturePinball | Kind::BamSettings => "Future Pinball",
         _ => "Tables",
     }
 }
@@ -1398,16 +1400,20 @@ pub fn backglasses_apart(downloads: &mut [Download], three: bool) {
         };
         Some((to.parent()?.to_string_lossy().to_lowercase(), stem))
     };
-    let mut tables: BTreeMap<(String, String), Vec<(usize, usize)>> = BTreeMap::new();
+    // each kind apart, B2S's and B2S Pro's, one of each playing; their versions numbered together
+    let kind = |to: &Path| to.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let mut tables: BTreeMap<(String, String, String), Vec<(usize, usize)>> = BTreeMap::new();
     for (i, d) in downloads.iter().enumerate() {
         for (k, r) in d.rows.iter().enumerate() {
             if r.kind == "backglass"
-                && let Some(key) = r.to.as_deref().and_then(base)
+                && let Some(to) = r.to.as_deref()
+                && let Some(key) = base(to)
             {
-                tables.entry((key.0, key.1.to_lowercase())).or_default().push((i, k));
+                tables.entry((key.0, key.1.to_lowercase(), kind(to))).or_default().push((i, k));
             }
         }
     }
+    let mut given_for: BTreeMap<(String, String), Vec<u32>> = BTreeMap::new();
     let want = if three { 3 } else { 2 };
     for rows in tables.into_values() {
         // one backglass for the table: nothing to settle
@@ -1423,10 +1429,11 @@ pub fn backglasses_apart(downloads: &mut [Download], three: bool) {
         let Some(first_to) = downloads[rows[0].0].rows[rows[0].1].to.clone() else { continue };
         let Some((_, stem)) = base(&first_to) else { continue };
         let Some(dir) = first_to.parent().map(Path::to_path_buf) else { continue };
-        let mut given: Vec<u32> = Vec::new();
+        let ext = first_to.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_else(|| "directb2s".into());
+        let given = given_for.entry((dir.to_string_lossy().to_lowercase(), stem.to_lowercase())).or_default();
         for (n, &(i, k)) in rows.iter().enumerate() {
             let size = downloads[i].rows[k].size;
-            let place = if n == keep { dir.join(format!("{stem}.directb2s")) } else { crate::plan::version_place(&dir, &stem, "directb2s", size, &mut given) };
+            let place = if n == keep { dir.join(format!("{stem}.{ext}")) } else { crate::plan::version_place(&dir, &stem, &ext, size, given) };
             let d = &mut downloads[i];
             for s in d.rows[k].steps.clone() {
                 d.steps[s].to = Some(place.clone());

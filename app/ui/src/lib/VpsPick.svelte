@@ -9,6 +9,9 @@
   import { vps, loadVps, notice, chooseVps, follow } from './store.svelte.js';
 
   let { t, onclose } = $props();
+  // the kind of table file it is, as VPS names the formats: Future Pinball's or VPX's
+  const format = t.format === 'fp' ? 'FP' : 'VPX';
+  const formatName = format === 'FP' ? 'Future Pinball' : 'VPX';
 
   let query = $state(t.name);
   let machine = $state(null);
@@ -26,14 +29,14 @@
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
     const words = q.split(/\s+/);
-    // the machine named so first, then those whose names begin so, then those with a VPX table
+    // the machine named so first, then those whose names begin so, then those with a table of its kind
     const rank = (m) => {
       const n = m.name.toLowerCase();
       return n === q ? 0 : n.startsWith(q) ? 1 : 2;
     };
     return vps.machines
       .filter((m) => words.every((w) => [m.name, m.maker, String(m.year || ''), ...m.roms].some((s) => (s || '').toLowerCase().includes(w))))
-      .sort((a, b) => rank(a) - rank(b) || (b.formats.includes('VPX') - a.formats.includes('VPX')) || a.name.localeCompare(b.name))
+      .sort((a, b) => rank(a) - rank(b) || (b.formats.includes(format) - a.formats.includes(format)) || a.name.localeCompare(b.name))
       .slice(0, 24);
   });
 
@@ -43,7 +46,7 @@
     files = null;
     try {
       const g = await invoke('vps_game', { game: m.id, file: null });
-      files = (g?.kinds.find((k) => k.kind === 'tables')?.files || []).filter((f) => !f.format || f.format === 'VPX');
+      files = (g?.kinds.find((k) => k.kind === 'tables')?.files || []).filter((f) => (format === 'VPX' ? !f.format || f.format === 'VPX' : f.format === format));
     } catch (e) {
       files = [];
       notice(String(e), { kind: 'problem' });
@@ -95,7 +98,7 @@
       <h2 id="vp-title">Find {t.short} on VPS</h2>
       <button type="button" class="btn icon ghost" aria-label="Close" onclick={onclose}><Icon name="x" /></button>
     </header>
-    <p class="file">{t.file}.vpx</p>
+    <p class="file">{t.file}.{format === 'FP' ? 'fpt' : 'vpx'}</p>
 
     {#if picked !== undefined}
       <div class="chosen">
@@ -161,7 +164,7 @@
               </span>
             </button>
           {:else}
-            <p class="soft">VPS lists no VPX table of it.</p>
+            <p class="soft">VPS lists no {formatName} table of it.</p>
           {/each}
           <button type="button" class="pick plain" onclick={() => pickFile(null)}><span class="txt"><b>None of these</b><span>Matched to the machine alone, with no release in particular</span></span></button>
         </div>
@@ -181,7 +184,7 @@
               {#if m.picture}<img src={m.picture} alt="" loading="lazy" />{:else}<span class="noimg"><Icon name="image" size={18} /></span>{/if}
               <span class="txt">
                 <b>{m.name}</b>
-                <span>{[m.maker, m.year, m.kind].filter(Boolean).join(' · ')}{m.formats.includes('VPX') ? '' : ' · no VPX table'}{m.mine ? ' · in your library' : ''}</span>
+                <span>{[m.maker, m.year, m.kind].filter(Boolean).join(' · ')}{m.formats.includes(format) ? '' : ` · no ${formatName} table`}{m.mine ? ' · in your library' : ''}</span>
               </span>
             </button>
           {:else}

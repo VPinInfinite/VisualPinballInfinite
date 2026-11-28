@@ -341,7 +341,7 @@ fn patched(d: &Download, from: &str, temp: &Path, to: &Path, replace: bool, recy
     added.tables.push(to.to_path_buf());
     added.placed.push((to.to_path_buf(), "table"));
     let Some(original) = original else { return };
-    for (ext, kind) in [("directb2s", "backglass"), ("ini", "tableSettings"), ("pov", "pov"), ("vpp", "physics")] {
+    for (ext, kind) in [("directb2s", "backglass"), ("B2SPro", "backglass"), ("ini", "tableSettings"), ("pov", "pov"), ("vpp", "physics")] {
         let (from, copy) = (original.with_extension(ext), to.with_extension(ext));
         if from.is_file() && !copy.exists() {
             match std::fs::copy(&from, &copy) {
@@ -378,11 +378,14 @@ fn whole_rom_set(listing: &crate::archive::Listing, format: Option<Format>, arch
     }
     let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     listing.extract(&mut |entry| {
-        // the set's files at the zip's top, as PinMAME looks for them; a read-me beside them left out
-        let name = entry.rsplit('/').next().unwrap_or(entry);
-        if name.rsplit_once('.').is_some_and(|(_, x)| crate::analysis::READ_SUFFIXES.contains(&x.to_ascii_lowercase().as_str())) {
+        // the set's files at the zip's top, as PinMAME looks for them, and a merged set's clones' own
+        // in the folders named for them, as MAME keeps them (a clone's file may share its name with
+        // one of its parent's); a read-me beside them left out
+        let file = entry.rsplit('/').next().unwrap_or(entry);
+        if file.rsplit_once('.').is_some_and(|(_, x)| crate::analysis::READ_SUFFIXES.contains(&x.to_ascii_lowercase().as_str())) {
             return Ok(None);
         }
+        let name = if entry.matches('/').count() == 1 { entry } else { file };
         zip.borrow_mut().start_file(name, options).map_err(|e| format!("{name}: {e}"))?;
         Ok(Some(Box::new(Into(zip.clone()))))
     })?;
@@ -479,7 +482,7 @@ mod tests {
     }
 
     fn layout(top: &Path) -> Layout {
-        Layout { tables: top.join("Tables"), scripts: top.join("Scripts"), vpinmame: top.join("VPinMAME"), pup_videos: top.join("PUPVideos"), data: top.join("data"), front_ends: Vec::new(), media_front: None, per_game: false, vpx_folder: None, play_with: None }
+        Layout { tables: top.join("Tables"), scripts: top.join("Scripts"), vpinmame: top.join("VPinMAME"), pup_videos: top.join("PUPVideos"), data: top.join("data"), front_ends: Vec::new(), media_front: None, per_game: false, vpx_folder: None, play_with: None, future_pinball: None }
     }
 
     #[test]
@@ -523,6 +526,38 @@ mod tests {
             std::io::Read::read_to_string(&mut z.by_name("fg_1200af.bin").unwrap(), &mut got).unwrap();
             assert_eq!(got, "the code", "{n}");
         }
+        let _ = std::fs::remove_dir_all(&top);
+    }
+
+    #[test]
+    fn a_merged_set_unpacked_goes_in_with_its_clones_folders() {
+        // MAME's merged set unpacked: the parent's files at its top, a clone's own in a folder of its
+        // name, one of them named as one of the parent's
+        let top = scratch("merged");
+        let l = layout(&top);
+        let db = Database { games: Vec::new() };
+        let known: [Known; 0] = [];
+        let set = top.join("unpacked").join("sfightii");
+        std::fs::create_dir_all(set.join("sfightiia")).unwrap();
+        std::fs::write(set.join("gprom.bin"), b"the parent's").unwrap();
+        std::fs::write(set.join("sfightiia").join("gprom.bin"), b"the clone's").unwrap();
+        let d = &inspect(std::slice::from_ref(&set), &db, &known, &l, crate::drop::Tie::Found, &[])[0];
+        let rom: Vec<&crate::drop::Row> = d.rows.iter().filter(|r| r.kind == "rom").collect();
+        assert_eq!(rom.len(), 1, "{:?}", d.rows);
+        let to = l.vpinmame.join("roms").join("sfightii.zip");
+        assert_eq!(rom[0].to.as_deref(), Some(to.as_path()));
+        let include: Vec<bool> = d.rows.iter().map(|r| r.kind == "rom").collect();
+        let gone = |p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string());
+        let a = install(d, &include, &HashMap::new(), Already::Replace, &gone, &mut |_, _| {}).unwrap();
+        assert!(a.problems.is_empty(), "{:?}", a.problems);
+        let mut z = zip::ZipArchive::new(std::fs::File::open(&to).unwrap()).unwrap();
+        let mut read = |name: &str| {
+            let mut got = String::new();
+            std::io::Read::read_to_string(&mut z.by_name(name).unwrap(), &mut got).unwrap();
+            got
+        };
+        assert_eq!(read("gprom.bin"), "the parent's");
+        assert_eq!(read("sfightiia/gprom.bin"), "the clone's");
         let _ = std::fs::remove_dir_all(&top);
     }
 

@@ -52,7 +52,8 @@
   let finder = $state();
   const found = $derived.by(() => {
     const q = find.trim().toLowerCase();
-    const all = [...app.tables].sort((a, b) => a.name.localeCompare(b.name));
+    // VPX's tables: a Future Pinball table's file isn't one the inspector reads
+    const all = app.tables.filter((t) => t.format !== 'fp').sort((a, b) => a.name.localeCompare(b.name));
     return q ? all.filter((t) => t.name.toLowerCase().includes(q) || t.file.toLowerCase().includes(q)) : all;
   });
   function open(t) {

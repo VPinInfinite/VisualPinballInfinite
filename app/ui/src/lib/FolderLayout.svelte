@@ -111,11 +111,11 @@
     <div class="modes" role="radiogroup" aria-label="Where tables keep their files">
       <button type="button" role="radio" class="mode" class:on={mode === 'shared'} aria-checked={mode === 'shared'} onclick={() => choose('shared')}>
         <span class="ring" aria-hidden="true"></span>
-        <span><b>Shared folders</b><span class="what">Tables together, ROMs in VPinMAME’s folder, PinUP packs in PinUP’s: as VPX and PinUP Popper lay them out. Every VPX plays tables kept this way, 10.8.0 and 10.8.1 alike.</span></span>
+        <span><b>Shared folders</b><span class="what">Tables together, ROMs in VPinMAME’s folder, PinUP packs in PinUP’s: as VPX and PinUP Popper lay them out. Every VPX plays tables kept this way, 10.8.0 and newer alike.</span></span>
       </button>
       <button type="button" role="radio" class="mode" class:on={mode === 'game'} aria-checked={mode === 'game'} onclick={() => choose('game')}>
         <span class="ring" aria-hidden="true"></span>
-        <span><b>A folder for each game</b><span class="what">Each game’s tables with their ROM, packs, coloring and music. Easy to copy, back up or delete one game.</span><span class="what warnline">Needs VPX 10.8.1: VPX 10.8.0 — and PinUP Popper or any program starting tables through it — can’t start ROM tables kept this way, nor find their PinUP packs, AltSound or colorings. Nothing needs this layout: VPX 10.8.1 and VPin Studio read both.</span></span>
+        <span><b>A folder for each game</b><span class="what">Each game’s tables with their ROM, packs, coloring and music. Easy to copy, back up or delete one game.</span><span class="what warnline">Needs VPX 10.8.1 or newer: VPX 10.8.0 — and PinUP Popper or any program starting tables through it — can’t start ROM tables kept this way, nor find their PinUP packs, AltSound or colorings. Nothing needs this layout: VPX 10.8.1 and newer, and VPin Studio, read both.</span></span>
       </button>
     </div>
 

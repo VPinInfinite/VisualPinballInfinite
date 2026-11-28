@@ -11,4 +11,4 @@ publish = false
 [dependencies]
 physics-compat = { path = "../physics-compat" }
 roxmltree = "0.21"
-vpin = "0.38"
+vpin = "0.40"
